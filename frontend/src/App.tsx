@@ -87,6 +87,7 @@ const App: React.FC = () => {
           onLogout={handleLogout}
           userEmail={user.email}
           onMenuClick={() => setSidebarOpen(!sidebarOpen)}
+          onProfileClick={() => { setCurrentPage('perfil'); setSidebarOpen(false); }}
         />
         <main className="page-content">
           {renderPage()}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sun, Moon, LogOut, Menu } from 'lucide-react';
+import { Sun, Moon, LogOut, Menu, UserCircle } from 'lucide-react';
 import type { PageId } from '../App';
 import './Header.css';
 
@@ -10,7 +10,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   vendas:     '🛒 Vendas',
   devedores:  '👥 Devedores',
   usuarios:   '🛡️ Utilizadores',
-  perfil:     '👤 Perfil & Segurança',
+  perfil:     '👤 Conta',
 };
 
 interface HeaderProps {
@@ -20,9 +20,10 @@ interface HeaderProps {
   onLogout: () => void;
   userEmail: string;
   onMenuClick: () => void;
+  onProfileClick: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ currentPage, isDark, toggleTheme, onLogout, userEmail, onMenuClick }) => {
+const Header: React.FC<HeaderProps> = ({ currentPage, isDark, toggleTheme, onLogout, userEmail, onMenuClick, onProfileClick }) => {
   const profilePic = localStorage.getItem('profilePic');
   const profileName = localStorage.getItem('profileName') || userEmail.split('@')[0];
 
@@ -40,13 +41,18 @@ const Header: React.FC<HeaderProps> = ({ currentPage, isDark, toggleTheme, onLog
           {isDark ? <Sun size={18} /> : <Moon size={18} />}
         </button>
 
-        <div className="header-user">
+        <button
+          onClick={onProfileClick}
+          title="Minha Conta"
+          style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderRadius: 8 }}
+        >
           {profilePic
             ? <img src={profilePic} alt="Avatar" className="header-avatar-img" />
             : <div className="header-avatar">{profileName.charAt(0).toUpperCase()}</div>
           }
           <span className="header-username">{profileName}</span>
-        </div>
+          <UserCircle size={14} style={{ color: 'var(--text-muted)' }} />
+        </button>
 
         <button className="header-icon-btn header-logout" onClick={onLogout} title="Sair">
           <LogOut size={18} />

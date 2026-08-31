@@ -108,7 +108,7 @@ const DevedoresPage: React.FC = () => {
             </div>
             <div className="form-group">
               <label>Descrição (opcional)</label>
-              <input value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })} placeholder="Ex: Crédito de cerveja" />
+              <input value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })} placeholder="Ex: Localização do devedor" />
             </div>
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>

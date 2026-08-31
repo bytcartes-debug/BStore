@@ -5,10 +5,9 @@ const config: CapacitorConfig = {
   appName: 'FlexStock',
   webDir: '../src/main/resources/public',
   server: {
-    // ⚠️ Coloque aqui o IP do seu computador (veja com ipconfig no CMD)
-    // Exemplo: url: 'http://192.168.1.105:8080',
-    url: 'http://SEU_IP_AQUI:8080',
-    cleartext: true,
+    // Servidor na nuvem (livemy.app) — todos os utilizadores usam este endereço
+    url: 'https://vh-prod-bstore-submain-c0c3b4-3d9f0aef.livemy.site',
+    cleartext: false,
   },
 };
 
