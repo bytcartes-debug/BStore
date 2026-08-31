@@ -5,7 +5,9 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
-    outDir: '../src/main/resources/public',
+    // Em Docker o build vai para dist/, o Dockerfile copia para resources/public
+    // Em desenvolvimento local vai direto para resources/public
+    outDir: process.env.DOCKER_BUILD ? 'dist' : '../src/main/resources/public',
     emptyOutDir: true,
   },
   server: {
