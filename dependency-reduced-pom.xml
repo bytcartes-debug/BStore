@@ -3,22 +3,10 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>mz.iscim</groupId>
   <artifactId>barraca-sistema</artifactId>
-  <name>Sistema de Gestão de Barraca - Projecto 3</name>
+  <name>Flex Stock — Sistema de Gestão</name>
   <version>1.0</version>
-  <description>Sistema completo de gestão de mercado informal com interface gráfica</description>
   <build>
     <plugins>
-      <plugin>
-        <artifactId>maven-jar-plugin</artifactId>
-        <version>3.2.0</version>
-        <configuration>
-          <archive>
-            <manifest>
-              <mainClass>ui.App</mainClass>
-            </manifest>
-          </archive>
-        </configuration>
-      </plugin>
       <plugin>
         <artifactId>maven-shade-plugin</artifactId>
         <version>3.5.0</version>
@@ -31,10 +19,20 @@
             <configuration>
               <transformers>
                 <transformer>
-                  <mainClass>ui.App</mainClass>
+                  <mainClass>api.Main</mainClass>
                 </transformer>
                 <transformer />
               </transformers>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                  </excludes>
+                </filter>
+              </filters>
             </configuration>
           </execution>
         </executions>
