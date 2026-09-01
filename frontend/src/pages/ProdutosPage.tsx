@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, X, AlertTriangle } from 'lucide-react';
 
 interface Categoria { id: number; nome: string; }
-interface Produto { id: number; nome: string; preco: number; custo: number; stock: number; stockMinimo: number; categoriaId: number; categoriaNome?: string; }
+interface Produto { id: number; nome: string; preco: number; stock: number; stockMinimo: number; categoriaId: number; categoriaNome?: string; }
 
 const ProdutosPage: React.FC = () => {
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -10,7 +10,7 @@ const ProdutosPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Produto | null>(null);
-  const [form, setForm] = useState({ nome: '', preco: '', custo: '', stock: '', stockMinimo: '5', categoriaId: '' });
+  const [form, setForm] = useState({ nome: '', preco: '', stock: '', stockMinimo: '5', categoriaId: '' });
 
   const load = () => {
     fetch('/api/produtos').then(r => r.json()).then(setProdutos).catch(() => {});
@@ -23,13 +23,13 @@ const ProdutosPage: React.FC = () => {
 
   const openNew = () => {
     setEditing(null);
-    setForm({ nome: '', preco: '', custo: '', stock: '', stockMinimo: '5', categoriaId: categorias[0]?.id.toString() || '' });
+    setForm({ nome: '', preco: '', stock: '', stockMinimo: '5', categoriaId: categorias[0]?.id.toString() || '' });
     setShowModal(true);
   };
 
   const openEdit = (p: Produto) => {
     setEditing(p);
-    setForm({ nome: p.nome, preco: p.preco.toString(), custo: p.custo.toString(), stock: p.stock.toString(), stockMinimo: p.stockMinimo.toString(), categoriaId: p.categoriaId.toString() });
+    setForm({ nome: p.nome, preco: p.preco.toString(), stock: p.stock.toString(), stockMinimo: p.stockMinimo.toString(), categoriaId: p.categoriaId.toString() });
     setShowModal(true);
   };
 
@@ -38,7 +38,6 @@ const ProdutosPage: React.FC = () => {
     const body = {
       nome: form.nome.trim(),
       preco: parseFloat(form.preco),
-      custo: parseFloat(form.custo) || 0,
       stock: parseInt(form.stock) || 0,
       stockMinimo: parseInt(form.stockMinimo) || 0,
       categoriaId: parseInt(form.categoriaId),
@@ -145,10 +144,6 @@ const ProdutosPage: React.FC = () => {
               <div className="form-group">
                 <label>Preço de Venda (MT) *</label>
                 <input type="number" min="0" step="0.01" value={form.preco} onChange={e => setForm({ ...form, preco: e.target.value })} placeholder="0.00" />
-              </div>
-              <div className="form-group">
-                <label>Custo (MT)</label>
-                <input type="number" min="0" step="0.01" value={form.custo} onChange={e => setForm({ ...form, custo: e.target.value })} placeholder="0.00" />
               </div>
               <div className="form-group">
                 <label>Stock Atual</label>
