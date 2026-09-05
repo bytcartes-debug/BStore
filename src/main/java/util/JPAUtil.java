@@ -14,7 +14,6 @@ public class JPAUtil {
         if (emf == null || !emf.isOpen()) {
             Map<String, String> props = new HashMap<>();
 
-            // Tenta ler configuração do PostgreSQL via variáveis de ambiente (Railway/Supabase)
             String dbUrl  = System.getenv("DATABASE_URL");
             String dbUser = System.getenv("DB_USER");
             String dbPass = System.getenv("DB_PASSWORD");
@@ -24,12 +23,27 @@ public class JPAUtil {
                 if (dbUrl.startsWith("postgres://")) {
                     dbUrl = dbUrl.replace("postgres://", "jdbc:postgresql://");
                 }
-                props.put("javax.persistence.jdbc.url",      dbUrl);
-                props.put("javax.persistence.jdbc.driver",   "org.postgresql.Driver");
-                props.put("javax.persistence.jdbc.user",     dbUser != null ? dbUser : "");
-                props.put("javax.persistence.jdbc.password", dbPass != null ? dbPass : "");
-                props.put("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
-                props.put("hibernate.hbm2ddl.auto", "update");
+
+                // Garante SSL para Supabase (obrigatório no free tier)
+                if (!dbUrl.contains("sslmode") && !dbUrl.contains("ssl=")) {
+                    dbUrl += (dbUrl.contains("?") ? "&" : "?") + "sslmode=require";
+                }
+
+                props.put("javax.persistence.jdbc.url",    dbUrl);
+                props.put("javax.persistence.jdbc.driver", "org.postgresql.Driver");
+                props.put("hibernate.dialect",             "org.hibernate.dialect.PostgreSQLDialect");
+                props.put("hibernate.hbm2ddl.auto",        "update");
+                props.put("hibernate.show_sql",            "false");
+
+                // SÓ define user/password se estiverem em variáveis separadas
+                // (se já estão no URL, não sobrescreve com vazio)
+                if (dbUser != null && !dbUser.isEmpty()) {
+                    props.put("javax.persistence.jdbc.user", dbUser);
+                }
+                if (dbPass != null && !dbPass.isEmpty()) {
+                    props.put("javax.persistence.jdbc.password", dbPass);
+                }
+
                 System.out.println("[DB] Conectando ao PostgreSQL (nuvem)...");
             } else {
                 // Fallback para H2 local
@@ -37,8 +51,8 @@ public class JPAUtil {
                 props.put("javax.persistence.jdbc.driver",   "org.h2.Driver");
                 props.put("javax.persistence.jdbc.user",     "sa");
                 props.put("javax.persistence.jdbc.password", "");
-                props.put("hibernate.dialect", "org.hibernate.dialect.H2Dialect");
-                props.put("hibernate.hbm2ddl.auto", "update");
+                props.put("hibernate.dialect",               "org.hibernate.dialect.H2Dialect");
+                props.put("hibernate.hbm2ddl.auto",          "update");
                 System.out.println("[DB] Usando banco H2 local...");
             }
 
