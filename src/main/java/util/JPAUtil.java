@@ -14,39 +14,55 @@ public class JPAUtil {
         if (emf == null || !emf.isOpen()) {
             Map<String, String> props = new HashMap<>();
 
-            String dbUrl  = System.getenv("DATABASE_URL");
+            String rawUrl = System.getenv("DATABASE_URL");
             String dbUser = System.getenv("DB_USER");
             String dbPass = System.getenv("DB_PASSWORD");
 
-            if (dbUrl != null && !dbUrl.isEmpty()) {
-                // Converte URL postgres:// para formato JDBC se necessário
-                if (dbUrl.startsWith("postgres://")) {
-                    dbUrl = dbUrl.replace("postgres://", "jdbc:postgresql://");
+            if (rawUrl != null && !rawUrl.isEmpty()) {
+                String jdbcUrl = rawUrl;
+
+                // Trata formato: postgres://user:pass@host/db  ou  postgresql://user:pass@host/db
+                if (rawUrl.startsWith("postgres://") || rawUrl.startsWith("postgresql://")) {
+                    String sem = rawUrl.startsWith("postgresql://")
+                        ? rawUrl.substring("postgresql://".length())
+                        : rawUrl.substring("postgres://".length());
+
+                    // Extrai user:pass do URL se presentes e DB_USER/DB_PASSWORD não definidos
+                    if (sem.contains("@")) {
+                        String userInfo = sem.substring(0, sem.indexOf("@"));
+                        String hostDb   = sem.substring(sem.indexOf("@") + 1);
+
+                        if ((dbUser == null || dbUser.isEmpty()) && userInfo.contains(":")) {
+                            dbUser = userInfo.substring(0, userInfo.indexOf(":"));
+                            dbPass = userInfo.substring(userInfo.indexOf(":") + 1);
+                        } else if ((dbUser == null || dbUser.isEmpty())) {
+                            dbUser = userInfo;
+                        }
+                        jdbcUrl = "jdbc:postgresql://" + hostDb;
+                    } else {
+                        jdbcUrl = "jdbc:postgresql://" + sem;
+                    }
                 }
 
-                // Garante SSL para Supabase (obrigatório no free tier)
-                if (!dbUrl.contains("sslmode") && !dbUrl.contains("ssl=")) {
-                    dbUrl += (dbUrl.contains("?") ? "&" : "?") + "sslmode=require";
+                // Adiciona SSL apenas se não interno (Render interno não precisa)
+                if (!jdbcUrl.contains("sslmode") && !jdbcUrl.contains("ssl=")
+                        && !jdbcUrl.contains(".internal")) {
+                    jdbcUrl += (jdbcUrl.contains("?") ? "&" : "?") + "sslmode=require";
                 }
 
-                props.put("javax.persistence.jdbc.url",    dbUrl);
+                props.put("javax.persistence.jdbc.url",    jdbcUrl);
                 props.put("javax.persistence.jdbc.driver", "org.postgresql.Driver");
                 props.put("hibernate.dialect",             "org.hibernate.dialect.PostgreSQLDialect");
                 props.put("hibernate.hbm2ddl.auto",        "update");
                 props.put("hibernate.show_sql",            "false");
 
-                // SÓ define user/password se estiverem em variáveis separadas
-                // (se já estão no URL, não sobrescreve com vazio)
-                if (dbUser != null && !dbUser.isEmpty()) {
+                if (dbUser != null && !dbUser.isEmpty())
                     props.put("javax.persistence.jdbc.user", dbUser);
-                }
-                if (dbPass != null && !dbPass.isEmpty()) {
+                if (dbPass != null && !dbPass.isEmpty())
                     props.put("javax.persistence.jdbc.password", dbPass);
-                }
 
-                System.out.println("[DB] Conectando ao PostgreSQL (nuvem)...");
+                System.out.println("[DB] Conectando ao PostgreSQL: " + jdbcUrl.replaceAll("password=[^&]+", "password=***"));
             } else {
-                // Fallback para H2 local
                 props.put("javax.persistence.jdbc.url",      "jdbc:h2:./barraca-db;AUTO_SERVER=TRUE");
                 props.put("javax.persistence.jdbc.driver",   "org.h2.Driver");
                 props.put("javax.persistence.jdbc.user",     "sa");
