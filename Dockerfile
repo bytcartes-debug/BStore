@@ -1,5 +1,5 @@
 # Imagem simples: só compila o Java com os assets React já pré-compilados
-FROM maven:3.9-eclipse-temurin-11-slim AS build
+FROM maven:3.9-eclipse-temurin-11 AS build
 WORKDIR /app
 
 # Copia o pom.xml e baixa dependências (cache layer)
