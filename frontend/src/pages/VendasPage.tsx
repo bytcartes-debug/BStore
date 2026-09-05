@@ -45,6 +45,11 @@ const VendasPage: React.FC = () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ produtoId: parseInt(form.produtoId), quantidade: parseInt(form.quantidade) }),
     });
+    // Notificação de venda confirmada
+    if (selectedProd) {
+      const { notificarVendaRegistada } = await import('../utils/notificacoes');
+      await notificarVendaRegistada(selectedProd.nome, totalVenda);
+    }
     setShowModal(false);
     setTroco(null);
     setValorEntregue('');

@@ -10,6 +10,7 @@ import VendasPage from './pages/VendasPage';
 import DevedoresPage from './pages/DevedoresPage';
 import UsuariosPage from './pages/UsuariosPage';
 import PerfilSegurancaPage from './pages/PerfilSegurancaPage';
+import { pedirPermissaoNotificacoes, verificarStockBaixo } from './utils/notificacoes';
 
 export type PageId = 'dashboard' | 'categorias' | 'produtos' | 'vendas' | 'devedores' | 'usuarios' | 'perfil';
 
@@ -32,6 +33,20 @@ const App: React.FC = () => {
   useEffect(() => {
     document.body.className = isDark ? '' : 'light-theme';
   }, [isDark]);
+
+  // Pede permissão de notificações quando o utilizador faz login
+  useEffect(() => {
+    if (user) {
+      pedirPermissaoNotificacoes();
+    }
+  }, [user]);
+
+  // Verifica stock baixo sempre que o utilizador abre o Dashboard
+  useEffect(() => {
+    if (user && currentPage === 'dashboard') {
+      verificarStockBaixo();
+    }
+  }, [user, currentPage]);
 
   const handleLogout = () => {
     localStorage.removeItem('currentUser');
