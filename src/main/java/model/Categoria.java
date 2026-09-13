@@ -18,6 +18,9 @@ public class Categoria {
     @Column(name = "descricao", length = 255)
     private String descricao;
 
+    @Column(name = "usuario_id")
+    private Long usuarioId;
+
     @OneToMany(mappedBy = "categoria", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Produto> produtos = new ArrayList<>();
 
@@ -36,6 +39,9 @@ public class Categoria {
 
     public String getDescricao() { return descricao; }
     public void setDescricao(String descricao) { this.descricao = descricao; }
+
+    public Long getUsuarioId() { return usuarioId; }
+    public void setUsuarioId(Long usuarioId) { this.usuarioId = usuarioId; }
 
     public List<Produto> getProdutos() { return produtos; }
     public void setProdutos(List<Produto> produtos) { this.produtos = produtos; }

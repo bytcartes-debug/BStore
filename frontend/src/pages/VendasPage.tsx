@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/api';
 import React, { useEffect, useState, useRef } from 'react';
 import { Plus, X, Search } from 'lucide-react';
 
@@ -17,8 +18,8 @@ const VendasPage: React.FC = () => {
   const buscaRef = useRef<HTMLDivElement>(null);
 
   const load = () => {
-    fetch('/api/vendas').then(r => r.json()).then(setVendas).catch(() => {});
-    fetch('/api/produtos').then(r => r.json()).then(setProdutos).catch(() => {});
+    apiFetch('/api/vendas').then(r => r.json()).then(setVendas).catch(() => {});
+    apiFetch('/api/produtos').then(r => r.json()).then(setProdutos).catch(() => {});
   };
 
   useEffect(() => { load(); }, []);
@@ -40,7 +41,7 @@ const VendasPage: React.FC = () => {
 
   const handleSave = async () => {
     if (!form.produtoId || !form.quantidade) return;
-    await fetch('/api/vendas', {
+    await apiFetch('/api/vendas', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ produtoId: parseInt(form.produtoId), quantidade: parseInt(form.quantidade) }),

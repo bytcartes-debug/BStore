@@ -11,49 +11,38 @@ public class ProdutoDAO extends GenericDAO<Produto> {
         super(Produto.class);
     }
 
-    public List<Produto> listarOrdenado() {
+    public List<Produto> listarOrdenado(Long uid) {
         EntityManager em = getEM();
         try {
             return em.createQuery(
-                "SELECT p FROM Produto p LEFT JOIN FETCH p.categoria ORDER BY p.nome",
-                Produto.class).getResultList();
-        } finally {
-            em.close();
-        }
+                "SELECT p FROM Produto p LEFT JOIN FETCH p.categoria WHERE p.usuarioId = :uid ORDER BY p.nome",
+                Produto.class)
+                .setParameter("uid", uid)
+                .getResultList();
+        } finally { em.close(); }
     }
 
-    public List<Produto> buscarPorNome(String nome) {
+    public List<Produto> buscarPorNome(String nome, Long uid) {
         EntityManager em = getEM();
         try {
-            String jpql = "SELECT p FROM Produto p WHERE LOWER(p.nome) LIKE :nome ORDER BY p.nome";
-            return em.createQuery(jpql, Produto.class)
-                     .setParameter("nome", "%" + nome.toLowerCase() + "%")
-                     .getResultList();
-        } finally {
-            em.close();
-        }
+            return em.createQuery(
+                "SELECT p FROM Produto p WHERE LOWER(p.nome) LIKE :nome AND p.usuarioId = :uid ORDER BY p.nome",
+                Produto.class)
+                .setParameter("nome", "%" + nome.toLowerCase() + "%")
+                .setParameter("uid", uid)
+                .getResultList();
+        } finally { em.close(); }
     }
 
-    public List<Produto> buscarPorCategoria(Long categoriaId) {
+    public List<Produto> buscarStockBaixo(Long uid) {
         EntityManager em = getEM();
         try {
-            String jpql = "SELECT p FROM Produto p WHERE p.categoria.id = :catId ORDER BY p.nome";
-            return em.createQuery(jpql, Produto.class)
-                     .setParameter("catId", categoriaId)
-                     .getResultList();
-        } finally {
-            em.close();
-        }
-    }
-
-    public List<Produto> buscarStockBaixo() {
-        EntityManager em = getEM();
-        try {
-            String jpql = "SELECT p FROM Produto p WHERE p.quantidadeStock <= p.stockMinimo ORDER BY p.quantidadeStock";
-            return em.createQuery(jpql, Produto.class).getResultList();
-        } finally {
-            em.close();
-        }
+            return em.createQuery(
+                "SELECT p FROM Produto p WHERE p.quantidadeStock <= p.stockMinimo AND p.usuarioId = :uid ORDER BY p.quantidadeStock",
+                Produto.class)
+                .setParameter("uid", uid)
+                .getResultList();
+        } finally { em.close(); }
     }
 
     public void actualizarStock(Long produtoId, int quantidadeVendida) {
@@ -69,18 +58,16 @@ public class ProdutoDAO extends GenericDAO<Produto> {
         } catch (Exception e) {
             if (em.getTransaction().isActive()) em.getTransaction().rollback();
             throw e;
-        } finally {
-            em.close();
-        }
+        } finally { em.close(); }
     }
 
-    public long contarTodos() {
+    public long contarTodos(Long uid) {
         EntityManager em = getEM();
         try {
-            return em.createQuery("SELECT COUNT(p) FROM Produto p", Long.class)
-                     .getSingleResult();
-        } finally {
-            em.close();
-        }
+            return em.createQuery(
+                "SELECT COUNT(p) FROM Produto p WHERE p.usuarioId = :uid", Long.class)
+                .setParameter("uid", uid)
+                .getSingleResult();
+        } finally { em.close(); }
     }
 }

@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/api';
 import React, { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, X, AlertTriangle } from 'lucide-react';
 
@@ -13,8 +14,8 @@ const ProdutosPage: React.FC = () => {
   const [form, setForm] = useState({ nome: '', preco: '', stock: '', stockMinimo: '5', categoriaId: '' });
 
   const load = () => {
-    fetch('/api/produtos').then(r => r.json()).then(setProdutos).catch(() => {});
-    fetch('/api/categorias').then(r => r.json()).then(setCategorias).catch(() => {});
+    apiFetch('/api/produtos').then(r => r.json()).then(setProdutos).catch(() => {});
+    apiFetch('/api/categorias').then(r => r.json()).then(setCategorias).catch(() => {});
   };
 
   useEffect(() => { load(); }, []);
@@ -45,7 +46,7 @@ const ProdutosPage: React.FC = () => {
     if (editing) {
       await fetch(`/api/produtos/${editing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     } else {
-      await fetch('/api/produtos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      await apiFetch('/api/produtos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     }
     setShowModal(false);
     load();

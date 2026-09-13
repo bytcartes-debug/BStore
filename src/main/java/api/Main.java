@@ -1,5 +1,7 @@
 package api;
 
+import dao.UsuarioDAO;
+import model.Usuario;
 import util.JPAUtil;
 
 public class Main {
@@ -8,7 +10,10 @@ public class Main {
         // Inicializa a base de dados
         JPAUtil.inicializar();
 
-        // Lê a porta do ambiente (Railway define a variável PORT automaticamente)
+        // Garante que existe pelo menos um superuser no sistema
+        semearSuperuser();
+
+        // Lê a porta do ambiente (Render define PORT automaticamente)
         String portEnv = System.getenv("PORT");
         int port = (portEnv != null && !portEnv.isEmpty()) ? Integer.parseInt(portEnv) : 8080;
 
@@ -24,5 +29,26 @@ public class Main {
             JPAUtil.fechar();
             System.out.println("[FlexStock] Servidor encerrado.");
         }));
+    }
+
+    private static void semearSuperuser() {
+        try {
+            UsuarioDAO dao = new UsuarioDAO();
+            if (dao.contarTodos() == 0) {
+                // Lê credenciais de variáveis de ambiente ou usa padrão
+                String email = System.getenv("ADMIN_EMAIL") != null
+                    ? System.getenv("ADMIN_EMAIL") : "admin@flexstock.com";
+                String senha = System.getenv("ADMIN_PASSWORD") != null
+                    ? System.getenv("ADMIN_PASSWORD") : "admin123";
+                String nome  = System.getenv("ADMIN_NOME") != null
+                    ? System.getenv("ADMIN_NOME") : "Administrador";
+
+                Usuario admin = new Usuario(nome, email, senha, "superuser");
+                dao.salvar(admin);
+                System.out.println("[FlexStock] Superuser criado: " + email + " / " + senha);
+            }
+        } catch (Exception e) {
+            System.err.println("[FlexStock] Aviso: não foi possível semear superuser: " + e.getMessage());
+        }
     }
 }

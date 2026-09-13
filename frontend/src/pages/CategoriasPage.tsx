@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/api';
 import React, { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2, X } from 'lucide-react';
 
@@ -15,7 +16,7 @@ const CategoriasPage: React.FC = () => {
 
   const load = async () => {
     try {
-      const r = await fetch('/api/categorias');
+      const r = await apiFetch('/api/categorias');
       if (!r.ok) throw new Error('Erro ao carregar categorias');
       setCategorias(await r.json());
     } catch (e: any) {

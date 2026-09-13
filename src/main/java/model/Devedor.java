@@ -21,6 +21,9 @@ public class Devedor {
 
     private LocalDate data = LocalDate.now();
 
+    @Column(name = "usuario_id")
+    private Long usuarioId;
+
     public Devedor() {}
 
     public Long getId()          { return id; }
@@ -34,4 +37,7 @@ public class Devedor {
     public void setDivida(Double divida)   { this.divida = divida; }
     public void setDescricao(String d)     { this.descricao = d; }
     public void setData(LocalDate data)    { this.data = data; }
+
+    public Long getUsuarioId()             { return usuarioId; }
+    public void setUsuarioId(Long uid)     { this.usuarioId = uid; }
 }

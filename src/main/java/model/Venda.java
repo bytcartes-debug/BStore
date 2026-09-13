@@ -30,6 +30,9 @@ public class Venda {
     @JoinColumn(name = "produto_id", nullable = false)
     private Produto produto;
 
+    @Column(name = "usuario_id")
+    private Long usuarioId;
+
     public Venda() {}
 
     public Venda(LocalDate dataVenda, Integer quantidade, Produto produto) {
@@ -65,6 +68,9 @@ public class Venda {
 
     public Produto getProduto() { return produto; }
     public void setProduto(Produto produto) { this.produto = produto; }
+
+    public Long getUsuarioId() { return usuarioId; }
+    public void setUsuarioId(Long usuarioId) { this.usuarioId = usuarioId; }
 
     @Override
     public String toString() {

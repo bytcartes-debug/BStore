@@ -2,41 +2,42 @@ import React, { useState } from 'react';
 import { Store, Key, Mail, LogIn } from 'lucide-react';
 import './LoginPage.css';
 
-interface UserSession { email: string; role: 'superuser' | 'operator'; }
+interface UserSession { userId: number; email: string; role: 'superuser' | 'operator'; diasRestantes: number; }
 interface LoginPageProps { setUser: (u: UserSession) => void; }
 
 const LoginPage: React.FC<LoginPageProps> = ({ setUser }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const trimmed = email.trim().toLowerCase();
-
-    let users: any[] = [];
-    const saved = localStorage.getItem('registeredUsers');
-    if (saved) {
-      users = JSON.parse(saved);
-    } else {
-      users = [
-        { id: '1', name: 'Administrador', email: 'admin@bstore.com', role: 'superuser', password: '123456' },
-        { id: '2', name: 'Operador',       email: 'operador@bstore.com', role: 'operator', password: '1234' },
-      ];
-      localStorage.setItem('registeredUsers', JSON.stringify(users));
+    setLoading(true);
+    try {
+      const r = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        setError(data.erro || 'Email ou senha incorretos.');
+        return;
+      }
+      const u = await r.json();
+      const session: UserSession = { userId: u.id, email: u.email, role: u.role, diasRestantes: u.diasRestantes ?? -1 };
+      localStorage.setItem('currentUser', JSON.stringify(session));
+      localStorage.setItem('profileName', u.nome.split(' ')[0]);
+      localStorage.setItem('profileFullName', u.nome);
+      localStorage.setItem('profileRole', u.role === 'superuser' ? 'Superusuário' : 'Operador');
+      setUser(session);
+    } catch {
+      setError('Não foi possível ligar ao servidor. Aguarde e tente novamente.');
+    } finally {
+      setLoading(false);
     }
-
-    const match = users.find((u: any) => u.email === trimmed);
-    if (!match) { setError('E-mail não cadastrado.'); return; }
-    if (match.password !== password) { setError('Senha incorreta.'); return; }
-
-    const session: UserSession = { email: trimmed, role: match.role };
-    localStorage.setItem('currentUser', JSON.stringify(session));
-    localStorage.setItem('profileName', match.name.split(' ')[0]);
-    localStorage.setItem('profileFullName', match.name);
-    localStorage.setItem('profileRole', match.role === 'superuser' ? 'Superusuário' : 'Operador');
-    setUser(session);
   };
 
   return (
@@ -61,9 +62,11 @@ const LoginPage: React.FC<LoginPageProps> = ({ setUser }) => {
               <input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
             </div>
           </div>
-          <button type="submit" className="login-btn"><LogIn size={18} /> Entrar</button>
+          <button type="submit" className="login-btn" disabled={loading}>
+            <LogIn size={18} /> {loading ? 'A entrar...' : 'Entrar'}
+          </button>
         </form>
-        <p className="login-hint">Admin padrão: admin@bstore.com / 123456</p>
+        <p className="login-hint">Admin padrão: admin@flexstock.com / admin123</p>
       </div>
     </div>
   );

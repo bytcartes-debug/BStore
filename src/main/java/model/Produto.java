@@ -27,6 +27,9 @@ public class Produto {
     @Column(name = "unidade", length = 50)
     private String unidade;
 
+    @Column(name = "usuario_id")
+    private Long usuarioId;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "categoria_id")
     private Categoria categoria;
@@ -65,6 +68,9 @@ public class Produto {
 
     public String getUnidade() { return unidade; }
     public void setUnidade(String unidade) { this.unidade = unidade; }
+
+    public Long getUsuarioId() { return usuarioId; }
+    public void setUsuarioId(Long usuarioId) { this.usuarioId = usuarioId; }
 
     public Categoria getCategoria() { return categoria; }
     public void setCategoria(Categoria categoria) { this.categoria = categoria; }

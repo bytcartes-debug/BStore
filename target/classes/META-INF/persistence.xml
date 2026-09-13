@@ -12,6 +12,7 @@
         <class>model.Produto</class>
         <class>model.Venda</class>
         <class>model.Devedor</class>
+        <class>model.Usuario</class>
 
         <properties>
             <!-- Configuração base (será sobrescrita pelo JPAUtil via variáveis de ambiente) -->

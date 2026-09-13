@@ -109,6 +109,17 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- Exclui código Swing legado (não usado pelo servidor web) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.15.0</version>
+                <configuration>
+                    <excludes>
+                        <exclude>ui/**</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 

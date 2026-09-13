@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/api';
 import React, { useEffect, useState } from 'react';
 import { Plus, X, CheckCircle } from 'lucide-react';
 
@@ -10,7 +11,7 @@ const DevedoresPage: React.FC = () => {
   const [selectedDevedor, setSelectedDevedor] = useState<Devedor | null>(null);
   const [form, setForm] = useState({ nome: '', divida: '', descricao: '' });
 
-  const load = () => fetch('/api/devedores').then(r => r.json()).then(setDevedores).catch(() => {});
+  const load = () => apiFetch('/api/devedores').then(r => r.json()).then(setDevedores).catch(() => {});
 
   useEffect(() => { load(); }, []);
 
@@ -18,7 +19,7 @@ const DevedoresPage: React.FC = () => {
 
   const handleSave = async () => {
     if (!form.nome.trim() || !form.divida) return;
-    await fetch('/api/devedores', {
+    await apiFetch('/api/devedores', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nome: form.nome.trim(), divida: parseFloat(form.divida), descricao: form.descricao.trim() }),
