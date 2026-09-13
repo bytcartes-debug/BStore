@@ -20,8 +20,9 @@ import java.util.stream.Collectors;
 
 public class ApiServer {
 
-    private final BarracaService service = new BarracaService();
-    private final DevedorDAO devedorDAO  = new DevedorDAO();
+    private final BarracaService service      = new BarracaService();
+    private final DevedorDAO     devedorDAO   = new DevedorDAO();
+    private final dao.CategoriaDAO categoriaDAO = new dao.CategoriaDAO();
     private final Javalin app;
 
     public ApiServer() {
@@ -145,11 +146,11 @@ public class ApiServer {
         List<Categoria> cats = service.listarCategorias();
         List<Map<String, Object>> result = cats.stream().map(c -> {
             Map<String, Object> m = new LinkedHashMap<>();
-            m.put("id",       c.getId());
-            m.put("nome",     c.getNome());
-            m.put("descricao", c.getDescricao() != null ? c.getDescricao() : "");
-            m.put("icone",    "🏷️");
-            m.put("totalProdutos", c.getProdutos().size());
+            m.put("id",            c.getId());
+            m.put("nome",          c.getNome());
+            m.put("descricao",     c.getDescricao() != null ? c.getDescricao() : "");
+            m.put("icone",         "🏷️");
+            m.put("totalProdutos", categoriaDAO.contarProdutos(c.getId()));
             return m;
         }).collect(Collectors.toList());
         ctx.json(result);

@@ -45,4 +45,16 @@ public class CategoriaDAO extends GenericDAO<Categoria> {
             em.close();
         }
     }
+
+    public long contarProdutos(Long categoriaId) {
+        EntityManager em = getEM();
+        try {
+            return em.createQuery(
+                "SELECT COUNT(p) FROM Produto p WHERE p.categoria.id = :id", Long.class)
+                .setParameter("id", categoriaId)
+                .getSingleResult();
+        } finally {
+            em.close();
+        }
+    }
 }
