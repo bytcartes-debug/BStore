@@ -5,8 +5,8 @@ const config: CapacitorConfig = {
   appName: 'FlexStock',
   webDir: '../src/main/resources/public',
   server: {
-    // Servidor na nuvem (livemy.app) — todos os utilizadores usam este endereço
-    url: 'https://vh-prod-bstore-submain-c0c3b4-3d9f0aef.livemy.site',
+    // Servidor Render (gratuito) — base de dados PostgreSQL incluída
+    url: 'https://bstore-q1x6.onrender.com',
     cleartext: false,
   },
 };

@@ -10,30 +10,59 @@ const CategoriasPage: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Categoria | null>(null);
   const [form, setForm] = useState({ nome: '', descricao: '', icone: '🏷️' });
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
-  const load = () => fetch('/api/categorias').then(r => r.json()).then(setCategorias).catch(() => {});
+  const load = async () => {
+    try {
+      const r = await fetch('/api/categorias');
+      if (!r.ok) throw new Error('Erro ao carregar categorias');
+      setCategorias(await r.json());
+    } catch (e: any) {
+      setErro('Não foi possível ligar ao servidor. Aguarde e tente novamente.');
+    }
+  };
 
   useEffect(() => { load(); }, []);
 
-  const openNew = () => { setEditing(null); setForm({ nome: '', descricao: '', icone: '🏷️' }); setShowModal(true); };
-  const openEdit = (c: Categoria) => { setEditing(c); setForm({ nome: c.nome, descricao: c.descricao || '', icone: c.icone || '🏷️' }); setShowModal(true); };
+  const openNew = () => { setEditing(null); setForm({ nome: '', descricao: '', icone: '🏷️' }); setErro(null); setShowModal(true); };
+  const openEdit = (c: Categoria) => { setEditing(c); setForm({ nome: c.nome, descricao: c.descricao || '', icone: c.icone || '🏷️' }); setErro(null); setShowModal(true); };
 
   const handleSave = async () => {
     if (!form.nome.trim()) return;
-    const body = { nome: form.nome.trim(), descricao: form.descricao.trim(), icone: form.icone };
-    if (editing) {
-      await fetch(`/api/categorias/${editing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    } else {
-      await fetch('/api/categorias', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    setLoading(true);
+    setErro(null);
+    try {
+      const body = { nome: form.nome.trim(), descricao: form.descricao.trim(), icone: form.icone };
+      const url = editing ? `/api/categorias/${editing.id}` : '/api/categorias';
+      const method = editing ? 'PUT' : 'POST';
+      const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.erro || `Erro ${r.status}`);
+      }
+      setShowModal(false);
+      await load();
+    } catch (e: any) {
+      setErro(e.message || 'Erro ao guardar. Tente novamente.');
+    } finally {
+      setLoading(false);
     }
-    setShowModal(false);
-    load();
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm('Apagar esta categoria?')) return;
-    await fetch(`/api/categorias/${id}`, { method: 'DELETE' });
-    load();
+    try {
+      const r = await fetch(`/api/categorias/${id}`, { method: 'DELETE' });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        alert(data.erro || 'Erro ao apagar categoria');
+        return;
+      }
+      await load();
+    } catch {
+      alert('Não foi possível ligar ao servidor.');
+    }
   };
 
   return (
@@ -80,6 +109,7 @@ const CategoriasPage: React.FC = () => {
               <h3>{editing ? 'Editar Categoria' : 'Nova Categoria'}</h3>
               <button className="modal-close-btn" onClick={() => setShowModal(false)}><X size={20} /></button>
             </div>
+            {erro && <p style={{ color: 'var(--color-danger)', fontSize: 13, padding: '8px 0', background: 'rgba(239,68,68,0.1)', borderRadius: 6, paddingInline: 10, marginBottom: 8 }}>⚠️ {erro}</p>}
             <div className="form-group">
               <label>Nome *</label>
               <input value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Bebidas" />
@@ -106,7 +136,9 @@ const CategoriasPage: React.FC = () => {
             </div>
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleSave}>{editing ? 'Guardar' : 'Criar'}</button>
+              <button className="btn-primary" onClick={handleSave} disabled={loading}>
+                {loading ? 'A guardar...' : (editing ? 'Guardar' : 'Criar')}
+              </button>
             </div>
           </div>
         </div>
