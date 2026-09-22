@@ -34,6 +34,18 @@ public class ProdutoDAO extends GenericDAO<Produto> {
         } finally { em.close(); }
     }
 
+    public List<Produto> buscarPorCategoria(Long catId, Long uid) {
+        EntityManager em = getEM();
+        try {
+            return em.createQuery(
+                "SELECT p FROM Produto p WHERE p.categoria.id = :catId AND p.usuarioId = :uid ORDER BY p.nome",
+                Produto.class)
+                .setParameter("catId", catId)
+                .setParameter("uid", uid)
+                .getResultList();
+        } finally { em.close(); }
+    }
+
     public List<Produto> buscarStockBaixo(Long uid) {
         EntityManager em = getEM();
         try {
@@ -45,7 +57,7 @@ public class ProdutoDAO extends GenericDAO<Produto> {
         } finally { em.close(); }
     }
 
-    public void actualizarStock(Long produtoId, int quantidadeVendida) {
+    public void actualizarStock(Long produtoId, double quantidadeVendida) {
         EntityManager em = getEM();
         try {
             em.getTransaction().begin();

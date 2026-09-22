@@ -58,10 +58,11 @@ public class ApiServer {
         app.get("/api/dashboard", this::getDashboard);
 
         // ── Categorias ─────────────────────────────────────────────────
-        app.get("/api/categorias",         this::listarCategorias);
-        app.post("/api/categorias",        this::criarCategoria);
-        app.put("/api/categorias/{id}",    this::atualizarCategoria);
-        app.delete("/api/categorias/{id}", this::deletarCategoria);
+        app.get("/api/categorias",              this::listarCategorias);
+        app.get("/api/categorias/{id}/produtos", this::listarProdutosPorCategoria);
+        app.post("/api/categorias",             this::criarCategoria);
+        app.put("/api/categorias/{id}",         this::atualizarCategoria);
+        app.delete("/api/categorias/{id}",      this::deletarCategoria);
 
         // ── Produtos ───────────────────────────────────────────────────
         app.get("/api/produtos",           this::listarProdutos);
@@ -72,6 +73,7 @@ public class ApiServer {
         // ── Vendas ─────────────────────────────────────────────────────
         app.get("/api/vendas",             this::listarVendas);
         app.post("/api/vendas",            this::registarVenda);
+        app.post("/api/vendas/lote",       this::registarVendaLote);
 
         // ── Devedores ──────────────────────────────────────────────────
         app.get("/api/devedores",          this::listarDevedores);
@@ -169,6 +171,25 @@ public class ApiServer {
         }
     }
 
+    private void listarProdutosPorCategoria(Context ctx) {
+        try {
+            Long uid = getUserId(ctx);
+            Long id  = Long.parseLong(ctx.pathParam("id"));
+            List<Produto> prods = service.listarProdutosPorCategoria(id, uid);
+            List<Map<String, Object>> result = prods.stream().map(p -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id",   p.getId());
+                m.put("nome", p.getNome());
+                m.put("preco", p.getPreco());
+                m.put("stock", p.getQuantidadeStock());
+                return m;
+            }).collect(Collectors.toList());
+            ctx.json(result);
+        } catch (Exception e) {
+            ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(Map.of("erro", e.getMessage()));
+        }
+    }
+
     private void criarCategoria(Context ctx) {
         try {
             Long uid = getUserId(ctx);
@@ -221,6 +242,7 @@ public class ApiServer {
                 m.put("custo",        0.0);
                 m.put("stock",        p.getQuantidadeStock());
                 m.put("stockMinimo",  p.getStockMinimo());
+                m.put("unidade",      p.getUnidade() != null ? p.getUnidade() : "un");
                 m.put("categoriaId",  p.getCategoria() != null ? p.getCategoria().getId() : null);
                 m.put("categoriaNome", p.getCategoria() != null ? p.getCategoria().getNome() : "");
                 return m;
@@ -237,11 +259,12 @@ public class ApiServer {
             Map<String, Object> body = ctx.bodyAsClass(Map.class);
             String nome      = (String) body.get("nome");
             Double preco     = ((Number) body.get("preco")).doubleValue();
-            Integer stock    = ((Number) body.getOrDefault("stock", 0)).intValue();
-            Integer stockMin = ((Number) body.getOrDefault("stockMinimo", 5)).intValue();
+            Double stock     = body.get("stock") != null ? ((Number) body.get("stock")).doubleValue() : 0.0;
+            Double stockMin  = body.get("stockMinimo") != null ? ((Number) body.get("stockMinimo")).doubleValue() : 5.0;
+            String unidade   = (String) body.getOrDefault("unidade", "un");
             Long catId       = ((Number) body.get("categoriaId")).longValue();
             Categoria cat    = service.buscarCategoria(catId);
-            Produto p = service.criarProduto(nome, preco, stock, "un", stockMin, cat, uid);
+            Produto p = service.criarProduto(nome, preco, stock, unidade, stockMin, cat, uid);
             ctx.status(HttpStatus.CREATED).json(Map.of("id", p.getId()));
         } catch (Exception e) {
             ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("erro", e.getMessage()));
@@ -258,8 +281,9 @@ public class ApiServer {
             if (p == null) { ctx.status(HttpStatus.NOT_FOUND); return; }
             p.setNome((String) body.get("nome"));
             p.setPreco(((Number) body.get("preco")).doubleValue());
-            p.setQuantidadeStock(((Number) body.getOrDefault("stock", 0)).intValue());
-            p.setStockMinimo(((Number) body.getOrDefault("stockMinimo", 5)).intValue());
+            p.setQuantidadeStock(body.get("stock") != null ? ((Number) body.get("stock")).doubleValue() : 0.0);
+            p.setStockMinimo(body.get("stockMinimo") != null ? ((Number) body.get("stockMinimo")).doubleValue() : 5.0);
+            if (body.get("unidade") != null) p.setUnidade((String) body.get("unidade"));
             Long catId = ((Number) body.get("categoriaId")).longValue();
             p.setCategoria(service.buscarCategoria(catId));
             service.actualizarProduto(p);
@@ -305,10 +329,24 @@ public class ApiServer {
         try {
             Long uid = getUserId(ctx);
             Map<String, Object> body = ctx.bodyAsClass(Map.class);
-            Long produtoId   = ((Number) body.get("produtoId")).longValue();
-            Integer qtd      = ((Number) body.get("quantidade")).intValue();
+            Long produtoId = ((Number) body.get("produtoId")).longValue();
+            double qtd     = ((Number) body.get("quantidade")).doubleValue();
             Venda v = service.registarVenda(produtoId, qtd, null, uid);
             ctx.status(HttpStatus.CREATED).json(Map.of("id", v.getId(), "total", v.getTotal()));
+        } catch (Exception e) {
+            ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("erro", e.getMessage()));
+        }
+    }
+
+    private void registarVendaLote(Context ctx) {
+        try {
+            Long uid = getUserId(ctx);
+            List<Map<String, Object>> itens = ctx.bodyAsClass(List.class);
+            if (itens == null || itens.isEmpty()) {
+                ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("erro", "Carrinho está vazio")); return;
+            }
+            Map<String, Object> resultado = service.registarVendaLote(itens, uid);
+            ctx.status(HttpStatus.CREATED).json(resultado);
         } catch (Exception e) {
             ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("erro", e.getMessage()));
         }

@@ -9,6 +9,7 @@ import model.Venda;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 public class BarracaService {
 
@@ -32,9 +33,16 @@ public class BarracaService {
         return categoriaDAO.actualizar(categoria);
     }
 
+    public List<Produto> listarProdutosPorCategoria(Long catId, Long userId) {
+        return produtoDAO.buscarPorCategoria(catId, userId);
+    }
+
     public void eliminarCategoria(Long id, Long userId) {
-        if (categoriaDAO.temProdutos(id, userId))
-            throw new IllegalStateException("Não é possível eliminar: esta categoria tem produtos associados.");
+        // Remove todos os produtos da categoria primeiro (e as suas vendas por cascade)
+        List<Produto> prods = produtoDAO.buscarPorCategoria(id, userId);
+        for (Produto p : prods) {
+            produtoDAO.eliminar(p.getId());
+        }
         categoriaDAO.eliminar(id);
     }
 
@@ -48,8 +56,8 @@ public class BarracaService {
 
     // ---------- PRODUTOS ----------
 
-    public Produto criarProduto(String nome, Double preco, Integer stock, String unidade,
-                                Integer stockMinimo, Categoria categoria, Long userId) {
+    public Produto criarProduto(String nome, Double preco, Double stock, String unidade,
+                                Double stockMinimo, Categoria categoria, Long userId) {
         validarProduto(nome, preco, stock);
         Produto p = new Produto(nome.trim(), preco, stock, unidade, categoria);
         if (stockMinimo != null) p.setStockMinimo(stockMinimo);
@@ -84,14 +92,14 @@ public class BarracaService {
 
     // ---------- VENDAS ----------
 
-    public Venda registarVenda(Long produtoId, int quantidade, String observacao, Long userId) {
+    public Venda registarVenda(Long produtoId, double quantidade, String observacao, Long userId) {
         Produto produto = produtoDAO.buscarPorId(produtoId);
         if (produto == null)
             throw new IllegalArgumentException("Produto não encontrado.");
         if (quantidade <= 0)
             throw new IllegalArgumentException("A quantidade deve ser maior que zero.");
         if (produto.getQuantidadeStock() < quantidade)
-            throw new IllegalStateException("Stock insuficiente. Stock actual: " + produto.getQuantidadeStock());
+            throw new IllegalStateException("Stock insuficiente. Stock actual: " + produto.getQuantidadeStock() + " " + produto.getUnidade());
 
         Venda venda = new Venda(LocalDate.now(), quantidade, produto, observacao);
         venda.setUsuarioId(userId);
@@ -99,6 +107,23 @@ public class BarracaService {
 
         produtoDAO.actualizarStock(produtoId, quantidade);
         return venda;
+    }
+
+    /** Regista múltiplos itens de uma só vez (carrinho de compras). */
+    public Map<String, Object> registarVendaLote(List<Map<String, Object>> itens, Long userId) {
+        double totalGeral = 0;
+        int totalItens = 0;
+        for (Map<String, Object> item : itens) {
+            Long   produtoId = ((Number) item.get("produtoId")).longValue();
+            double quantidade = ((Number) item.get("quantidade")).doubleValue();
+            Venda v = registarVenda(produtoId, quantidade, null, userId);
+            totalGeral += v.getTotal();
+            totalItens++;
+        }
+        Map<String, Object> r = new java.util.LinkedHashMap<>();
+        r.put("itens", totalItens);
+        r.put("total", totalGeral);
+        return r;
     }
 
     public List<Venda> listarVendas(Long userId) {
@@ -127,7 +152,7 @@ public class BarracaService {
 
     // ---------- VALIDAÇÕES ----------
 
-    private void validarProduto(String nome, Double preco, Integer stock) {
+    private void validarProduto(String nome, Double preco, Double stock) {
         if (nome == null || nome.trim().isEmpty())
             throw new IllegalArgumentException("O nome do produto não pode estar vazio.");
         if (preco == null || preco < 0)

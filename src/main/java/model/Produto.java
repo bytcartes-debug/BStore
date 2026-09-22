@@ -19,13 +19,14 @@ public class Produto {
     private Double preco;
 
     @Column(name = "quantidade_stock", nullable = false)
-    private Integer quantidadeStock;
+    private Double quantidadeStock;
 
     @Column(name = "stock_minimo")
-    private Integer stockMinimo = 5;
+    private Double stockMinimo = 5.0;
 
+    /** Unidade de medida: "un", "kg", "L", "g", "ml", etc. */
     @Column(name = "unidade", length = 50)
-    private String unidade;
+    private String unidade = "un";
 
     @Column(name = "usuario_id")
     private Long usuarioId;
@@ -39,12 +40,12 @@ public class Produto {
 
     public Produto() {}
 
-    public Produto(String nome, Double preco, Integer quantidadeStock, String unidade, Categoria categoria) {
-        this.nome = nome;
-        this.preco = preco;
+    public Produto(String nome, Double preco, Double quantidadeStock, String unidade, Categoria categoria) {
+        this.nome            = nome;
+        this.preco           = preco;
         this.quantidadeStock = quantidadeStock;
-        this.unidade = unidade;
-        this.categoria = categoria;
+        this.unidade         = (unidade != null && !unidade.isBlank()) ? unidade : "un";
+        this.categoria       = categoria;
     }
 
     public boolean stockAbaixoMinimo() {
@@ -60,25 +61,22 @@ public class Produto {
     public Double getPreco() { return preco; }
     public void setPreco(Double preco) { this.preco = preco; }
 
-    public Integer getQuantidadeStock() { return quantidadeStock; }
-    public void setQuantidadeStock(Integer quantidadeStock) { this.quantidadeStock = quantidadeStock; }
+    public Double getQuantidadeStock() { return quantidadeStock; }
+    public void setQuantidadeStock(Double q) { this.quantidadeStock = q; }
 
-    public Integer getStockMinimo() { return stockMinimo; }
-    public void setStockMinimo(Integer stockMinimo) { this.stockMinimo = stockMinimo; }
+    public Double getStockMinimo() { return stockMinimo; }
+    public void setStockMinimo(Double s) { this.stockMinimo = s; }
 
     public String getUnidade() { return unidade; }
-    public void setUnidade(String unidade) { this.unidade = unidade; }
+    public void setUnidade(String u) { this.unidade = (u != null && !u.isBlank()) ? u : "un"; }
 
     public Long getUsuarioId() { return usuarioId; }
-    public void setUsuarioId(Long usuarioId) { this.usuarioId = usuarioId; }
+    public void setUsuarioId(Long u) { this.usuarioId = u; }
 
     public Categoria getCategoria() { return categoria; }
-    public void setCategoria(Categoria categoria) { this.categoria = categoria; }
+    public void setCategoria(Categoria c) { this.categoria = c; }
 
     public List<Venda> getVendas() { return vendas; }
 
-    @Override
-    public String toString() {
-        return nome;
-    }
+    @Override public String toString() { return nome; }
 }

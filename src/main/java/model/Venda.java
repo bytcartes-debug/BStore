@@ -15,7 +15,7 @@ public class Venda {
     private LocalDate dataVenda;
 
     @Column(name = "quantidade", nullable = false)
-    private Integer quantidade;
+    private Double quantidade;
 
     @Column(name = "preco_unitario", nullable = false)
     private Double precoUnitario;
@@ -35,15 +35,15 @@ public class Venda {
 
     public Venda() {}
 
-    public Venda(LocalDate dataVenda, Integer quantidade, Produto produto) {
-        this.dataVenda = dataVenda;
-        this.quantidade = quantidade;
-        this.produto = produto;
+    public Venda(LocalDate dataVenda, Double quantidade, Produto produto) {
+        this.dataVenda     = dataVenda;
+        this.quantidade    = quantidade;
+        this.produto       = produto;
         this.precoUnitario = produto.getPreco();
-        this.total = quantidade * produto.getPreco();
+        this.total         = quantidade * produto.getPreco();
     }
 
-    public Venda(LocalDate dataVenda, Integer quantidade, Produto produto, String observacao) {
+    public Venda(LocalDate dataVenda, Double quantidade, Produto produto, String observacao) {
         this(dataVenda, quantidade, produto);
         this.observacao = observacao;
     }
@@ -52,25 +52,25 @@ public class Venda {
     public void setId(Long id) { this.id = id; }
 
     public LocalDate getDataVenda() { return dataVenda; }
-    public void setDataVenda(LocalDate dataVenda) { this.dataVenda = dataVenda; }
+    public void setDataVenda(LocalDate d) { this.dataVenda = d; }
 
-    public Integer getQuantidade() { return quantidade; }
-    public void setQuantidade(Integer quantidade) { this.quantidade = quantidade; }
+    public Double getQuantidade() { return quantidade; }
+    public void setQuantidade(Double q) { this.quantidade = q; }
 
     public Double getPrecoUnitario() { return precoUnitario; }
-    public void setPrecoUnitario(Double precoUnitario) { this.precoUnitario = precoUnitario; }
+    public void setPrecoUnitario(Double p) { this.precoUnitario = p; }
 
     public Double getTotal() { return total; }
-    public void setTotal(Double total) { this.total = total; }
+    public void setTotal(Double t) { this.total = t; }
 
     public String getObservacao() { return observacao; }
-    public void setObservacao(String observacao) { this.observacao = observacao; }
+    public void setObservacao(String o) { this.observacao = o; }
 
     public Produto getProduto() { return produto; }
-    public void setProduto(Produto produto) { this.produto = produto; }
+    public void setProduto(Produto p) { this.produto = p; }
 
     public Long getUsuarioId() { return usuarioId; }
-    public void setUsuarioId(Long usuarioId) { this.usuarioId = usuarioId; }
+    public void setUsuarioId(Long u) { this.usuarioId = u; }
 
     @Override
     public String toString() {
