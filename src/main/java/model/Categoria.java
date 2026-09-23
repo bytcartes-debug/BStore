@@ -5,14 +5,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "categorias")
+@Table(name = "categorias", uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"nome", "usuario_id"}, name = "uk_categoria_nome_usuario")
+})
 public class Categoria {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "nome", nullable = false, length = 100, unique = true)
+    @Column(name = "nome", nullable = false, length = 100)
     private String nome;
 
     @Column(name = "descricao", length = 255)

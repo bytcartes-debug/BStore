@@ -1,19 +1,20 @@
 import React, { useState, useRef } from 'react';
 import { UserCircle, Key, Save, Camera } from 'lucide-react';
 import type { UserSession } from '../App';
+import { apiFetch } from '../utils/api';
 
 interface Props { user: UserSession | null; }
 
 const PerfilSegurancaPage: React.FC<Props> = ({ user }) => {
-  const [nome, setNome] = useState(localStorage.getItem('profileFullName') || '');
-  const [role, setRole] = useState(localStorage.getItem('profileRole') || '');
-  const [pic, setPic] = useState(localStorage.getItem('profilePic') || '');
-  const [senhaAtual, setSenhaAtual] = useState('');
-  const [novaSenha, setNovaSenha] = useState('');
+  const [nome, setNome]   = useState(localStorage.getItem('profileFullName') || '');
+  const [pic, setPic]     = useState(localStorage.getItem('profilePic') || '');
+  const [senhaAtual, setSenhaAtual]       = useState('');
+  const [novaSenha, setNovaSenha]         = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
-  const [msgPerfil, setMsgPerfil] = useState('');
-  const [msgSenha, setMsgSenha] = useState('');
+  const [msgPerfil, setMsgPerfil]   = useState('');
+  const [msgSenha, setMsgSenha]     = useState('');
   const [msgSenhaTipo, setMsgSenhaTipo] = useState<'ok' | 'err'>('ok');
+  const [loadingSenha, setLoadingSenha] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -31,23 +32,34 @@ const PerfilSegurancaPage: React.FC<Props> = ({ user }) => {
   const handleSalvarPerfil = () => {
     localStorage.setItem('profileFullName', nome);
     localStorage.setItem('profileName', nome.split(' ')[0]);
-    localStorage.setItem('profileRole', role);
     setMsgPerfil('✅ Perfil atualizado! Recarregue a página para ver o novo nome no cabeçalho.');
     setTimeout(() => setMsgPerfil(''), 4000);
   };
 
-  const handleAlterarSenha = () => {
-    const users: any[] = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-    const idx = users.findIndex((u: any) => u.email === user?.email);
-    if (idx === -1) { setMsgSenha('Utilizador não encontrado.'); setMsgSenhaTipo('err'); return; }
-    if (users[idx].password !== senhaAtual) { setMsgSenha('❌ Senha atual incorreta.'); setMsgSenhaTipo('err'); return; }
+  const handleAlterarSenha = async () => {
     if (novaSenha.length < 4) { setMsgSenha('❌ A nova senha deve ter pelo menos 4 caracteres.'); setMsgSenhaTipo('err'); return; }
     if (novaSenha !== confirmarSenha) { setMsgSenha('❌ As senhas não coincidem.'); setMsgSenhaTipo('err'); return; }
-    users[idx].password = novaSenha;
-    localStorage.setItem('registeredUsers', JSON.stringify(users));
-    setSenhaAtual(''); setNovaSenha(''); setConfirmarSenha('');
-    setMsgSenha('✅ Senha alterada com sucesso!'); setMsgSenhaTipo('ok');
-    setTimeout(() => setMsgSenha(''), 4000);
+    if (!user?.userId) { setMsgSenha('❌ Sessão inválida. Faça login novamente.'); setMsgSenhaTipo('err'); return; }
+
+    setLoadingSenha(true);
+    try {
+      const r = await apiFetch(`/api/usuarios/${user.userId}/alterar-senha`, {
+        method: 'POST',
+        body: JSON.stringify({ senhaAtual, novaSenha }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setMsgSenha(`❌ ${d.erro || 'Erro ao alterar senha.'}`); setMsgSenhaTipo('err');
+      } else {
+        setSenhaAtual(''); setNovaSenha(''); setConfirmarSenha('');
+        setMsgSenha('✅ Senha alterada com sucesso!'); setMsgSenhaTipo('ok');
+        setTimeout(() => setMsgSenha(''), 4000);
+      }
+    } catch {
+      setMsgSenha('❌ Não foi possível ligar ao servidor.'); setMsgSenhaTipo('err');
+    } finally {
+      setLoadingSenha(false);
+    }
   };
 
   return (
@@ -85,10 +97,6 @@ const PerfilSegurancaPage: React.FC<Props> = ({ user }) => {
           <label>E-mail</label>
           <input value={user?.email || ''} disabled style={{ opacity: 0.5 }} />
         </div>
-        <div className="form-group">
-          <label>Cargo / Função</label>
-          <input value={role} onChange={e => setRole(e.target.value)} placeholder="Ex: Gerente" />
-        </div>
         {msgPerfil && <p style={{ fontSize: 13, color: 'var(--color-brand)', marginBottom: 12 }}>{msgPerfil}</p>}
         <button className="btn-primary" onClick={handleSalvarPerfil} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <Save size={16} /> Salvar Perfil
@@ -111,8 +119,8 @@ const PerfilSegurancaPage: React.FC<Props> = ({ user }) => {
           <input type="password" value={confirmarSenha} onChange={e => setConfirmarSenha(e.target.value)} placeholder="Repita a nova senha" />
         </div>
         {msgSenha && <p style={{ fontSize: 13, color: msgSenhaTipo === 'ok' ? 'var(--color-brand)' : 'var(--color-danger)', marginBottom: 12 }}>{msgSenha}</p>}
-        <button className="btn-primary" onClick={handleAlterarSenha} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          <Key size={16} /> Alterar Senha
+        <button className="btn-primary" onClick={handleAlterarSenha} disabled={loadingSenha} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <Key size={16} /> {loadingSenha ? 'A alterar...' : 'Alterar Senha'}
         </button>
       </div>
     </div>

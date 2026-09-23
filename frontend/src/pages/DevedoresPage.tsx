@@ -5,11 +5,11 @@ import { Plus, X, CheckCircle } from 'lucide-react';
 interface Devedor { id: number; nome: string; divida: number; descricao: string; data: string; }
 
 const DevedoresPage: React.FC = () => {
-  const [devedores, setDevedores] = useState<Devedor[]>([]);
-  const [showModal, setShowModal] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [devedores, setDevedores]           = useState<Devedor[]>([]);
+  const [showModal, setShowModal]           = useState(false);
+  const [showConfirm, setShowConfirm]       = useState(false);
   const [selectedDevedor, setSelectedDevedor] = useState<Devedor | null>(null);
-  const [form, setForm] = useState({ nome: '', divida: '', descricao: '' });
+  const [form, setForm]                     = useState({ nome: '', divida: '', descricao: '' });
 
   const load = () => apiFetch('/api/devedores').then(r => r.json()).then(setDevedores).catch(() => {});
 
@@ -21,7 +21,6 @@ const DevedoresPage: React.FC = () => {
     if (!form.nome.trim() || !form.divida) return;
     await apiFetch('/api/devedores', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nome: form.nome.trim(), divida: parseFloat(form.divida), descricao: form.descricao.trim() }),
     });
     setShowModal(false);
@@ -36,7 +35,7 @@ const DevedoresPage: React.FC = () => {
 
   const handleDarBaixa = async () => {
     if (!selectedDevedor) return;
-    await fetch(`/api/devedores/${selectedDevedor.id}`, { method: 'DELETE' });
+    await apiFetch(`/api/devedores/${selectedDevedor.id}`, { method: 'DELETE' });
     setShowConfirm(false);
     setSelectedDevedor(null);
     load();
@@ -45,11 +44,11 @@ const DevedoresPage: React.FC = () => {
   return (
     <div>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20, flexWrap:'wrap', gap:12 }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' }}>Devedores</h2>
-          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>
-            {devedores.length} devedor(es) · Total em dívida: <strong style={{ color: 'var(--color-danger)' }}>MT {totalDivida.toFixed(2)}</strong>
+          <h2 style={{ fontSize:22, fontWeight:700, color:'var(--text-primary)' }}>Devedores</h2>
+          <p style={{ fontSize:14, color:'var(--text-secondary)', marginTop:4 }}>
+            {devedores.length} devedor(es) · Total em dívida: <strong style={{ color:'var(--color-danger)' }}>MT {totalDivida.toFixed(2)}</strong>
           </p>
         </div>
         <button className="btn-primary" onClick={() => setShowModal(true)}><Plus size={18} /> Adicionar Devedor</button>
@@ -64,20 +63,20 @@ const DevedoresPage: React.FC = () => {
             </thead>
             <tbody>
               {devedores.length === 0
-                ? <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: 32 }}>Nenhum devedor cadastrado.</td></tr>
+                ? <tr><td colSpan={5} style={{ textAlign:'center', color:'var(--text-secondary)', padding:32 }}>Nenhum devedor cadastrado.</td></tr>
                 : devedores.map(d => (
                   <tr key={d.id}>
-                    <td style={{ fontWeight: 600 }}>{d.nome}</td>
-                    <td style={{ color: 'var(--color-danger)', fontWeight: 700 }}>MT {d.divida.toFixed(2)}</td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{d.descricao || '—'}</td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{d.data}</td>
+                    <td style={{ fontWeight:600 }}>{d.nome}</td>
+                    <td style={{ color:'var(--color-danger)', fontWeight:700 }}>MT {d.divida.toFixed(2)}</td>
+                    <td style={{ color:'var(--text-secondary)' }}>{d.descricao || '—'}</td>
+                    <td style={{ color:'var(--text-secondary)' }}>{d.data}</td>
                     <td>
                       <button
                         onClick={() => confirmarPagamento(d)}
                         style={{
-                          background: 'var(--color-brand)', color: 'white', border: 'none',
-                          borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 700,
-                          cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6
+                          background:'var(--color-brand)', color:'white', border:'none',
+                          borderRadius:8, padding:'8px 14px', fontSize:13, fontWeight:700,
+                          cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6
                         }}
                       >
                         <CheckCircle size={15} /> Pago
@@ -101,15 +100,15 @@ const DevedoresPage: React.FC = () => {
             </div>
             <div className="form-group">
               <label>Nome *</label>
-              <input value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} placeholder="Nome do devedor" />
+              <input value={form.nome} onChange={e => setForm({...form, nome:e.target.value})} placeholder="Nome do devedor" />
             </div>
             <div className="form-group">
               <label>Valor da Dívida (MT) *</label>
-              <input type="number" min="0" step="0.01" value={form.divida} onChange={e => setForm({ ...form, divida: e.target.value })} placeholder="0.00" />
+              <input type="number" min="0" step="0.01" value={form.divida} onChange={e => setForm({...form, divida:e.target.value})} placeholder="0.00" />
             </div>
             <div className="form-group">
               <label>Descrição (opcional)</label>
-              <input value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })} placeholder="Ex: Localização do devedor" />
+              <input value={form.descricao} onChange={e => setForm({...form, descricao:e.target.value})} placeholder="Ex: Localização do devedor" />
             </div>
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
@@ -122,20 +121,20 @@ const DevedoresPage: React.FC = () => {
       {/* Modal — Confirmar Pagamento */}
       {showConfirm && selectedDevedor && (
         <div className="modal-overlay">
-          <div className="modal-container" style={{ maxWidth: 380, textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>💰</div>
-            <h3 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+          <div className="modal-container" style={{ maxWidth:380, textAlign:'center' }}>
+            <div style={{ fontSize:48, marginBottom:12 }}>💰</div>
+            <h3 style={{ fontSize:20, fontWeight:700, color:'var(--text-primary)', marginBottom:8 }}>
               {selectedDevedor.nome} pagou?
             </h3>
-            <p style={{ fontSize: 15, color: 'var(--text-secondary)', marginBottom: 24 }}>
-              Dívida de <strong style={{ color: 'var(--color-danger)' }}>MT {selectedDevedor.divida.toFixed(2)}</strong> será quitada.
+            <p style={{ fontSize:15, color:'var(--text-secondary)', marginBottom:24 }}>
+              Dívida de <strong style={{ color:'var(--color-danger)' }}>MT {selectedDevedor.divida.toFixed(2)}</strong> será quitada.
             </p>
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+            <div style={{ display:'flex', gap:12, justifyContent:'center' }}>
               <button className="btn-secondary" onClick={() => setShowConfirm(false)}>❌ Não</button>
               <button
                 className="btn-primary"
                 onClick={handleDarBaixa}
-                style={{ fontSize: 16, padding: '12px 24px' }}
+                style={{ fontSize:16, padding:'12px 24px' }}
               >
                 ✅ Sim, Pagou!
               </button>

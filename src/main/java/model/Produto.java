@@ -28,6 +28,9 @@ public class Produto {
     @Column(name = "unidade", length = 50)
     private String unidade = "un";
 
+    @Column(name = "codigo_barras", length = 100)
+    private String codigoBarras;
+
     @Column(name = "usuario_id")
     private Long usuarioId;
 
@@ -69,6 +72,9 @@ public class Produto {
 
     public String getUnidade() { return unidade; }
     public void setUnidade(String u) { this.unidade = (u != null && !u.isBlank()) ? u : "un"; }
+
+    public String getCodigoBarras() { return codigoBarras; }
+    public void setCodigoBarras(String c) { this.codigoBarras = (c != null && c.isBlank()) ? null : c; }
 
     public Long getUsuarioId() { return usuarioId; }
     public void setUsuarioId(Long u) { this.usuarioId = u; }

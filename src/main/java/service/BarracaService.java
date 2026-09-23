@@ -74,6 +74,10 @@ public class BarracaService {
         produtoDAO.eliminar(id);
     }
 
+    public Produto buscarPorCodigoBarras(String codigo, Long userId) {
+        return produtoDAO.buscarPorCodigoBarras(codigo, userId);
+    }
+
     public List<Produto> listarProdutos(Long userId) {
         return produtoDAO.listarOrdenado(userId);
     }

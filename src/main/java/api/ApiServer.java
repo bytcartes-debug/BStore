@@ -65,10 +65,11 @@ public class ApiServer {
         app.delete("/api/categorias/{id}",      this::deletarCategoria);
 
         // ── Produtos ───────────────────────────────────────────────────
-        app.get("/api/produtos",           this::listarProdutos);
-        app.post("/api/produtos",          this::criarProduto);
-        app.put("/api/produtos/{id}",      this::atualizarProduto);
-        app.delete("/api/produtos/{id}",   this::deletarProduto);
+        app.get("/api/produtos",                  this::listarProdutos);
+        app.get("/api/produtos/barcode/{codigo}", this::buscarPorCodigoBarras);
+        app.post("/api/produtos",                 this::criarProduto);
+        app.put("/api/produtos/{id}",             this::atualizarProduto);
+        app.delete("/api/produtos/{id}",          this::deletarProduto);
 
         // ── Vendas ─────────────────────────────────────────────────────
         app.get("/api/vendas",             this::listarVendas);
@@ -87,6 +88,7 @@ public class ApiServer {
         app.get("/api/usuarios",           this::listarUsuarios);
         app.post("/api/usuarios",          this::criarUsuario);
         app.put("/api/usuarios/{id}",      this::atualizarUsuario);
+        app.post("/api/usuarios/{id}/alterar-senha", this::alterarSenha);
         app.delete("/api/usuarios/{id}",   this::deletarUsuario);
 
         // ── SPA Fallback ───────────────────────────────────────────────
@@ -243,6 +245,7 @@ public class ApiServer {
                 m.put("stock",        p.getQuantidadeStock());
                 m.put("stockMinimo",  p.getStockMinimo());
                 m.put("unidade",      p.getUnidade() != null ? p.getUnidade() : "un");
+                m.put("codigoBarras", p.getCodigoBarras());
                 m.put("categoriaId",  p.getCategoria() != null ? p.getCategoria().getId() : null);
                 m.put("categoriaNome", p.getCategoria() != null ? p.getCategoria().getNome() : "");
                 return m;
@@ -265,6 +268,9 @@ public class ApiServer {
             Long catId       = ((Number) body.get("categoriaId")).longValue();
             Categoria cat    = service.buscarCategoria(catId);
             Produto p = service.criarProduto(nome, preco, stock, unidade, stockMin, cat, uid);
+            if (body.get("codigoBarras") != null)
+                p.setCodigoBarras((String) body.get("codigoBarras"));
+            service.actualizarProduto(p);
             ctx.status(HttpStatus.CREATED).json(Map.of("id", p.getId()));
         } catch (Exception e) {
             ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("erro", e.getMessage()));
@@ -284,10 +290,35 @@ public class ApiServer {
             p.setQuantidadeStock(body.get("stock") != null ? ((Number) body.get("stock")).doubleValue() : 0.0);
             p.setStockMinimo(body.get("stockMinimo") != null ? ((Number) body.get("stockMinimo")).doubleValue() : 5.0);
             if (body.get("unidade") != null) p.setUnidade((String) body.get("unidade"));
+            if (body.containsKey("codigoBarras")) p.setCodigoBarras((String) body.get("codigoBarras"));
             Long catId = ((Number) body.get("categoriaId")).longValue();
             p.setCategoria(service.buscarCategoria(catId));
             service.actualizarProduto(p);
             ctx.json(Map.of("ok", true));
+        } catch (Exception e) {
+            ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("erro", e.getMessage()));
+        }
+    }
+
+    private void buscarPorCodigoBarras(Context ctx) {
+        try {
+            Long uid = getUserId(ctx);
+            String codigo = ctx.pathParam("codigo");
+            Produto p = service.buscarPorCodigoBarras(codigo, uid);
+            if (p == null) {
+                ctx.status(HttpStatus.NOT_FOUND).json(Map.of("erro", "Produto não encontrado")); return;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id",           p.getId());
+            m.put("nome",         p.getNome());
+            m.put("preco",        p.getPreco());
+            m.put("stock",        p.getQuantidadeStock());
+            m.put("stockMinimo",  p.getStockMinimo());
+            m.put("unidade",      p.getUnidade() != null ? p.getUnidade() : "un");
+            m.put("codigoBarras", p.getCodigoBarras());
+            m.put("categoriaId",  p.getCategoria() != null ? p.getCategoria().getId() : null);
+            m.put("categoriaNome", p.getCategoria() != null ? p.getCategoria().getNome() : "");
+            ctx.json(m);
         } catch (Exception e) {
             ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("erro", e.getMessage()));
         }
@@ -495,6 +526,32 @@ public class ApiServer {
                 int dias = ((Number) body.get("diasAcesso")).intValue();
                 u.aplicarDiasAcesso(dias);
             }
+            usuarioDAO.actualizar(u);
+            ctx.json(Map.of("ok", true));
+        } catch (Exception e) {
+            ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("erro", e.getMessage()));
+        }
+    }
+
+    private void alterarSenha(Context ctx) {
+        try {
+            Long id = Long.parseLong(ctx.pathParam("id"));
+            Map<String, Object> body = ctx.bodyAsClass(Map.class);
+            String novaSenha = (String) body.get("novaSenha");
+            if (novaSenha == null || novaSenha.length() < 4) {
+                ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("erro", "A nova senha deve ter pelo menos 4 caracteres.")); return;
+            }
+            Usuario u = usuarioDAO.buscarPorId(id);
+            if (u == null) { ctx.status(HttpStatus.NOT_FOUND).json(Map.of("erro", "Utilizador não encontrado.")); return; }
+
+            // Superuser pode alterar qualquer senha sem verificar a atual
+            if (!isSuperuser(ctx)) {
+                String senhaAtual = (String) body.get("senhaAtual");
+                if (senhaAtual == null || !u.verificarSenha(senhaAtual)) {
+                    ctx.status(HttpStatus.UNAUTHORIZED).json(Map.of("erro", "Senha atual incorreta.")); return;
+                }
+            }
+            u.setSenha(novaSenha);
             usuarioDAO.actualizar(u);
             ctx.json(Map.of("ok", true));
         } catch (Exception e) {

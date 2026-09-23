@@ -1,6 +1,7 @@
 import { apiFetch } from '../utils/api';
 import React, { useEffect, useState, useRef } from 'react';
-import { Plus, X, Search, Trash2, ShoppingCart } from 'lucide-react';
+import { Plus, X, Search, Trash2, ShoppingCart, ScanLine, Loader2 } from 'lucide-react';
+import { abrirScanner } from '../utils/scanner';
 
 interface Produto { id: number; nome: string; preco: number; stock: number; unidade: string; }
 interface Venda   { id: number; produto: string; quantidade: number; total: number; data: string; }
@@ -25,6 +26,8 @@ const VendasPage: React.FC = () => {
   // Estado do botão
   const [loading, setLoading]       = useState(false);
   const [erro, setErro]             = useState<string | null>(null);
+  const [scanning, setScanning]     = useState(false);
+  const [scanMsg, setScanMsg]       = useState<string | null>(null);
 
   const load = () => {
     apiFetch('/api/vendas').then(r => r.json()).then(setVendas).catch(() => {});
@@ -61,7 +64,7 @@ const VendasPage: React.FC = () => {
 
   const handleAdicionarAoCarrinho = () => {
     if (!selectedProd) return;
-    const qtd = parseInt(qtdAtual) || 1;
+    const qtd = parseFloat(qtdAtual) || 1;
     if (qtd <= 0) return;
 
     // Se já está no carrinho, soma a quantidade
@@ -133,6 +136,39 @@ const VendasPage: React.FC = () => {
     setQtdAtual('1');
     setValorEntregue('');
     setErro(null);
+    setScanMsg(null);
+  };
+
+  /** Scan na venda: lê código → procura na BD → adiciona ao carrinho */
+  const handleScanVenda = async () => {
+    setScanning(true); setScanMsg(null);
+    try {
+      const codigo = await abrirScanner();
+      if (!codigo) return;
+
+      const r = await apiFetch(`/api/produtos/barcode/${encodeURIComponent(codigo)}`);
+      if (!r.ok) {
+        setScanMsg(`⚠️ Produto com código "${codigo}" não está cadastrado.`);
+        setTimeout(() => setScanMsg(null), 4000);
+        return;
+      }
+      const p: Produto = await r.json();
+
+      // Adicionar ao carrinho (ou incrementar se já existe)
+      setCarrinho(prev => {
+        const existente = prev.find(i => i.produto.id === p.id);
+        if (existente) {
+          const step = ['kg','g','L','ml'].includes(p.unidade) ? 0.5 : 1;
+          return prev.map(i => i.produto.id === p.id ? { ...i, quantidade: i.quantidade + step } : i);
+        }
+        return [...prev, { produto: p, quantidade: 1 }];
+      });
+
+      setScanMsg(`✅ "${p.nome}" adicionado ao carrinho.`);
+      setTimeout(() => setScanMsg(null), 2500);
+    } finally {
+      setScanning(false);
+    }
   };
 
   const produtosFiltrados = produtos.filter(p =>
@@ -191,6 +227,15 @@ const VendasPage: React.FC = () => {
               </p>
             )}
 
+            {/* Mensagem de scan */}
+            {scanMsg && (
+              <div style={{ fontSize:13, padding:'8px 12px', borderRadius:6, marginBottom:8,
+                background: scanMsg.startsWith('✅') ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.1)',
+                color: scanMsg.startsWith('✅') ? 'var(--color-brand)' : 'var(--color-danger)' }}>
+                {scanMsg}
+              </div>
+            )}
+
             {/* Pesquisa de produto */}
             <div className="form-group" ref={buscaRef} style={{ position:'relative' }}>
               <label>Adicionar Produto</label>
@@ -205,6 +250,17 @@ const VendasPage: React.FC = () => {
                     style={{ paddingLeft:34, width:'100%' }}
                   />
                 </div>
+                {/* Botão Scan */}
+                <button
+                  className="btn-secondary"
+                  onClick={handleScanVenda}
+                  disabled={scanning}
+                  title="Scan de código de barras"
+                  style={{ display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap', padding:'0 12px' }}
+                >
+                  {scanning ? <Loader2 size={16} className="spin" /> : <ScanLine size={16} />}
+                  {scanning ? '' : 'Scan'}
+                </button>
                 <div style={{ display:'flex', alignItems:'center', gap:4 }}>
                   <input
                     type="number" min="0.001" step="0.001" value={qtdAtual}

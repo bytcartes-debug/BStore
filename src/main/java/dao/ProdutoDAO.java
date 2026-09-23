@@ -82,4 +82,17 @@ public class ProdutoDAO extends GenericDAO<Produto> {
                 .getSingleResult();
         } finally { em.close(); }
     }
+
+    public Produto buscarPorCodigoBarras(String codigo, Long uid) {
+        EntityManager em = getEM();
+        try {
+            List<Produto> result = em.createQuery(
+                "SELECT p FROM Produto p WHERE p.codigoBarras = :codigo AND p.usuarioId = :uid",
+                Produto.class)
+                .setParameter("codigo", codigo)
+                .setParameter("uid", uid)
+                .getResultList();
+            return result.isEmpty() ? null : result.get(0);
+        } finally { em.close(); }
+    }
 }
