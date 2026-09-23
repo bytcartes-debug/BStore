@@ -1,5 +1,3 @@
-Sim. Para o BStore (Flex Stock), mantendo a mesma estrutura do exemplo, mas adaptado ao teu projecto atual com Android + Capacitor/React + Java/Javalin + PostgreSQL, ficaria assim:
-
 BStore (Flex Stock) — Projecto
 
 Sistema de Gestão de Stock e Vendas para Pequenos Negócios
