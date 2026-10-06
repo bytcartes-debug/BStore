@@ -4,9 +4,9 @@ import util.JPAUtil;
 
 import javax.swing.*;
 
-public class App {
+public class DesktopApp {
 
-    public static void main(String[] args) {
+    public static void runDesktop(String[] args) {
         // Aplica o look and feel FlatLaf (moderno) se disponível
         try {
             UIManager.setLookAndFeel("com.formdev.flatlaf.FlatLightLaf");
