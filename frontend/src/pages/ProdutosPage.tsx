@@ -1,272 +1,469 @@
-import { apiFetch } from '../utils/api';
-import React, { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, X, ScanLine, Loader2 } from 'lucide-react';
+import { useToast } from '../utils/toast';
+import { useState } from 'react';
+import { Plus, Pencil, Trash2, ScanLine, Package, AlertTriangle } from 'lucide-react';
+import { apiFetch, apiRequest } from '../utils/api';
+import { useMutation, useResource } from '../utils/useResource';
 import { abrirScanner } from '../utils/scanner';
 import { buscarNaOpenFoodFacts } from '../utils/openFoodFacts';
+import { decimal, formatMoney, formatQuantity } from '../utils/decimal';
+import {
+  PageHeading,
+  SearchField,
+  Loading,
+  LoadError,
+  EmptyState,
+  Modal,
+  Field,
+  Notice,
+  Spinner,
+  ConfirmDialog,
+} from '../components/UI';
 
 const UNIDADES = ['un', 'kg', 'L', 'g', 'ml'];
+interface Categoria {
+  id: number;
+  nome: string;
+}
+interface Produto {
+  id: number;
+  nome: string;
+  preco: string;
+  stock: string;
+  stockMinimo: string;
+  unidade: string;
+  categoriaId: number;
+  categoriaNome?: string;
+  codigoBarras?: string;
+}
+const FORM_VAZIO = {
+  nome: '',
+  preco: '',
+  stock: '',
+  stockMinimo: '5',
+  unidade: 'un',
+  categoriaId: '',
+  codigoBarras: '',
+};
+const loadProducts = async (signal: AbortSignal) => {
+  const [produtos, categorias] = await Promise.all([
+    apiRequest<Produto[]>('/api/produtos', { signal }),
+    apiRequest<Categoria[]>('/api/categorias', { signal }),
+  ]);
+  return { produtos, categorias };
+};
 
-interface Categoria { id: number; nome: string; }
-interface Produto   { id: number; nome: string; preco: number; stock: number; stockMinimo: number; unidade: string; categoriaId: number; categoriaNome?: string; codigoBarras?: string; }
-
-const fmt = (n: number, u: string) =>
-  Number.isInteger(n) ? `${n} ${u}` : `${n.toFixed(3).replace(/\.?0+$/, '')} ${u}`;
-
-const FORM_VAZIO = { nome: '', preco: '', stock: '', stockMinimo: '5', unidade: 'un', categoriaId: '', codigoBarras: '' };
-
-const ProdutosPage: React.FC = () => {
-  const [produtos, setProdutos]     = useState<Produto[]>([]);
-  const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [search, setSearch]         = useState('');
-  const [showModal, setShowModal]   = useState(false);
-  const [editing, setEditing]       = useState<Produto | null>(null);
-  const [form, setForm]             = useState(FORM_VAZIO);
-  const [scanning, setScanning]     = useState(false);
-  const [offMsg, setOffMsg]         = useState<string | null>(null); // mensagem Open Food Facts
-  const [erro, setErro]             = useState<string | null>(null);
-
-  const load = () => {
-    apiFetch('/api/produtos').then(r => r.json()).then(setProdutos).catch(() => {});
-    apiFetch('/api/categorias').then(r => r.json()).then(setCategorias).catch(() => {});
-  };
-
-  useEffect(() => { load(); }, []);
-
-  const filtered = produtos.filter(p => p.nome.toLowerCase().includes(search.toLowerCase()));
-
+export default function ProdutosPage() {
+  const { data, loading, error, reload } = useResource(loadProducts);
+  const produtos = data?.produtos || [];
+  const categorias = data?.categorias || [];
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('');
+  const [stockFilter, setStockFilter] = useState('all');
+  const [sort, setSort] = useState('name');
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState<Produto | null>(null);
+  const [form, setForm] = useState(FORM_VAZIO);
+  const [offMsg, setOffMsg] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<Produto | null>(null);
+  const save = useMutation();
+  const scan = useMutation();
+  const remove = useMutation();
+  const toast = useToast();
+  const filtered = produtos
+    .filter(
+      (p) =>
+        (p.nome.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()) ||
+          (p.codigoBarras || '').includes(search.trim())) &&
+        (!category || p.categoriaId.toString() === category) &&
+        (stockFilter === 'all' || decimal(p.stock).lte(p.stockMinimo)),
+    )
+    .sort((a, b) =>
+      sort === 'price'
+        ? decimal(a.preco).comparedTo(b.preco)
+        : sort === 'stock'
+          ? decimal(a.stock).comparedTo(b.stock)
+          : a.nome.localeCompare(b.nome, 'pt'),
+    );
+  const setF = (patch: Partial<typeof form>) => setForm((previous) => ({ ...previous, ...patch }));
   const openNew = () => {
     setEditing(null);
     setForm({ ...FORM_VAZIO, categoriaId: categorias[0]?.id.toString() || '' });
-    setOffMsg(null); setErro(null);
+    save.setError(null);
+    scan.setError(null);
+    setOffMsg(null);
     setShowModal(true);
   };
-
   const openEdit = (p: Produto) => {
     setEditing(p);
     setForm({
-      nome: p.nome, preco: p.preco.toString(), stock: p.stock.toString(),
-      stockMinimo: p.stockMinimo.toString(), unidade: p.unidade || 'un',
-      categoriaId: p.categoriaId.toString(), codigoBarras: p.codigoBarras || '',
+      nome: p.nome,
+      preco: p.preco,
+      stock: p.stock,
+      stockMinimo: p.stockMinimo,
+      unidade: p.unidade || 'un',
+      categoriaId: p.categoriaId.toString(),
+      codigoBarras: p.codigoBarras || '',
     });
-    setOffMsg(null); setErro(null);
+    save.setError(null);
+    scan.setError(null);
+    setOffMsg(null);
     setShowModal(true);
   };
-
-  /** Scan de código de barras no formulário de produto */
-  const handleScanProduto = async () => {
-    setScanning(true); setOffMsg(null); setErro(null);
-    try {
+  const handleScan = () =>
+    void scan.run(async () => {
+      setOffMsg(null);
       const codigo = await abrirScanner();
       if (!codigo) return;
-
-      setForm(f => ({ ...f, codigoBarras: codigo }));
-
-      // 1. Verificar se já existe na BD local
-      const r = await apiFetch(`/api/produtos/barcode/${encodeURIComponent(codigo)}`);
-      if (r.ok) {
-        const p = await r.json();
-        setErro(`⚠️ Este código já está registado no produto "${p.nome}".`);
-        return;
+      setF({ codigoBarras: codigo });
+      const response = await apiFetch(`/api/produtos/barcode/${encodeURIComponent(codigo)}`);
+      if (response.ok) {
+        const p = await response.json();
+        throw new Error(`Este código já está registado no produto “${p.nome}”.`);
       }
-
-      // 2. Consultar Open Food Facts
-      setOffMsg('🔍 A procurar produto online...');
-      const dados = await buscarNaOpenFoodFacts(codigo);
-      if (dados) {
-        setForm(f => ({
-          ...f,
-          nome:    dados.nome + (dados.marca && !dados.nome.toLowerCase().includes(dados.marca.toLowerCase()) ? ` ${dados.marca}` : ''),
-          unidade: dados.unidade || f.unidade,
+      if (response.status !== 404)
+        throw new Error('Não foi possível verificar este código. Tente novamente.');
+      setOffMsg('A procurar produto online…');
+      const result = await buscarNaOpenFoodFacts(codigo);
+      if (result) {
+        setForm((previous) => ({
+          ...previous,
+          nome:
+            result.nome +
+            (result.marca && !result.nome.toLowerCase().includes(result.marca.toLowerCase())
+              ? ` ${result.marca}`
+              : ''),
+          unidade: result.unidade || previous.unidade,
         }));
-        setOffMsg(`✅ Produto encontrado: "${dados.nome}" ${dados.marca ? `(${dados.marca})` : ''}`);
-      } else {
-        setOffMsg('ℹ️ Produto não encontrado online. Preencha o nome manualmente.');
-      }
-    } finally {
-      setScanning(false);
+        setOffMsg(`Produto encontrado: ${result.nome}. Confirme os dados antes de guardar.`);
+      } else setOffMsg('Produto não encontrado online. Preencha o nome manualmente.');
+    });
+  const handleSave = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!form.nome.trim()) {
+      save.setError('Preencha o nome do produto.');
+      return;
     }
-  };
-
-  const handleSave = async () => {
-    if (!form.nome.trim() || !form.preco || !form.categoriaId) { setErro('Preencha nome, preço e categoria.'); return; }
-    setErro(null);
-    const body: any = {
-      nome:        form.nome.trim(),
-      preco:       parseFloat(form.preco),
-      stock:       parseFloat(form.stock) || 0,
-      stockMinimo: parseFloat(form.stockMinimo) || 0,
-      unidade:     form.unidade || 'un',
-      categoriaId: parseInt(form.categoriaId),
-    };
-    if (form.codigoBarras.trim()) body.codigoBarras = form.codigoBarras.trim();
-
-    try {
-      if (editing) {
-        await apiFetch(`/api/produtos/${editing.id}`, { method: 'PUT', body: JSON.stringify(body) });
-      } else {
-        await apiFetch('/api/produtos', { method: 'POST', body: JSON.stringify(body) });
-      }
+    void save.run(async () => {
+      const body = {
+        nome: form.nome.trim(),
+        preco: form.preco,
+        stock: form.stock || '0',
+        stockMinimo: form.stockMinimo || '0',
+        unidade: form.unidade || 'un',
+        categoriaId: Number(form.categoriaId),
+        ...(form.codigoBarras.trim() ? { codigoBarras: form.codigoBarras.trim() } : {}),
+      };
+      await apiRequest(editing ? `/api/produtos/${editing.id}` : '/api/produtos', {
+        method: editing ? 'PUT' : 'POST',
+        body: JSON.stringify(body),
+      });
       setShowModal(false);
-      load();
-    } catch (e: any) {
-      setErro('Erro ao guardar. Tente novamente.');
-    }
+      toast(editing ? 'Produto guardado.' : 'Produto criado.');
+      void reload();
+    });
   };
-
-  const handleDelete = async (id: number) => {
-    if (!confirm('Apagar este produto?')) return;
-    await apiFetch(`/api/produtos/${id}`, { method: 'DELETE' });
-    load();
+  const handleDelete = () =>
+    void remove.run(async () => {
+      if (!deleting) return;
+      await apiRequest(`/api/produtos/${deleting.id}`, { method: 'DELETE' });
+      setDeleting(null);
+      toast('Produto removido.');
+      void reload();
+    });
+  const clearFilters = () => {
+    setSearch('');
+    setCategory('');
+    setStockFilter('all');
   };
-
-  const f = form;
-  const setF = (patch: Partial<typeof form>) => setForm(prev => ({ ...prev, ...patch }));
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20, flexWrap:'wrap', gap:12 }}>
-        <div>
-          <h2 style={{ fontSize:22, fontWeight:700, color:'var(--text-primary)' }}>Produtos</h2>
-          <p style={{ fontSize:14, color:'var(--text-secondary)', marginTop:4 }}>{produtos.length} produto(s) cadastrado(s)</p>
-        </div>
-        <button className="btn-primary" onClick={openNew}><Plus size={18} /> Novo Produto</button>
+      <PageHeading
+        title="Produtos"
+        description="Preços, quantidades e reposição. O seu stock, à vista."
+      >
+        <button className="btn-primary" onClick={openNew} disabled={!data}>
+          <Plus size={18} /> Adicionar produto
+        </button>
+      </PageHeading>
+      <div className="toolbar">
+        <SearchField value={search} onChange={setSearch} label="Pesquisar por nome ou código" />
+        <Field id="product-category-filter" label="Categoria">
+          <select
+            id="product-category-filter"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+          >
+            <option value="">Todas as categorias</option>
+            {categorias.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field id="product-stock-filter" label="Stock">
+          <select
+            id="product-stock-filter"
+            value={stockFilter}
+            onChange={(e) => setStockFilter(e.target.value)}
+          >
+            <option value="all">Todos os produtos</option>
+            <option value="low">Stock baixo</option>
+          </select>
+        </Field>
+        <Field id="product-sort" label="Ordenar por">
+          <select id="product-sort" value={sort} onChange={(e) => setSort(e.target.value)}>
+            <option value="name">Nome</option>
+            <option value="price">Menor preço</option>
+            <option value="stock">Menor stock</option>
+          </select>
+        </Field>
       </div>
-
-      {/* Search */}
-      <div style={{ marginBottom:16 }}>
-        <input
-          style={{ width:'100%', maxWidth:360 }}
-          placeholder="🔍 Pesquisar produto..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-      </div>
-
-      {/* Tabela */}
-      <div className="card">
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr><th>Nome</th><th>Preço</th><th>Stock</th><th>Categoria</th><th>Código</th><th>Ações</th></tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0
-                ? <tr><td colSpan={6} style={{ textAlign:'center', color:'var(--text-secondary)', padding:32 }}>Nenhum produto encontrado.</td></tr>
-                : filtered.map(p => (
-                  <tr key={p.id}>
-                    <td style={{ fontWeight:600 }}>{p.nome}</td>
-                    <td>MT {p.preco.toFixed(2)}</td>
-                    <td style={{ color: p.stock <= p.stockMinimo ? 'var(--color-danger)' : 'inherit' }}>
-                      {fmt(p.stock, p.unidade)} {p.stock <= p.stockMinimo && '⚠️'}
-                    </td>
-                    <td style={{ color:'var(--text-secondary)' }}>{p.categoriaNome || '—'}</td>
-                    <td style={{ fontSize:11, color:'var(--text-muted)', fontFamily:'monospace' }}>{p.codigoBarras || '—'}</td>
-                    <td>
-                      <button className="icon-btn" onClick={() => openEdit(p)}><Pencil size={14} /></button>
-                      <button className="icon-btn delete" onClick={() => handleDelete(p.id)}><Trash2 size={14} /></button>
-                    </td>
-                  </tr>
-                ))
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Modal */}
-      {showModal && (
-        <div className="modal-overlay">
-          <div className="modal-container">
-            <div className="modal-header">
-              <h3>{editing ? 'Editar Produto' : 'Novo Produto'}</h3>
-              <button className="modal-close-btn" onClick={() => setShowModal(false)}><X size={20} /></button>
-            </div>
-
-            {/* Banner Open Food Facts */}
-            {offMsg && (
-              <div style={{ fontSize:12, padding:'8px 12px', borderRadius:6, marginBottom:10,
-                background: offMsg.startsWith('✅') ? 'rgba(16,185,129,0.15)' : 'rgba(100,100,255,0.1)',
-                color: offMsg.startsWith('✅') ? 'var(--color-brand)' : 'var(--text-secondary)' }}>
-                {offMsg}
-              </div>
+      {error && <LoadError message={error} retry={reload} />}
+      {loading && !data ? (
+        <Loading />
+      ) : (
+        data && (
+          <div className="card">
+            {produtos.length === 0 ? (
+              <EmptyState
+                title="O seu catálogo começa aqui"
+                description="Adicione produtos para acompanhar o stock e começar a vender."
+                icon={<Package size={28} />}
+              >
+                <button className="btn-secondary" onClick={openNew}>
+                  Adicionar primeiro produto
+                </button>
+              </EmptyState>
+            ) : filtered.length === 0 ? (
+              <EmptyState
+                title="Nenhum produto corresponde à pesquisa"
+                description="Altere o nome, o código ou os filtros para encontrar o que procura."
+              >
+                <button className="btn-secondary" onClick={clearFilters}>
+                  Limpar filtros
+                </button>
+              </EmptyState>
+            ) : (
+              <>
+                <div className="table-summary">
+                  <span>
+                    {filtered.length} de {produtos.length} produtos
+                  </span>
+                  {loading && (
+                    <span role="status">
+                      <Spinner /> A atualizar…
+                    </span>
+                  )}
+                </div>
+                <div className="table-wrapper">
+                  <table className="responsive-table">
+                    <caption className="sr-only">Produtos e níveis de stock</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Produto</th>
+                        <th scope="col" className="numeric">
+                          Preço
+                        </th>
+                        <th scope="col" className="numeric">
+                          Stock
+                        </th>
+                        <th scope="col">Categoria</th>
+                        <th scope="col">Código</th>
+                        <th scope="col">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((p) => (
+                        <tr key={p.id}>
+                          <td data-label="Produto" className="cell-name">
+                            {p.nome}
+                          </td>
+                          <td data-label="Preço" className="numeric">
+                            {formatMoney(p.preco)}
+                          </td>
+                          <td data-label="Stock" className="numeric">
+                            <div className="stock-cell">
+                              <span>{formatQuantity(p.stock, p.unidade)}</span>
+                              {decimal(p.stock).lte(p.stockMinimo) && (
+                                <span className="badge badge-warning">
+                                  <AlertTriangle size={13} /> Stock baixo
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td data-label="Categoria" className="cell-secondary">
+                            {p.categoriaNome || 'Sem categoria'}
+                          </td>
+                          <td data-label="Código" className="cell-secondary">
+                            {p.codigoBarras || 'Não definido'}
+                          </td>
+                          <td data-label="Ações">
+                            <div className="action-group">
+                              <button
+                                className="icon-btn"
+                                onClick={() => openEdit(p)}
+                                aria-label={`Editar ${p.nome}`}
+                                title="Editar produto"
+                              >
+                                <Pencil size={17} />
+                              </button>
+                              <button
+                                className="icon-btn delete"
+                                onClick={() => {
+                                  remove.setError(null);
+                                  setDeleting(p);
+                                }}
+                                aria-label={`Remover ${p.nome}`}
+                                title="Remover produto"
+                              >
+                                <Trash2 size={17} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
-            {erro && <p style={{ fontSize:13, color:'var(--color-danger)', marginBottom:8 }}>{erro}</p>}
-
-            {/* Código de Barras (topo — primeiro a preencher via scan) */}
-            <div className="form-group">
-              <label>📷 Código de Barras</label>
-              <div style={{ display:'flex', gap:8 }}>
+          </div>
+        )
+      )}
+      {showModal && (
+        <Modal
+          title={editing ? 'Editar produto' : 'Adicionar produto'}
+          onClose={() => setShowModal(false)}
+          busy={save.pending || scan.pending}
+        >
+          <form onSubmit={handleSave}>
+            <p className="required-note">Os campos com * são obrigatórios.</p>
+            {save.error && <Notice>{save.error}</Notice>}
+            {scan.error && <Notice>{scan.error}</Notice>}
+            {offMsg && <Notice kind="info">{offMsg}</Notice>}
+            {categorias.length === 0 && (
+              <Notice kind="info">
+                Crie uma categoria na página Categorias antes de guardar um produto.
+              </Notice>
+            )}
+            <fieldset disabled={save.pending || scan.pending}>
+              <Field id="product-barcode" label="Código de barras">
+                <div className="input-action">
+                  <input
+                    id="product-barcode"
+                    value={form.codigoBarras}
+                    onChange={(e) => setF({ codigoBarras: e.target.value })}
+                    placeholder="Opcional"
+                  />
+                  <button type="button" className="btn-secondary" onClick={handleScan}>
+                    {scan.pending ? <Spinner /> : <ScanLine size={18} />} Ler código
+                  </button>
+                </div>
+              </Field>
+              <Field id="product-name" label="Nome *">
                 <input
-                  value={f.codigoBarras}
-                  onChange={e => setF({ codigoBarras: e.target.value })}
-                  placeholder="Ex: 5601234567890 (opcional)"
-                  style={{ flex:1 }}
+                  id="product-name"
+                  value={form.nome}
+                  onChange={(e) => setF({ nome: e.target.value })}
+                  placeholder="Nome do produto"
+                  required
                 />
-                <button
-                  className="btn-secondary"
-                  onClick={handleScanProduto}
-                  disabled={scanning}
-                  style={{ whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:6, minWidth:90 }}
+              </Field>
+              <div className="form-grid">
+                <Field id="product-price" label="Preço (MT) *">
+                  <input
+                    id="product-price"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    value={form.preco}
+                    onChange={(e) => setF({ preco: e.target.value })}
+                    placeholder="0,00"
+                    required
+                  />
+                </Field>
+                <Field id="product-stock" label="Stock atual">
+                  <input
+                    id="product-stock"
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    inputMode="decimal"
+                    value={form.stock}
+                    onChange={(e) => setF({ stock: e.target.value })}
+                    placeholder="0"
+                  />
+                </Field>
+                <Field id="product-minimum" label="Stock mínimo">
+                  <input
+                    id="product-minimum"
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    inputMode="decimal"
+                    value={form.stockMinimo}
+                    onChange={(e) => setF({ stockMinimo: e.target.value })}
+                  />
+                </Field>
+                <Field id="product-unit" label="Unidade">
+                  <select
+                    id="product-unit"
+                    value={form.unidade}
+                    onChange={(e) => setF({ unidade: e.target.value })}
+                  >
+                    {UNIDADES.map((unit) => (
+                      <option key={unit}>{unit}</option>
+                    ))}
+                    {!UNIDADES.includes(form.unidade) && <option>{form.unidade}</option>}
+                  </select>
+                </Field>
+              </div>
+              <Field id="product-category" label="Categoria *">
+                <select
+                  id="product-category"
+                  value={form.categoriaId}
+                  onChange={(e) => setF({ categoriaId: e.target.value })}
+                  required
                 >
-                  {scanning ? <Loader2 size={16} className="spin" /> : <ScanLine size={16} />}
-                  {scanning ? 'A ler...' : 'Scan'}
+                  <option value="">Selecionar categoria</option>
+                  {categorias.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-primary" disabled={!categorias.length}>
+                  {save.pending && <Spinner />}
+                  {save.pending ? 'A guardar…' : editing ? 'Guardar alterações' : 'Criar produto'}
                 </button>
               </div>
-            </div>
-
-            <div className="form-group">
-              <label>Nome *</label>
-              <input value={f.nome} onChange={e => setF({ nome: e.target.value })} placeholder="Nome do produto" />
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <div className="form-group">
-                <label>Preço (MT) *</label>
-                <input type="number" min="0" step="0.01" value={f.preco} onChange={e => setF({ preco: e.target.value })} placeholder="0.00" />
-              </div>
-              <div className="form-group">
-                <label>Stock Actual</label>
-                <input type="number" min="0" step="0.001" value={f.stock} onChange={e => setF({ stock: e.target.value })} placeholder="0" />
-              </div>
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <div className="form-group">
-                <label>Stock Mínimo</label>
-                <input type="number" min="0" step="0.001" value={f.stockMinimo} onChange={e => setF({ stockMinimo: e.target.value })} placeholder="5" />
-              </div>
-              <div className="form-group">
-                <label>Unidade</label>
-                <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-                  {UNIDADES.map(u => (
-                    <button key={u} type="button" onClick={() => setF({ unidade: u })}
-                      style={{ padding:'6px 10px', borderRadius:6, border:'2px solid',
-                        borderColor: f.unidade === u ? 'var(--color-primary)' : 'var(--border)',
-                        background: f.unidade === u ? 'var(--color-primary)' : 'transparent',
-                        color: f.unidade === u ? '#fff' : 'var(--text-primary)',
-                        fontWeight: f.unidade === u ? 700 : 400, cursor:'pointer', fontSize:12 }}>
-                      {u}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Categoria *</label>
-              <select value={f.categoriaId} onChange={e => setF({ categoriaId: e.target.value })}>
-                <option value="">— Selecionar —</option>
-                {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-              </select>
-            </div>
-
-            <div className="modal-actions">
-              <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleSave}>{editing ? 'Guardar' : 'Criar Produto'}</button>
-            </div>
-          </div>
-        </div>
+            </fieldset>
+          </form>
+        </Modal>
+      )}
+      {deleting && (
+        <ConfirmDialog
+          title="Remover produto?"
+          onClose={() => setDeleting(null)}
+          onConfirm={handleDelete}
+          busy={remove.pending}
+          error={remove.error}
+          danger
+          label="Remover produto"
+        >
+          <p>
+            Quer remover <strong>{deleting.nome}</strong>? Esta ação é permanente.
+          </p>
+        </ConfirmDialog>
       )}
     </div>
   );
-};
-
-export default ProdutosPage;
+}

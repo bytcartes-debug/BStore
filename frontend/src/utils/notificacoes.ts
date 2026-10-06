@@ -1,4 +1,7 @@
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { apiFetch } from './api';
+import { formatMoney } from './decimal';
+import type { DecimalValue } from './decimal';
 
 // Pedir permissão ao utilizador (chamar 1x no arranque)
 export async function pedirPermissaoNotificacoes() {
@@ -9,7 +12,7 @@ export async function pedirPermissaoNotificacoes() {
 // Verifica stock baixo e dispara notificações
 export async function verificarStockBaixo() {
   try {
-    const res = await fetch('/api/produtos');
+    const res = await apiFetch('/api/produtos');
     const produtos: any[] = await res.json();
 
     const baixo = produtos.filter(p => p.stock <= p.stockMinimo);
@@ -27,7 +30,7 @@ export async function verificarStockBaixo() {
       notifications: [
         {
           id: 1000,
-          title: `⚠️ Stock Baixo — ${baixo.length} produto(s)`,
+          title: `Stock baixo — ${baixo.length} produto(s)`,
           body: baixo.map(p => `• ${p.nome}: ${p.stock} em stock`).join('\n'),
           schedule: { at: new Date(Date.now() + 500) },
           sound: undefined,
@@ -44,13 +47,13 @@ export async function verificarStockBaixo() {
 }
 
 // Notificação de venda registada com sucesso
-export async function notificarVendaRegistada(produto: string, total: number) {
+export async function notificarVendaRegistada(produto: string, total: DecimalValue) {
   await LocalNotifications.schedule({
     notifications: [
       {
         id: 2000 + Math.floor(Math.random() * 1000),
-        title: '✅ Venda Registada',
-        body: `${produto} — MT ${total.toFixed(2)}`,
+        title: 'Venda registada',
+        body: `${produto} — ${formatMoney(total)}`,
         schedule: { at: new Date(Date.now() + 300) },
         sound: undefined,
         smallIcon: 'ic_stat_icon_config_sample',

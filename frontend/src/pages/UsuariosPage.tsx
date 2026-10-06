@@ -1,208 +1,389 @@
-import React, { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, X, RefreshCw, AlertTriangle } from 'lucide-react';
-import { apiFetch } from '../utils/api';
+import { useToast } from '../utils/toast';
+import { useState } from 'react';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  RefreshCw,
+  AlertTriangle,
+  Shield,
+  CircleX,
+  Infinity as InfinityIcon,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
+import { apiRequest } from '../utils/api';
+import { useMutation, useResource } from '../utils/useResource';
+import type { UserSession } from '../App';
+import {
+  PageHeading,
+  SearchField,
+  Loading,
+  LoadError,
+  EmptyState,
+  Modal,
+  Field,
+  Notice,
+  Spinner,
+  ConfirmDialog,
+} from '../components/UI';
 
 interface Usuario {
-  id: number; nome: string; email: string; role: string;
-  diasAcesso: number | null; dataExpiracao: string | null;
-  diasRestantes: number; expirado: boolean;
+  id: number;
+  nome: string;
+  email: string;
+  role: string;
+  diasAcesso: number | null;
+  dataExpiracao: string | null;
+  diasRestantes: number;
+  expirado: boolean;
 }
-
-const OPCOES_DIAS = [
+const days = [
   { label: '14 dias', value: 14 },
   { label: '30 dias', value: 30 },
   { label: 'Permanente', value: 0 },
 ];
+const emptyForm = { nome: '', email: '', password: '', role: 'operator', diasAcesso: 30 };
+const loadUsers = (signal: AbortSignal) => apiRequest<Usuario[]>('/api/usuarios', { signal });
 
-const UsuariosPage: React.FC = () => {
-  const session    = JSON.parse(localStorage.getItem('currentUser') || '{}');
-  const isSuperuser = session.role === 'superuser';
+function AccessBadge({ user }: { user: Usuario }) {
+  if (user.role === 'superuser' || user.diasRestantes === -1)
+    return (
+      <span className="badge badge-success">
+        <InfinityIcon size={14} /> Permanente
+      </span>
+    );
+  if (user.expirado)
+    return (
+      <span className="badge badge-danger">
+        <CircleX size={14} /> Expirado
+      </span>
+    );
+  return (
+    <span className={`badge ${user.diasRestantes <= 7 ? 'badge-warning' : 'badge-info'}`}>
+      {user.diasRestantes <= 7 && <AlertTriangle size={14} />}
+      {user.diasRestantes} dia(s) restantes
+    </span>
+  );
+}
 
-  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+export default function UsuariosPage({ user }: { user: UserSession }) {
+  const { data, loading, error, reload } = useResource(loadUsers);
+  const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing]   = useState<Usuario | null>(null);
-  const [form, setForm]         = useState({ nome: '', email: '', password: '', role: 'operator', diasAcesso: 30 });
-  const [loading, setLoading]   = useState(false);
-  const [erro, setErro]         = useState<string | null>(null);
-
-  const load = async () => {
-    try {
-      const r = await apiFetch('/api/usuarios');
-      if (r.ok) setUsuarios(await r.json());
-    } catch {}
-  };
-
-  useEffect(() => { load(); }, []);
-
+  const [editing, setEditing] = useState<Usuario | null>(null);
+  const [deleting, setDeleting] = useState<Usuario | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const [showPassword, setShowPassword] = useState(false);
+  const save = useMutation();
+  const remove = useMutation();
+  const toast = useToast();
+  const users = data || [];
+  const filtered = users.filter((item) =>
+    `${item.nome} ${item.email}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
+  );
   const openNew = () => {
     setEditing(null);
-    setForm({ nome: '', email: '', password: '', role: 'operator', diasAcesso: 30 });
-    setErro(null);
+    setForm(emptyForm);
+    setShowPassword(false);
+    save.setError(null);
     setShowModal(true);
   };
-
-  const openEdit = (u: Usuario) => {
-    setEditing(u);
-    setForm({ nome: u.nome, email: u.email, password: '', role: u.role, diasAcesso: u.diasAcesso ?? 0 });
-    setErro(null);
+  const openEdit = (item: Usuario) => {
+    setEditing(item);
+    setForm({
+      nome: item.nome,
+      email: item.email,
+      password: '',
+      role: item.role,
+      diasAcesso: item.diasAcesso ?? 0,
+    });
+    setShowPassword(false);
+    save.setError(null);
     setShowModal(true);
   };
-
-  const handleSave = async () => {
-    if (!form.nome.trim() || !form.email.trim()) return;
-    if (!editing && !form.password) { setErro('A senha é obrigatória para novos utilizadores.'); return; }
-    setLoading(true); setErro(null);
-    try {
-      const body: any = { nome: form.nome.trim(), email: form.email.trim(), role: form.role, diasAcesso: form.diasAcesso };
-      if (form.password) body.password = form.password;
-      const url    = editing ? `/api/usuarios/${editing.id}` : '/api/usuarios';
-      const method = editing ? 'PUT' : 'POST';
-      const r = await apiFetch(url, { method, body: JSON.stringify(body) });
-      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.erro || `Erro ${r.status}`); }
+  const handleSave = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!form.nome.trim()) {
+      save.setError('Preencha o nome do utilizador.');
+      return;
+    }
+    void save.run(async () => {
+      const body = {
+        nome: form.nome.trim(),
+        email: form.email.trim(),
+        role: form.role,
+        diasAcesso: form.diasAcesso,
+        ...(form.password ? { password: form.password } : {}),
+      };
+      await apiRequest(editing ? `/api/usuarios/${editing.id}` : '/api/usuarios', {
+        method: editing ? 'PUT' : 'POST',
+        body: JSON.stringify(body),
+      });
       setShowModal(false);
-      await load();
-    } catch (e: any) { setErro(e.message || 'Erro ao guardar.'); }
-    finally { setLoading(false); }
+      toast(editing ? 'Utilizador guardado.' : 'Utilizador criado.');
+      void reload();
+      if (editing?.id === user.userId && (form.password || form.role !== user.role))
+        window.dispatchEvent(new Event('bstore:unauthenticated'));
+    });
   };
-
-  const handleDelete = async (u: Usuario) => {
-    if (!confirm(`Remover o utilizador "${u.nome}"?`)) return;
-    try {
-      const r = await apiFetch(`/api/usuarios/${u.id}`, { method: 'DELETE' });
-      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.erro || 'Erro ao remover.'); return; }
-      await load();
-    } catch { alert('Não foi possível ligar ao servidor.'); }
-  };
-
-  const handleRenovar = (u: Usuario) => {
-    setEditing(u);
-    setForm({ nome: u.nome, email: u.email, password: '', role: u.role, diasAcesso: u.diasAcesso ?? 30 });
-    setErro(null);
-    setShowModal(true);
-  };
-
-  const badgeExpiracao = (u: Usuario) => {
-    if (u.role === 'superuser') return null;
-    if (u.expirado)
-      return <span className="badge badge-danger">⛔ Expirado</span>;
-    if (u.diasRestantes === -1)
-      return <span className="badge badge-success">∞ Permanente</span>;
-    if (u.diasRestantes <= 7)
-      return <span className="badge badge-warning"><AlertTriangle size={12} style={{marginRight:3}}/>{u.diasRestantes}d restantes</span>;
-    return <span className="badge badge-info">{u.diasRestantes}d restantes</span>;
-  };
-
+  const handleDelete = () =>
+    void remove.run(async () => {
+      if (!deleting) return;
+      await apiRequest(`/api/usuarios/${deleting.id}`, { method: 'DELETE' });
+      setDeleting(null);
+      toast('Utilizador removido.');
+      void reload();
+    });
   return (
     <div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20, flexWrap:'wrap', gap:12 }}>
-        <div>
-          <h2 style={{ fontSize:22, fontWeight:700, color:'var(--text-primary)' }}>Utilizadores</h2>
-          <p style={{ fontSize:14, color:'var(--text-secondary)', marginTop:4 }}>Gerir acessos ao sistema</p>
-        </div>
-        {isSuperuser && (
-          <button className="btn-primary" onClick={openNew}><Plus size={18} /> Novo Utilizador</button>
-        )}
+      <PageHeading
+        title="Utilizadores"
+        description="Controle quem entra na loja e durante quanto tempo."
+      >
+        <button className="btn-primary" onClick={openNew}>
+          <Plus size={18} /> Novo utilizador
+        </button>
+      </PageHeading>
+      <div className="toolbar">
+        <SearchField value={search} onChange={setSearch} label="Pesquisar por nome ou email" />
+        <span className="result-count">{filtered.length} utilizador(es)</span>
       </div>
-
-      <div className="card">
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Acesso</th>{isSuperuser && <th>Ações</th>}</tr>
-            </thead>
-            <tbody>
-              {usuarios.length === 0
-                ? <tr><td colSpan={5} style={{ textAlign:'center', color:'var(--text-muted)', padding:24 }}>Nenhum utilizador</td></tr>
-                : usuarios.map(u => (
-                  <tr key={u.id}>
-                    <td style={{ fontWeight:600 }}>{u.nome}</td>
-                    <td style={{ color:'var(--text-secondary)' }}>{u.email}</td>
-                    <td>
-                      <span className={`badge ${u.role === 'superuser' ? 'badge-warning' : 'badge-info'}`}>
-                        {u.role === 'superuser' ? '⭐ Superusuário' : 'Operador'}
-                      </span>
-                    </td>
-                    <td>{badgeExpiracao(u)}</td>
-                    {isSuperuser && (
-                      <td style={{ display:'flex', gap:6 }}>
-                        {u.role !== 'superuser' && (
-                          <button className="icon-btn" title="Renovar acesso" onClick={() => handleRenovar(u)}>
-                            <RefreshCw size={14} />
-                          </button>
-                        )}
-                        <button className="icon-btn" onClick={() => openEdit(u)}><Pencil size={14} /></button>
-                        <button className="icon-btn delete" onClick={() => handleDelete(u)}><Trash2 size={14} /></button>
-                      </td>
-                    )}
-                  </tr>
-                ))
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {showModal && (
-        <div className="modal-overlay">
-          <div className="modal-container">
-            <div className="modal-header">
-              <h3>{editing ? 'Editar Utilizador' : 'Novo Utilizador'}</h3>
-              <button className="modal-close-btn" onClick={() => setShowModal(false)}><X size={20} /></button>
-            </div>
-            {erro && <p style={{ color:'var(--color-danger)', fontSize:13, background:'rgba(239,68,68,0.1)', borderRadius:6, padding:'8px 10px', marginBottom:8 }}>⚠️ {erro}</p>}
-
-            <div className="form-group"><label>Nome *</label><input value={form.nome} onChange={e => setForm({...form, nome:e.target.value})} placeholder="Nome completo" /></div>
-            <div className="form-group"><label>E-mail *</label><input type="email" value={form.email} onChange={e => setForm({...form, email:e.target.value})} placeholder="email@exemplo.com" /></div>
-            <div className="form-group">
-              <label>{editing ? 'Nova Senha (deixe vazio para manter)' : 'Senha *'}</label>
-              <input type="password" value={form.password} onChange={e => setForm({...form, password:e.target.value})} placeholder={editing ? 'Nova senha (opcional)' : 'Senha de acesso'} />
-            </div>
-            <div className="form-group">
-              <label>Perfil</label>
-              <select value={form.role} onChange={e => setForm({...form, role:e.target.value})}>
-                <option value="operator">Operador</option>
-                <option value="superuser">Superusuário</option>
-              </select>
-            </div>
-            {form.role !== 'superuser' && (
-              <div className="form-group">
-                <label>⏱️ {editing ? 'Repor Acesso' : 'Tempo de Acesso'}</label>
-                <div style={{ display:'flex', gap:8 }}>
-                  {OPCOES_DIAS.map(op => (
-                    <button
-                      key={op.value}
-                      type="button"
-                      onClick={() => setForm({...form, diasAcesso: op.value})}
-                      style={{
-                        flex:1, padding:'8px 4px', borderRadius:8, border:'2px solid',
-                        borderColor: form.diasAcesso === op.value ? 'var(--color-primary)' : 'var(--border)',
-                        background: form.diasAcesso === op.value ? 'var(--color-primary)' : 'transparent',
-                        color: form.diasAcesso === op.value ? '#fff' : 'var(--text-primary)',
-                        fontWeight: form.diasAcesso === op.value ? 700 : 400,
-                        cursor:'pointer', fontSize:13,
-                      }}
-                    >{op.label}</button>
-                  ))}
-                </div>
-                {editing && form.diasAcesso > 0 && (
-                  <p style={{ fontSize:12, color:'var(--text-secondary)', marginTop:6 }}>
-                    ℹ️ A expiração será reposta para <b>{form.diasAcesso} dias a partir de hoje</b>.
-                  </p>
-                )}
+      {error && <LoadError message={error} retry={reload} />}
+      {loading && !data ? (
+        <Loading />
+      ) : (
+        data && (
+          <div className="card">
+            {filtered.length === 0 ? (
+              <EmptyState
+                title={
+                  users.length ? 'Nenhum utilizador encontrado' : 'Nenhum utilizador registado'
+                }
+                description={
+                  users.length
+                    ? 'Experimente outro nome ou email.'
+                    : 'Crie um utilizador para dar acesso ao sistema.'
+                }
+                icon={<Shield size={28} />}
+              />
+            ) : (
+              <div className="table-wrapper">
+                <table className="responsive-table">
+                  <caption className="sr-only">Utilizadores e permissões de acesso</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Nome</th>
+                      <th scope="col">Email</th>
+                      <th scope="col">Perfil</th>
+                      <th scope="col">Acesso</th>
+                      <th scope="col">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((item) => (
+                      <tr key={item.id}>
+                        <td className="cell-name" data-label="Nome">
+                          {item.nome}
+                          {item.id === user.userId && (
+                            <span className="self-label"> (a sua conta)</span>
+                          )}
+                        </td>
+                        <td className="cell-secondary" data-label="Email">
+                          {item.email}
+                        </td>
+                        <td data-label="Perfil">
+                          <span
+                            className={`badge ${item.role === 'superuser' ? 'badge-warning' : 'badge-info'}`}
+                          >
+                            {item.role === 'superuser' && <Shield size={14} />}
+                            {item.role === 'superuser' ? 'Administrador' : 'Operador'}
+                          </span>
+                        </td>
+                        <td data-label="Acesso">
+                          <div className="access-cell">
+                            <AccessBadge user={item} />
+                            {item.dataExpiracao && <small>Até {item.dataExpiracao}</small>}
+                          </div>
+                        </td>
+                        <td data-label="Ações">
+                          <div className="action-group">
+                            {item.role !== 'superuser' && (
+                              <button
+                                className="icon-btn"
+                                title="Renovar acesso"
+                                aria-label={`Renovar acesso de ${item.nome}`}
+                                onClick={() => openEdit(item)}
+                              >
+                                <RefreshCw size={17} />
+                              </button>
+                            )}
+                            <button
+                              className="icon-btn"
+                              title="Editar utilizador"
+                              aria-label={`Editar ${item.nome}`}
+                              onClick={() => openEdit(item)}
+                            >
+                              <Pencil size={17} />
+                            </button>
+                            <button
+                              className="icon-btn delete"
+                              title={
+                                item.id === user.userId
+                                  ? 'Não pode remover a própria conta'
+                                  : 'Remover utilizador'
+                              }
+                              aria-label={`Remover ${item.nome}`}
+                              disabled={item.id === user.userId}
+                              onClick={() => {
+                                remove.setError(null);
+                                setDeleting(item);
+                              }}
+                            >
+                              <Trash2 size={17} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
-
-            <div className="modal-actions">
-              <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleSave} disabled={loading}>
-                {loading ? 'A guardar...' : (editing ? 'Guardar' : 'Criar')}
-              </button>
-            </div>
           </div>
-        </div>
+        )
+      )}
+      {showModal && (
+        <Modal
+          title={editing ? 'Editar utilizador' : 'Novo utilizador'}
+          onClose={() => setShowModal(false)}
+          busy={save.pending}
+        >
+          <form onSubmit={handleSave}>
+            <p className="required-note">Os campos com * são obrigatórios.</p>
+            {save.error && <Notice>{save.error}</Notice>}
+            <fieldset disabled={save.pending}>
+              <Field id="user-name" label="Nome *">
+                <input
+                  id="user-name"
+                  value={form.nome}
+                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                  placeholder="Nome completo"
+                  required
+                />
+              </Field>
+              <Field id="user-email" label="Email *">
+                <input
+                  id="user-email"
+                  type="email"
+                  autoCapitalize="none"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  placeholder="nome@exemplo.com"
+                  required
+                />
+              </Field>
+              <Field
+                id="user-password"
+                label={editing ? 'Nova senha' : 'Senha *'}
+                hint={editing ? 'Deixe em branco para manter a senha atual.' : undefined}
+              >
+                <div className="password-field">
+                  <input
+                    id="user-password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    minLength={4}
+                    required={!editing}
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    aria-describedby={editing ? 'user-password-hint' : undefined}
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                    aria-pressed={showPassword}
+                    onClick={() => setShowPassword((value) => !value)}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </Field>
+              <Field id="user-role" label="Perfil">
+                <select
+                  id="user-role"
+                  value={form.role}
+                  onChange={(e) => setForm({ ...form, role: e.target.value })}
+                >
+                  <option value="operator">Operador</option>
+                  <option value="superuser">Administrador</option>
+                </select>
+              </Field>
+              {form.role !== 'superuser' && (
+                <fieldset className="form-group">
+                  <legend className="field-label">
+                    {editing ? 'Renovar acesso' : 'Tempo de acesso'}
+                  </legend>
+                  <div className="segmented">
+                    {days.map((day) => (
+                      <button
+                        key={day.value}
+                        type="button"
+                        aria-pressed={form.diasAcesso === day.value}
+                        onClick={() => setForm({ ...form, diasAcesso: day.value })}
+                      >
+                        {day.label}
+                      </button>
+                    ))}
+                    {!days.some((day) => day.value === form.diasAcesso) && (
+                      <button type="button" aria-pressed="true">
+                        {form.diasAcesso} dias
+                      </button>
+                    )}
+                  </div>
+                  {editing && (
+                    <p className="field-hint">
+                      {form.diasAcesso > 0
+                        ? `Ao guardar, o acesso será renovado por ${form.diasAcesso} dias a partir de hoje.`
+                        : 'Ao guardar, o acesso passa a ser permanente.'}
+                    </p>
+                  )}
+                </fieldset>
+              )}
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-primary">
+                  {save.pending && <Spinner />}
+                  {save.pending
+                    ? 'A guardar…'
+                    : editing
+                      ? 'Guardar alterações'
+                      : 'Criar utilizador'}
+                </button>
+              </div>
+            </fieldset>
+          </form>
+        </Modal>
+      )}
+      {deleting && (
+        <ConfirmDialog
+          title="Remover utilizador?"
+          onClose={() => setDeleting(null)}
+          onConfirm={handleDelete}
+          busy={remove.pending}
+          error={remove.error}
+          label="Remover utilizador"
+          danger
+        >
+          <p>
+            O utilizador <strong>{deleting.nome}</strong> deixará de ter acesso ao sistema. Esta
+            ação é permanente.
+          </p>
+        </ConfirmDialog>
       )}
     </div>
   );
-};
-
-export default UsuariosPage;
+}

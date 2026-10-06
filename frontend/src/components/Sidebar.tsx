@@ -1,6 +1,17 @@
-import React from 'react';
-import { Store, LayoutDashboard, Tag, Package, ShoppingCart, Users, Shield, UserCircle, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Store,
+  LayoutDashboard,
+  Tag,
+  Package,
+  ShoppingCart,
+  Users,
+  Shield,
+  UserCircle,
+  X,
+} from 'lucide-react';
 import type { PageId } from '../App';
+import { useDialog } from '../utils/useDialog';
 import './Sidebar.css';
 
 interface SidebarProps {
@@ -10,68 +21,110 @@ interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
 }
+const navItems = [
+  { id: 'dashboard', label: 'Visão geral', icon: LayoutDashboard },
+  { id: 'vendas', label: 'Vendas', icon: ShoppingCart },
+  { id: 'produtos', label: 'Produtos', icon: Package },
+  { id: 'categorias', label: 'Categorias', icon: Tag },
+  { id: 'devedores', label: 'Devedores', icon: Users },
+] as const;
 
-const navItems: { id: PageId; label: string; icon: React.ReactNode }[] = [
-  { id: 'dashboard',  label: 'Dashboard',   icon: <LayoutDashboard size={18} /> },
-  { id: 'categorias', label: 'Categorias',   icon: <Tag size={18} /> },
-  { id: 'produtos',   label: 'Produtos',     icon: <Package size={18} /> },
-  { id: 'vendas',     label: 'Vendas',       icon: <ShoppingCart size={18} /> },
-  { id: 'devedores',  label: 'Devedores',    icon: <Users size={18} /> },
-];
+export default function Sidebar({
+  currentPage,
+  setCurrentPage,
+  userRole,
+  isOpen,
+  onClose,
+}: SidebarProps) {
+  const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 767px)').matches);
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 767px)');
+    const change = () => setMobile(query.matches);
+    query.addEventListener('change', change);
+    return () => query.removeEventListener('change', change);
+  }, []);
+  useDialog(ref, mobile && isOpen);
 
-const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, userRole, isOpen, onClose }) => {
-  return (
+  const content = (
     <>
-      {isOpen && <div className="sidebar-overlay" onClick={onClose} />}
-      <aside className={`sidebar ${isOpen ? 'sidebar-open' : ''}`}>
-        <div className="sidebar-logo">
-          <div className="sidebar-logo-icon">
-            <Store size={22} />
-          </div>
-          <span className="sidebar-logo-text">Flex Stock</span>
-          <button className="sidebar-close-btn" onClick={onClose}>
+      <div className="sidebar-logo">
+        <span className="sidebar-logo-icon">
+          <Store size={24} />
+        </span>
+        <div>
+          <span className="sidebar-logo-text">BStore</span>
+          <span className="sidebar-tagline">Gestão de loja</span>
+        </div>
+        {mobile && (
+          <button className="icon-btn sidebar-close" aria-label="Fechar menu" onClick={onClose}>
             <X size={20} />
           </button>
-        </div>
-
-        <nav className="sidebar-nav">
-          <p className="sidebar-section-label">Principal</p>
-          {navItems.map(item => (
-            <button
-              key={item.id}
-              className={`sidebar-item ${currentPage === item.id ? 'active' : ''}`}
-              onClick={() => setCurrentPage(item.id)}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </button>
-          ))}
-
-          {userRole === 'superuser' && (
-            <>
-              <p className="sidebar-section-label" style={{ marginTop: '16px' }}>Administração</p>
-              <button
-                className={`sidebar-item ${currentPage === 'usuarios' ? 'active' : ''}`}
-                onClick={() => setCurrentPage('usuarios')}
-              >
-                <Shield size={18} />
-                <span>Utilizadores</span>
-              </button>
-            </>
-          )}
-
-          <p className="sidebar-section-label" style={{ marginTop: '16px' }}>Conta</p>
+        )}
+      </div>
+      <nav className="sidebar-nav" aria-label="Navegação principal">
+        {navItems.map(({ id, label, icon: Icon }) => (
           <button
-            className={`sidebar-item ${currentPage === 'perfil' ? 'active' : ''}`}
-            onClick={() => setCurrentPage('perfil')}
+            key={id}
+            className={`sidebar-item${currentPage === id ? ' active' : ''}`}
+            aria-current={currentPage === id ? 'page' : undefined}
+            onClick={() => setCurrentPage(id)}
           >
-            <UserCircle size={18} />
-            <span>Perfil & Segurança</span>
+            <Icon size={19} aria-hidden="true" />
+            <span>{label}</span>
           </button>
-        </nav>
-      </aside>
+        ))}
+        {userRole === 'superuser' && (
+          <div className="sidebar-section">
+            <p>Acessos</p>
+            <button
+              className={`sidebar-item${currentPage === 'usuarios' ? ' active' : ''}`}
+              aria-current={currentPage === 'usuarios' ? 'page' : undefined}
+              onClick={() => setCurrentPage('usuarios')}
+            >
+              <Shield size={19} />
+              <span>Utilizadores</span>
+            </button>
+          </div>
+        )}
+      </nav>
+      <div className="sidebar-footer">
+        <button
+          className={`sidebar-item${currentPage === 'perfil' ? ' active' : ''}`}
+          aria-current={currentPage === 'perfil' ? 'page' : undefined}
+          onClick={() => setCurrentPage('perfil')}
+        >
+          <UserCircle size={19} />
+          <span>Perfil e segurança</span>
+        </button>
+        <p>O seu negócio, organizado.</p>
+      </div>
     </>
   );
-};
-
-export default Sidebar;
+  if (mobile)
+    return isOpen ? (
+      <dialog
+        id="navigation-menu"
+        ref={ref}
+        className="sidebar sidebar-dialog"
+        aria-label="Menu de navegação"
+        onCancel={(event) => {
+          event.preventDefault();
+          onClose();
+        }}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) {
+            const box = event.currentTarget.getBoundingClientRect();
+            if (event.clientX > box.right) onClose();
+          }
+        }}
+      >
+        {content}
+      </dialog>
+    ) : null;
+  return (
+    <aside id="navigation-menu" className="sidebar">
+      {content}
+    </aside>
+  );
+}

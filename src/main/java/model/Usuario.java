@@ -1,5 +1,7 @@
 package model;
 
+import org.mindrot.jbcrypt.BCrypt;
+
 import javax.persistence.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -20,83 +22,106 @@ public class Usuario {
     @Column(nullable = false, unique = true, length = 150)
     private String email;
 
-    @Column(name = "password_hash", nullable = false, length = 64)
+    @Column(name = "password_hash", nullable = false, length = 100)
     private String passwordHash;
 
     @Column(nullable = false, length = 20)
-    private String role; // "superuser" ou "operator"
+    private String role;
 
-    /** Null = acesso permanente. Preenchido = expira nessa data. */
     @Column(name = "data_expiracao")
     private LocalDate dataExpiracao;
 
-    /** 14, 30 ou 0 (permanente) — para referência ao renovar. */
     @Column(name = "dias_acesso")
     private Integer diasAcesso;
 
-    public Usuario() {}
+    public Usuario() {
+    }
 
     public Usuario(String nome, String email, String senhaPlana, String role) {
-        this.nome         = nome;
-        this.email        = email.toLowerCase().trim();
-        this.passwordHash = hashSenha(senhaPlana);
-        this.role         = role;
+        this.nome = nome;
+        this.email = email.toLowerCase().trim();
+        this.role = role;
+        setSenha(senhaPlana);
     }
 
     public boolean verificarSenha(String senhaPlana) {
-        return hashSenha(senhaPlana).equals(this.passwordHash);
+        if (senhaPlana == null || passwordHash == null) {
+            return false;
+        }
+        if (passwordHash.startsWith("$2a$") || passwordHash.startsWith("$2b$") || passwordHash.startsWith("$2y$")) {
+            return BCrypt.checkpw(senhaPlana, passwordHash);
+        }
+        return MessageDigest.isEqual(hashLegado(senhaPlana).getBytes(StandardCharsets.US_ASCII), passwordHash.getBytes(StandardCharsets.US_ASCII));
     }
 
-    /** Retorna true se a conta está expirada. Superuser e permanente nunca expiram. */
+    public boolean usaHashLegado() {
+        return passwordHash != null && !passwordHash.startsWith("$2");
+    }
+
     public boolean isExpirado() {
-        if ("superuser".equals(role)) return false;
-        if (dataExpiracao == null) return false;
+        if ("superuser".equals(role) || dataExpiracao == null) {
+            return false;
+        }
         return LocalDate.now().isAfter(dataExpiracao);
     }
 
-    /** Dias restantes. -1 = permanente/superuser. >= 0 = dias até expirar. */
     public long diasRestantes() {
-        if ("superuser".equals(role) || dataExpiracao == null) return -1L;
-        long d = ChronoUnit.DAYS.between(LocalDate.now(), dataExpiracao);
-        return Math.max(d, 0);
+        if ("superuser".equals(role) || dataExpiracao == null) {
+            return -1L;
+        }
+        return Math.max(ChronoUnit.DAYS.between(LocalDate.now(), dataExpiracao), 0);
     }
 
-    /** Define expiração a partir de hoje + dias. 0 = permanente. */
     public void aplicarDiasAcesso(int dias) {
-        this.diasAcesso    = dias;
-        this.dataExpiracao = (dias > 0) ? LocalDate.now().plusDays(dias) : null;
+        if (dias < 0) {
+            throw new IllegalArgumentException("Os dias de acesso não podem ser negativos.");
+        }
+        this.diasAcesso = dias;
+        this.dataExpiracao = dias > 0 ? LocalDate.now().plusDays(dias) : null;
     }
 
-    public static String hashSenha(String senha) {
+    private static String hashLegado(String senha) {
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] hash = md.digest(senha.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hash) sb.append(String.format("%02x", b));
-            return sb.toString();
-        } catch (Exception e) { return senha; }
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(senha.getBytes(StandardCharsets.UTF_8));
+            StringBuilder value = new StringBuilder(64);
+            for (byte b : hash) {
+                value.append(String.format("%02x", b));
+            }
+            return value.toString();
+        } catch (Exception e) {
+            throw new IllegalStateException("Não foi possível verificar a palavra-passe.", e);
+        }
     }
 
-    // ── Getters / Setters ──────────────────────────────────────────────
-    public Long   getId()        { return id; }
-    public void   setId(Long id) { this.id = id; }
+    private static void validarSenha(String senha) {
+        if (senha == null || senha.length() < 8) {
+            throw new IllegalArgumentException("A palavra-passe deve ter pelo menos 8 caracteres.");
+        }
+    }
 
-    public String getNome()            { return nome; }
-    public void   setNome(String n)    { this.nome = n; }
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-    public String getEmail()             { return email; }
-    public void   setEmail(String e)     { this.email = e.toLowerCase().trim(); }
+    public String getNome() { return nome; }
+    public void setNome(String nome) { this.nome = nome; }
 
-    public String getPasswordHash()      { return passwordHash; }
-    public void   setPasswordHash(String h) { this.passwordHash = h; }
-    public void   setSenha(String s)     { this.passwordHash = hashSenha(s); }
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email.toLowerCase().trim(); }
 
-    public String getRole()            { return role; }
-    public void   setRole(String r)    { this.role = r; }
+    public String getPasswordHash() { return passwordHash; }
+    public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
+    public void setSenha(String senha) {
+        validarSenha(senha);
+        this.passwordHash = BCrypt.hashpw(senha, BCrypt.gensalt(12));
+    }
 
-    public LocalDate getDataExpiracao()      { return dataExpiracao; }
-    public void      setDataExpiracao(LocalDate d) { this.dataExpiracao = d; }
+    public String getRole() { return role; }
+    public void setRole(String role) { this.role = role; }
 
-    public Integer getDiasAcesso()       { return diasAcesso; }
-    public void    setDiasAcesso(Integer d) { this.diasAcesso = d; }
+    public LocalDate getDataExpiracao() { return dataExpiracao; }
+    public void setDataExpiracao(LocalDate dataExpiracao) { this.dataExpiracao = dataExpiracao; }
+
+    public Integer getDiasAcesso() { return diasAcesso; }
+    public void setDiasAcesso(Integer diasAcesso) { this.diasAcesso = diasAcesso; }
 }

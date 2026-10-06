@@ -8,21 +8,37 @@ import java.util.List;
 
 public class DevedorDAO {
 
-    public List<Devedor> listarTodos(Long uid) {
+    public List<Devedor> listarTodos(Long usuarioId) {
         EntityManager em = JPAUtil.getEntityManager();
         try {
             return em.createQuery(
-                "SELECT d FROM Devedor d WHERE d.usuarioId = :uid ORDER BY d.data DESC",
+                "SELECT d FROM Devedor d WHERE d.usuarioId = :usuarioId ORDER BY d.data DESC",
                 Devedor.class)
-                .setParameter("uid", uid)
+                .setParameter("usuarioId", usuarioId)
                 .getResultList();
-        } finally { em.close(); }
+        } finally {
+            em.close();
+        }
     }
 
-    public Devedor buscarPorId(Long id) {
+    public long contarTodos(Long usuarioId) {
+        return JPAUtil.emTransacao(usuarioId, em -> em.createQuery(
+            "SELECT COUNT(d) FROM Devedor d WHERE d.usuarioId = :uid", Long.class)
+            .setParameter("uid", usuarioId).getSingleResult());
+    }
+
+    public Devedor buscarPorId(Long id, Long usuarioId) {
         EntityManager em = JPAUtil.getEntityManager();
-        try { return em.find(Devedor.class, id); }
-        finally { em.close(); }
+        try {
+            List<Devedor> devedores = em.createQuery(
+                "SELECT d FROM Devedor d WHERE d.id = :id AND d.usuarioId = :usuarioId", Devedor.class)
+                .setParameter("id", id)
+                .setParameter("usuarioId", usuarioId)
+                .getResultList();
+            return devedores.isEmpty() ? null : devedores.get(0);
+        } finally {
+            em.close();
+        }
     }
 
     public Devedor salvar(Devedor devedor) {
@@ -33,22 +49,37 @@ public class DevedorDAO {
             else devedor = em.merge(devedor);
             em.getTransaction().commit();
             return devedor;
-        } catch (Exception e) {
-            em.getTransaction().rollback();
+        } catch (RuntimeException e) {
+            if (em.getTransaction().isActive()) em.getTransaction().rollback();
             throw e;
-        } finally { em.close(); }
+        } finally {
+            em.close();
+        }
     }
 
-    public void deletar(Long id) {
+    public boolean deletar(Long id, Long usuarioId) {
         EntityManager em = JPAUtil.getEntityManager();
         try {
             em.getTransaction().begin();
-            Devedor d = em.find(Devedor.class, id);
-            if (d != null) em.remove(d);
+            Devedor devedor = em.createQuery(
+                "SELECT d FROM Devedor d WHERE d.id = :id AND d.usuarioId = :usuarioId", Devedor.class)
+                .setParameter("id", id)
+                .setParameter("usuarioId", usuarioId)
+                .getResultStream()
+                .findFirst()
+                .orElse(null);
+            if (devedor == null) {
+                em.getTransaction().rollback();
+                return false;
+            }
+            em.remove(devedor);
             em.getTransaction().commit();
-        } catch (Exception e) {
-            em.getTransaction().rollback();
+            return true;
+        } catch (RuntimeException e) {
+            if (em.getTransaction().isActive()) em.getTransaction().rollback();
             throw e;
-        } finally { em.close(); }
+        } finally {
+            em.close();
+        }
     }
 }

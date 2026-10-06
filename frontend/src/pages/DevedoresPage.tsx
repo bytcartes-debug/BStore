@@ -1,149 +1,246 @@
-import { apiFetch } from '../utils/api';
-import React, { useEffect, useState } from 'react';
-import { Plus, X, CheckCircle } from 'lucide-react';
+import { useToast } from '../utils/toast';
+import { useState } from 'react';
+import { Plus, CheckCircle2, Users } from 'lucide-react';
+import { apiRequest } from '../utils/api';
+import { useMutation, useResource } from '../utils/useResource';
+import { decimal, formatMoney } from '../utils/decimal';
+import {
+  PageHeading,
+  SearchField,
+  Loading,
+  LoadError,
+  EmptyState,
+  Modal,
+  Field,
+  Notice,
+  Spinner,
+  ConfirmDialog,
+} from '../components/UI';
 
-interface Devedor { id: number; nome: string; divida: number; descricao: string; data: string; }
+interface Devedor {
+  id: number;
+  nome: string;
+  divida: string;
+  descricao: string;
+  data: string;
+}
+const loadDebtors = (signal: AbortSignal) => apiRequest<Devedor[]>('/api/devedores', { signal });
+const emptyForm = { nome: '', divida: '', descricao: '' };
 
-const DevedoresPage: React.FC = () => {
-  const [devedores, setDevedores]           = useState<Devedor[]>([]);
-  const [showModal, setShowModal]           = useState(false);
-  const [showConfirm, setShowConfirm]       = useState(false);
-  const [selectedDevedor, setSelectedDevedor] = useState<Devedor | null>(null);
-  const [form, setForm]                     = useState({ nome: '', divida: '', descricao: '' });
-
-  const load = () => apiFetch('/api/devedores').then(r => r.json()).then(setDevedores).catch(() => {});
-
-  useEffect(() => { load(); }, []);
-
-  const totalDivida = devedores.reduce((s, d) => s + d.divida, 0);
-
-  const handleSave = async () => {
-    if (!form.nome.trim() || !form.divida) return;
-    await apiFetch('/api/devedores', {
-      method: 'POST',
-      body: JSON.stringify({ nome: form.nome.trim(), divida: parseFloat(form.divida), descricao: form.descricao.trim() }),
+export default function DevedoresPage() {
+  const { data, loading, error, reload } = useResource(loadDebtors);
+  const [search, setSearch] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [selected, setSelected] = useState<Devedor | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const save = useMutation();
+  const payment = useMutation();
+  const toast = useToast();
+  const devedores = data || [];
+  const filtered = devedores.filter((item) =>
+    `${item.nome} ${item.descricao}`
+      .toLocaleLowerCase()
+      .includes(search.trim().toLocaleLowerCase()),
+  );
+  const total = devedores.reduce((sum, item) => sum.plus(item.divida), decimal(0));
+  const openNew = () => {
+    save.setError(null);
+    setShowModal(true);
+  };
+  const handleSave = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!form.nome.trim()) {
+      save.setError('Preencha o nome do devedor.');
+      return;
+    }
+    void save.run(async () => {
+      await apiRequest('/api/devedores', {
+        method: 'POST',
+        body: JSON.stringify({
+          nome: form.nome.trim(),
+          divida: form.divida,
+          descricao: form.descricao.trim(),
+        }),
+      });
+      setShowModal(false);
+      setForm(emptyForm);
+      toast('Dívida registada.');
+      void reload();
     });
-    setShowModal(false);
-    setForm({ nome: '', divida: '', descricao: '' });
-    load();
   };
-
-  const confirmarPagamento = (d: Devedor) => {
-    setSelectedDevedor(d);
-    setShowConfirm(true);
-  };
-
-  const handleDarBaixa = async () => {
-    if (!selectedDevedor) return;
-    await apiFetch(`/api/devedores/${selectedDevedor.id}`, { method: 'DELETE' });
-    setShowConfirm(false);
-    setSelectedDevedor(null);
-    load();
-  };
-
+  const confirmPayment = () =>
+    void payment.run(async () => {
+      if (!selected) return;
+      await apiRequest(`/api/devedores/${selected.id}`, { method: 'DELETE' });
+      setSelected(null);
+      toast('Pagamento confirmado. Dívida removida.');
+      void reload();
+    });
   return (
     <div>
-      {/* Header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20, flexWrap:'wrap', gap:12 }}>
+      <PageHeading
+        title="Devedores"
+        description="Saiba quem tem valores por pagar e confirme os pagamentos."
+      >
+        <button className="btn-primary" onClick={openNew}>
+          <Plus size={18} /> Registar dívida
+        </button>
+      </PageHeading>
+      <div className="debt-summary">
         <div>
-          <h2 style={{ fontSize:22, fontWeight:700, color:'var(--text-primary)' }}>Devedores</h2>
-          <p style={{ fontSize:14, color:'var(--text-secondary)', marginTop:4 }}>
-            {devedores.length} devedor(es) · Total em dívida: <strong style={{ color:'var(--color-danger)' }}>MT {totalDivida.toFixed(2)}</strong>
-          </p>
+          <span>Total em dívida</span>
+          <strong>{data ? formatMoney(total) : '—'}</strong>
         </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}><Plus size={18} /> Adicionar Devedor</button>
+        <p>
+          {devedores.length} devedor{devedores.length === 1 ? '' : 'es'} com pagamento pendente
+        </p>
       </div>
-
-      {/* Table */}
-      <div className="card">
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr><th>Nome</th><th>Dívida (MT)</th><th>Descrição</th><th>Data</th><th>Ação</th></tr>
-            </thead>
-            <tbody>
-              {devedores.length === 0
-                ? <tr><td colSpan={5} style={{ textAlign:'center', color:'var(--text-secondary)', padding:32 }}>Nenhum devedor cadastrado.</td></tr>
-                : devedores.map(d => (
-                  <tr key={d.id}>
-                    <td style={{ fontWeight:600 }}>{d.nome}</td>
-                    <td style={{ color:'var(--color-danger)', fontWeight:700 }}>MT {d.divida.toFixed(2)}</td>
-                    <td style={{ color:'var(--text-secondary)' }}>{d.descricao || '—'}</td>
-                    <td style={{ color:'var(--text-secondary)' }}>{d.data}</td>
-                    <td>
-                      <button
-                        onClick={() => confirmarPagamento(d)}
-                        style={{
-                          background:'var(--color-brand)', color:'white', border:'none',
-                          borderRadius:8, padding:'8px 14px', fontSize:13, fontWeight:700,
-                          cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6
-                        }}
-                      >
-                        <CheckCircle size={15} /> Pago
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              }
-            </tbody>
-          </table>
-        </div>
+      <div className="toolbar">
+        <SearchField value={search} onChange={setSearch} label="Pesquisar devedores" />
+        <span className="result-count">{filtered.length} registo(s)</span>
       </div>
-
-      {/* Modal — Novo Devedor */}
-      {showModal && (
-        <div className="modal-overlay">
-          <div className="modal-container">
-            <div className="modal-header">
-              <h3>Adicionar Devedor</h3>
-              <button className="modal-close-btn" onClick={() => setShowModal(false)}><X size={20} /></button>
-            </div>
-            <div className="form-group">
-              <label>Nome *</label>
-              <input value={form.nome} onChange={e => setForm({...form, nome:e.target.value})} placeholder="Nome do devedor" />
-            </div>
-            <div className="form-group">
-              <label>Valor da Dívida (MT) *</label>
-              <input type="number" min="0" step="0.01" value={form.divida} onChange={e => setForm({...form, divida:e.target.value})} placeholder="0.00" />
-            </div>
-            <div className="form-group">
-              <label>Descrição (opcional)</label>
-              <input value={form.descricao} onChange={e => setForm({...form, descricao:e.target.value})} placeholder="Ex: Localização do devedor" />
-            </div>
-            <div className="modal-actions">
-              <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleSave}>Adicionar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal — Confirmar Pagamento */}
-      {showConfirm && selectedDevedor && (
-        <div className="modal-overlay">
-          <div className="modal-container" style={{ maxWidth:380, textAlign:'center' }}>
-            <div style={{ fontSize:48, marginBottom:12 }}>💰</div>
-            <h3 style={{ fontSize:20, fontWeight:700, color:'var(--text-primary)', marginBottom:8 }}>
-              {selectedDevedor.nome} pagou?
-            </h3>
-            <p style={{ fontSize:15, color:'var(--text-secondary)', marginBottom:24 }}>
-              Dívida de <strong style={{ color:'var(--color-danger)' }}>MT {selectedDevedor.divida.toFixed(2)}</strong> será quitada.
-            </p>
-            <div style={{ display:'flex', gap:12, justifyContent:'center' }}>
-              <button className="btn-secondary" onClick={() => setShowConfirm(false)}>❌ Não</button>
-              <button
-                className="btn-primary"
-                onClick={handleDarBaixa}
-                style={{ fontSize:16, padding:'12px 24px' }}
+      {error && <LoadError message={error} retry={reload} />}
+      {loading && !data ? (
+        <Loading />
+      ) : (
+        data && (
+          <div className="card">
+            {devedores.length === 0 ? (
+              <EmptyState
+                title="Nenhuma dívida registada"
+                description="Quando um cliente ficar a dever, registe aqui o nome e o valor."
+                icon={<Users size={28} />}
               >
-                ✅ Sim, Pagou!
-              </button>
-            </div>
+                <button className="btn-secondary" onClick={openNew}>
+                  Registar dívida
+                </button>
+              </EmptyState>
+            ) : filtered.length === 0 ? (
+              <EmptyState
+                title="Nenhum devedor encontrado"
+                description="Experimente outro nome ou limpe a pesquisa."
+              >
+                <button className="btn-secondary" onClick={() => setSearch('')}>
+                  Limpar pesquisa
+                </button>
+              </EmptyState>
+            ) : (
+              <div className="table-wrapper">
+                <table className="responsive-table">
+                  <caption className="sr-only">Dívidas pendentes</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Nome</th>
+                      <th scope="col" className="numeric">
+                        Dívida
+                      </th>
+                      <th scope="col">Descrição</th>
+                      <th scope="col">Data</th>
+                      <th scope="col">Pagamento</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((item) => (
+                      <tr key={item.id}>
+                        <td data-label="Nome" className="cell-name">
+                          {item.nome}
+                        </td>
+                        <td data-label="Dívida" className="numeric">
+                          <strong>{formatMoney(item.divida)}</strong>
+                        </td>
+                        <td data-label="Descrição" className="cell-secondary">
+                          {item.descricao || 'Sem descrição'}
+                        </td>
+                        <td data-label="Data" className="cell-secondary">
+                          {item.data}
+                        </td>
+                        <td data-label="Pagamento">
+                          <button
+                            className="btn-secondary"
+                            aria-label={`Confirmar pagamento de ${item.nome}`}
+                            onClick={() => {
+                              payment.setError(null);
+                              setSelected(item);
+                            }}
+                          >
+                            <CheckCircle2 size={17} /> Confirmar pagamento
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        </div>
+        )
+      )}
+      {showModal && (
+        <Modal title="Registar dívida" onClose={() => setShowModal(false)} busy={save.pending}>
+          <form onSubmit={handleSave}>
+            <p className="required-note">Os campos com * são obrigatórios.</p>
+            {save.error && <Notice>{save.error}</Notice>}
+            <fieldset disabled={save.pending}>
+              <Field id="debtor-name" label="Nome do devedor *">
+                <input
+                  id="debtor-name"
+                  value={form.nome}
+                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                  required
+                  autoComplete="off"
+                  placeholder="Nome do cliente"
+                />
+              </Field>
+              <Field id="debtor-amount" label="Valor da dívida (MT) *">
+                <input
+                  id="debtor-amount"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={form.divida}
+                  onChange={(e) => setForm({ ...form, divida: e.target.value })}
+                  required
+                  placeholder="0,00"
+                />
+              </Field>
+              <Field id="debtor-description" label="Descrição">
+                <textarea
+                  id="debtor-description"
+                  value={form.descricao}
+                  onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+                  placeholder="Produtos em dívida ou informações para identificar o cliente"
+                />
+              </Field>
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-primary">
+                  {save.pending && <Spinner />}
+                  {save.pending ? 'A guardar…' : 'Registar dívida'}
+                </button>
+              </div>
+            </fieldset>
+          </form>
+        </Modal>
+      )}
+      {selected && (
+        <ConfirmDialog
+          title="Confirmar pagamento?"
+          onClose={() => setSelected(null)}
+          onConfirm={confirmPayment}
+          busy={payment.pending}
+          error={payment.error}
+          label="Confirmar pagamento"
+        >
+          <p>
+            Confirme que recebeu <strong>{formatMoney(selected.divida)}</strong> de{' '}
+            <strong>{selected.nome}</strong>.
+          </p>
+          <p>O registo desta dívida será removido. Esta ação não pode ser desfeita.</p>
+        </ConfirmDialog>
       )}
     </div>
   );
-};
-
-export default DevedoresPage;
+}

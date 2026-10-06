@@ -1,6 +1,7 @@
 package model;
 
 import javax.persistence.*;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,14 +16,14 @@ public class Produto {
     @Column(name = "nome", nullable = false, length = 150)
     private String nome;
 
-    @Column(name = "preco", nullable = false)
-    private Double preco;
+    @Column(name = "preco", nullable = false, precision = 19, scale = 2)
+    private BigDecimal preco;
 
-    @Column(name = "quantidade_stock", nullable = false)
-    private Double quantidadeStock;
+    @Column(name = "quantidade_stock", nullable = false, precision = 19, scale = 3)
+    private BigDecimal quantidadeStock;
 
-    @Column(name = "stock_minimo")
-    private Double stockMinimo = 5.0;
+    @Column(name = "stock_minimo", precision = 19, scale = 3)
+    private BigDecimal stockMinimo = new BigDecimal("5.000");
 
     /** Unidade de medida: "un", "kg", "L", "g", "ml", etc. */
     @Column(name = "unidade", length = 50)
@@ -38,12 +39,12 @@ public class Produto {
     @JoinColumn(name = "categoria_id")
     private Categoria categoria;
 
-    @OneToMany(mappedBy = "produto", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "produto", fetch = FetchType.LAZY)
     private List<Venda> vendas = new ArrayList<>();
 
     public Produto() {}
 
-    public Produto(String nome, Double preco, Double quantidadeStock, String unidade, Categoria categoria) {
+    public Produto(String nome, BigDecimal preco, BigDecimal quantidadeStock, String unidade, Categoria categoria) {
         this.nome            = nome;
         this.preco           = preco;
         this.quantidadeStock = quantidadeStock;
@@ -52,7 +53,7 @@ public class Produto {
     }
 
     public boolean stockAbaixoMinimo() {
-        return quantidadeStock != null && stockMinimo != null && quantidadeStock <= stockMinimo;
+        return quantidadeStock != null && stockMinimo != null && quantidadeStock.compareTo(stockMinimo) <= 0;
     }
 
     public Long getId() { return id; }
@@ -61,14 +62,14 @@ public class Produto {
     public String getNome() { return nome; }
     public void setNome(String nome) { this.nome = nome; }
 
-    public Double getPreco() { return preco; }
-    public void setPreco(Double preco) { this.preco = preco; }
+    public BigDecimal getPreco() { return preco; }
+    public void setPreco(BigDecimal preco) { this.preco = preco; }
 
-    public Double getQuantidadeStock() { return quantidadeStock; }
-    public void setQuantidadeStock(Double q) { this.quantidadeStock = q; }
+    public BigDecimal getQuantidadeStock() { return quantidadeStock; }
+    public void setQuantidadeStock(BigDecimal quantidadeStock) { this.quantidadeStock = quantidadeStock; }
 
-    public Double getStockMinimo() { return stockMinimo; }
-    public void setStockMinimo(Double s) { this.stockMinimo = s; }
+    public BigDecimal getStockMinimo() { return stockMinimo; }
+    public void setStockMinimo(BigDecimal stockMinimo) { this.stockMinimo = stockMinimo; }
 
     public String getUnidade() { return unidade; }
     public void setUnidade(String u) { this.unidade = (u != null && !u.isBlank()) ? u : "un"; }

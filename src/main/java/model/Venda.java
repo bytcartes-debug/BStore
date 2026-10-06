@@ -1,6 +1,8 @@
 package model;
 
 import javax.persistence.*;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 
 @Entity
@@ -14,14 +16,14 @@ public class Venda {
     @Column(name = "data_venda", nullable = false)
     private LocalDate dataVenda;
 
-    @Column(name = "quantidade", nullable = false)
-    private Double quantidade;
+    @Column(name = "quantidade", nullable = false, precision = 19, scale = 3)
+    private BigDecimal quantidade;
 
-    @Column(name = "preco_unitario", nullable = false)
-    private Double precoUnitario;
+    @Column(name = "preco_unitario", nullable = false, precision = 19, scale = 2)
+    private BigDecimal precoUnitario;
 
-    @Column(name = "total", nullable = false)
-    private Double total;
+    @Column(name = "total", nullable = false, precision = 19, scale = 2)
+    private BigDecimal total;
 
     @Column(name = "observacao", length = 255)
     private String observacao;
@@ -35,15 +37,15 @@ public class Venda {
 
     public Venda() {}
 
-    public Venda(LocalDate dataVenda, Double quantidade, Produto produto) {
-        this.dataVenda     = dataVenda;
-        this.quantidade    = quantidade;
-        this.produto       = produto;
+    public Venda(LocalDate dataVenda, BigDecimal quantidade, Produto produto) {
+        this.dataVenda = dataVenda;
+        this.quantidade = quantidade;
+        this.produto = produto;
         this.precoUnitario = produto.getPreco();
-        this.total         = quantidade * produto.getPreco();
+        this.total = quantidade.multiply(produto.getPreco()).setScale(2, RoundingMode.HALF_UP);
     }
 
-    public Venda(LocalDate dataVenda, Double quantidade, Produto produto, String observacao) {
+    public Venda(LocalDate dataVenda, BigDecimal quantidade, Produto produto, String observacao) {
         this(dataVenda, quantidade, produto);
         this.observacao = observacao;
     }
@@ -54,14 +56,14 @@ public class Venda {
     public LocalDate getDataVenda() { return dataVenda; }
     public void setDataVenda(LocalDate d) { this.dataVenda = d; }
 
-    public Double getQuantidade() { return quantidade; }
-    public void setQuantidade(Double q) { this.quantidade = q; }
+    public BigDecimal getQuantidade() { return quantidade; }
+    public void setQuantidade(BigDecimal quantidade) { this.quantidade = quantidade; }
 
-    public Double getPrecoUnitario() { return precoUnitario; }
-    public void setPrecoUnitario(Double p) { this.precoUnitario = p; }
+    public BigDecimal getPrecoUnitario() { return precoUnitario; }
+    public void setPrecoUnitario(BigDecimal precoUnitario) { this.precoUnitario = precoUnitario; }
 
-    public Double getTotal() { return total; }
-    public void setTotal(Double t) { this.total = t; }
+    public BigDecimal getTotal() { return total; }
+    public void setTotal(BigDecimal total) { this.total = total; }
 
     public String getObservacao() { return observacao; }
     public void setObservacao(String o) { this.observacao = o; }

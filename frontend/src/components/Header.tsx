@@ -1,65 +1,94 @@
-import React from 'react';
-import { Sun, Moon, LogOut, Menu, UserCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Sun, Moon, LogOut, Menu } from 'lucide-react';
 import type { PageId } from '../App';
+import { Spinner } from './UI';
 import './Header.css';
 
-const PAGE_TITLES: Record<PageId, string> = {
-  dashboard:  '📊 Dashboard',
-  categorias: '🏷️ Categorias',
-  produtos:   '📦 Produtos',
-  vendas:     '🛒 Vendas',
-  devedores:  '👥 Devedores',
-  usuarios:   '🛡️ Utilizadores',
-  perfil:     '👤 Conta',
+const titles: Record<PageId, string> = {
+  dashboard: 'Visão geral',
+  categorias: 'Categorias',
+  produtos: 'Produtos',
+  vendas: 'Vendas',
+  devedores: 'Devedores',
+  usuarios: 'Utilizadores',
+  perfil: 'Perfil e segurança',
 };
-
 interface HeaderProps {
   currentPage: PageId;
   isDark: boolean;
   toggleTheme: () => void;
   onLogout: () => void;
+  loggingOut: boolean;
   userEmail: string;
   onMenuClick: () => void;
+  menuOpen: boolean;
   onProfileClick: () => void;
 }
-
-const Header: React.FC<HeaderProps> = ({ currentPage, isDark, toggleTheme, onLogout, userEmail, onMenuClick, onProfileClick }) => {
-  const profilePic = localStorage.getItem('profilePic');
-  const profileName = localStorage.getItem('profileName') || userEmail.split('@')[0];
-
+export default function Header({
+  currentPage,
+  isDark,
+  toggleTheme,
+  onLogout,
+  loggingOut,
+  userEmail,
+  onMenuClick,
+  menuOpen,
+  onProfileClick,
+}: HeaderProps) {
+  const [, refresh] = useState(0);
+  useEffect(() => {
+    const update = () => refresh((value) => value + 1);
+    window.addEventListener('bstore:profile', update);
+    return () => window.removeEventListener('bstore:profile', update);
+  }, []);
+  const pic = localStorage.getItem('profilePic');
+  const name = localStorage.getItem('profileName') || userEmail.split('@')[0];
   return (
     <header className="app-header">
       <div className="header-left">
-        <button className="header-menu-btn" onClick={onMenuClick} title="Menu">
+        <button
+          className="icon-btn header-menu-btn"
+          onClick={onMenuClick}
+          aria-label="Abrir menu"
+          aria-expanded={menuOpen}
+          aria-controls={menuOpen ? 'navigation-menu' : undefined}
+        >
           <Menu size={20} />
         </button>
-        <h1 className="header-title">{PAGE_TITLES[currentPage]}</h1>
+        <h1 className="header-title">{titles[currentPage]}</h1>
       </div>
-
       <div className="header-right">
-        <button className="header-icon-btn" onClick={toggleTheme} title="Alternar tema">
-          {isDark ? <Sun size={18} /> : <Moon size={18} />}
-        </button>
-
         <button
-          onClick={onProfileClick}
-          title="Minha Conta"
-          style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', borderRadius: 8 }}
+          className="icon-btn"
+          onClick={toggleTheme}
+          aria-label={isDark ? 'Ativar tema claro' : 'Ativar tema escuro'}
+          title={isDark ? 'Tema claro' : 'Tema escuro'}
         >
-          {profilePic
-            ? <img src={profilePic} alt="Avatar" className="header-avatar-img" />
-            : <div className="header-avatar">{profileName.charAt(0).toUpperCase()}</div>
-          }
-          <span className="header-username">{profileName}</span>
-          <UserCircle size={14} style={{ color: 'var(--text-muted)' }} />
+          {isDark ? <Sun size={19} /> : <Moon size={19} />}
         </button>
-
-        <button className="header-icon-btn header-logout" onClick={onLogout} title="Sair">
-          <LogOut size={18} />
+        <button
+          className="header-profile"
+          onClick={onProfileClick}
+          aria-label={`Abrir perfil de ${name}`}
+          title="Perfil e segurança"
+        >
+          {pic ? (
+            <img src={pic} alt="" className="header-avatar" />
+          ) : (
+            <span className="header-avatar">{name.charAt(0).toUpperCase()}</span>
+          )}
+          <span className="header-username">{name}</span>
+        </button>
+        <button
+          className="icon-btn header-logout"
+          onClick={onLogout}
+          disabled={loggingOut}
+          aria-label="Terminar sessão"
+          title="Terminar sessão"
+        >
+          {loggingOut ? <Spinner /> : <LogOut size={19} />}
         </button>
       </div>
     </header>
   );
-};
-
-export default Header;
+}

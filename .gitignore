@@ -5,11 +5,15 @@ dependency-reduced-pom.xml
 # Base de dados local H2
 *.mv.db
 *.trace.db
+*.lock.db
 
 # Frontend node_modules e build
 frontend/node_modules/
 frontend/android/
 frontend/.capacitor/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
 
 # IDEs
 .idea/
@@ -19,3 +23,11 @@ frontend/.capacitor/
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Variáveis de ambiente — NUNCA commitar
+.env
+
+# Backups e ferramentas locais
+backups/
+target-validation/
+.claude/

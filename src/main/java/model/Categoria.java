@@ -23,7 +23,7 @@ public class Categoria {
     @Column(name = "usuario_id")
     private Long usuarioId;
 
-    @OneToMany(mappedBy = "categoria", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "categoria", fetch = FetchType.LAZY)
     private List<Produto> produtos = new ArrayList<>();
 
     public Categoria() {}

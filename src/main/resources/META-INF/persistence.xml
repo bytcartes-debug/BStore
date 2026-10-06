@@ -13,6 +13,8 @@
         <class>model.Venda</class>
         <class>model.Devedor</class>
         <class>model.Usuario</class>
+        <class>model.Sessao</class>
+        <class>model.PedidoVenda</class>
 
         <properties>
             <!-- Configuração base (será sobrescrita pelo JPAUtil via variáveis de ambiente) -->
@@ -22,7 +24,7 @@
             <property name="javax.persistence.jdbc.password" value=""/>
 
             <property name="hibernate.dialect"        value="org.hibernate.dialect.H2Dialect"/>
-            <property name="hibernate.hbm2ddl.auto"  value="update"/>
+            <property name="hibernate.hbm2ddl.auto"  value="validate"/>
             <property name="hibernate.show_sql"       value="false"/>
             <property name="hibernate.format_sql"     value="false"/>
         </properties>

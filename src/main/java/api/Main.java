@@ -32,23 +32,24 @@ public class Main {
     }
 
     private static void semearSuperuser() {
-        try {
-            UsuarioDAO dao = new UsuarioDAO();
-            if (dao.contarTodos() == 0) {
-                // Lê credenciais de variáveis de ambiente ou usa padrão
-                String email = System.getenv("ADMIN_EMAIL") != null
-                    ? System.getenv("ADMIN_EMAIL") : "admin@flexstock.com";
-                String senha = System.getenv("ADMIN_PASSWORD") != null
-                    ? System.getenv("ADMIN_PASSWORD") : "admin123";
-                String nome  = System.getenv("ADMIN_NOME") != null
-                    ? System.getenv("ADMIN_NOME") : "Administrador";
-
-                Usuario admin = new Usuario(nome, email, senha, "superuser");
-                dao.salvar(admin);
-                System.out.println("[FlexStock] Superuser criado: " + email + " / " + senha);
-            }
-        } catch (Exception e) {
-            System.err.println("[FlexStock] Aviso: não foi possível semear superuser: " + e.getMessage());
+        UsuarioDAO dao = new UsuarioDAO();
+        if (dao.contarTodos() != 0) {
+            return;
         }
+        String email = System.getenv("ADMIN_EMAIL");
+        String senha = System.getenv("ADMIN_PASSWORD");
+        String nome = System.getenv("ADMIN_NOME");
+        if (email == null || email.isBlank() || senha == null || senha.isBlank()) {
+            throw new IllegalStateException(
+                "A primeira execução requer ADMIN_EMAIL e ADMIN_PASSWORD para criar o superuser.");
+        }
+        Usuario admin = new Usuario(
+            nome == null || nome.isBlank() ? "Administrador" : nome,
+            email,
+            senha,
+            "superuser"
+        );
+        dao.salvar(admin);
+        System.out.println("[FlexStock] Superuser inicial criado.");
     }
 }

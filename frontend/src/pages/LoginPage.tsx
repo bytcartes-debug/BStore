@@ -1,75 +1,148 @@
-import React, { useState } from 'react';
-import { Store, Key, Mail, LogIn } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Store, Eye, EyeOff, LogIn, Package, ReceiptText, Users } from 'lucide-react';
+import type { UserSession } from '../App';
+import { Field, Notice, Spinner } from '../components/UI';
 import './LoginPage.css';
 
-interface UserSession { userId: number; email: string; role: 'superuser' | 'operator'; diasRestantes: number; }
-interface LoginPageProps { setUser: (u: UserSession) => void; }
-
-const LoginPage: React.FC<LoginPageProps> = ({ setUser }) => {
+export default function LoginPage({ setUser }: { setUser: (user: UserSession) => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const lock = useRef(false);
+  const handleLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (lock.current) return;
+    lock.current = true;
     setError(null);
     setLoading(true);
     try {
-      const r = await fetch('/api/auth/login', {
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
+        credentials: 'same-origin',
+        signal: AbortSignal.timeout(20000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
       });
-      if (!r.ok) {
-        const data = await r.json().catch(() => ({}));
-        setError(data.erro || 'Email ou senha incorretos.');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setError(
+          response.status >= 500
+            ? 'O servidor não conseguiu iniciar a sessão. Tente novamente.'
+            : data.erro || 'Email ou senha incorretos.',
+        );
         return;
       }
-      const u = await r.json();
-      const session: UserSession = { userId: u.id, email: u.email, role: u.role, diasRestantes: u.diasRestantes ?? -1 };
-      localStorage.setItem('currentUser', JSON.stringify(session));
-      localStorage.setItem('profileName', u.nome.split(' ')[0]);
-      localStorage.setItem('profileFullName', u.nome);
-      localStorage.setItem('profileRole', u.role === 'superuser' ? 'Superusuário' : 'Operador');
-      setUser(session);
+      const user = await response.json();
+      localStorage.setItem('profileName', user.nome.split(' ')[0]);
+      localStorage.setItem('profileFullName', user.nome);
+      localStorage.setItem('profileRole', user.role === 'superuser' ? 'Administrador' : 'Operador');
+      setUser({
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+        diasRestantes: user.diasRestantes ?? -1,
+      });
     } catch {
-      setError('Não foi possível ligar ao servidor. Aguarde e tente novamente.');
+      setError('Não foi possível ligar ao servidor. Verifique a ligação e tente novamente.');
     } finally {
+      lock.current = false;
       setLoading(false);
     }
   };
-
   return (
-    <div className="login-overlay">
-      <div className="card login-card">
-        <div className="login-logo"><Store size={32} /></div>
-        <h2>Flex Stock</h2>
-        <p>Faça login para gerenciar seu negócio</p>
-        <form onSubmit={handleLogin}>
-          {error && <div className="login-error">{error}</div>}
-          <div className="form-group">
-            <label>E-mail</label>
-            <div className="input-group">
-              <Mail size={16} className="input-icon" />
-              <input type="email" placeholder="seu@email.com" value={email} onChange={e => setEmail(e.target.value)} required />
-            </div>
+    <main className="login-page">
+      <section className="login-story" aria-label="BStore, gestão de loja">
+        <div className="login-brand">
+          <span className="login-brand-mark">
+            <Store size={28} />
+          </span>
+          <span>BStore</span>
+        </div>
+        <div className="login-intro">
+          <h1>
+            Mais atenção à loja.
+            <br />
+            Menos tempo nas contas.
+          </h1>
+          <p>Vendas, stock e clientes. Tudo no mesmo lugar, do primeiro produto ao fecho do dia.</p>
+          <ul className="login-features">
+            <li>
+              <ReceiptText size={20} />
+              <span>Registe vendas e calcule o troco</span>
+            </li>
+            <li>
+              <Package size={20} />
+              <span>Acompanhe o stock dos seus produtos</span>
+            </li>
+            <li>
+              <Users size={20} />
+              <span>Tenha as dívidas sempre organizadas</span>
+            </li>
+          </ul>
+        </div>
+        <p className="login-story-footer">Uma rotina mais simples para o seu negócio.</p>
+      </section>
+      <section className="login-form-panel" aria-labelledby="login-title">
+        <div className="login-card">
+          <div className="login-mobile-brand">
+            <Store size={24} /> BStore
           </div>
-          <div className="form-group">
-            <label>Senha</label>
-            <div className="input-group">
-              <Key size={16} className="input-icon" />
-              <input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
-            </div>
-          </div>
-          <button type="submit" className="login-btn" disabled={loading}>
-            <LogIn size={18} /> {loading ? 'A entrar...' : 'Entrar'}
-          </button>
-        </form>
-        <p className="login-hint">Admin padrão: admin@flexstock.com / admin123</p>
-      </div>
-    </div>
+          <h2 id="login-title">Bem-vindo de volta</h2>
+          <p>Entre para continuar a gerir a sua loja.</p>
+          <form onSubmit={handleLogin} aria-busy={loading}>
+            {error && <Notice>{error}</Notice>}
+            <fieldset disabled={loading}>
+              <Field id="login-email" label="Email">
+                <input
+                  id="login-email"
+                  name="email"
+                  type="email"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  placeholder="nome@exemplo.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </Field>
+              <Field id="login-password" label="Senha">
+                <div className="password-field">
+                  <input
+                    id="login-password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                    aria-pressed={showPassword}
+                    onClick={() => setShowPassword((value) => !value)}
+                  >
+                    {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                  </button>
+                </div>
+              </Field>
+              <button type="submit" className="btn-primary login-submit" disabled={loading}>
+                {loading ? <Spinner /> : <LogIn size={18} />}
+                {loading ? 'A entrar…' : 'Entrar na minha loja'}
+              </button>
+            </fieldset>
+          </form>
+          <p className="login-help">
+            Precisa de acesso ou de recuperar a senha?
+            <br />
+            Contacte o administrador da sua loja.
+          </p>
+        </div>
+      </section>
+    </main>
   );
-};
-
-export default LoginPage;
+}

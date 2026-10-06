@@ -1,126 +1,298 @@
-import { apiFetch } from '../utils/api';
-import React, { useEffect, useState } from 'react';
-import { TrendingUp, Package, ShoppingCart, Users, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
+import {
+  Package,
+  Tag,
+  Users,
+  AlertTriangle,
+  CheckCircle2,
+  Plus,
+  ArrowUpRight,
+  ReceiptText,
+} from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { apiRequest } from '../utils/api';
+import { useResource } from '../utils/useResource';
+import { decimal, formatMoney, formatQuantity } from '../utils/decimal';
+import { EmptyState, Loading, LoadError, PageHeading } from '../components/UI';
+import type { PageId } from '../App';
 import './DashboardPage.css';
 
 interface DashboardData {
-  totalVendasHoje: number;
+  totalVendasHoje: string;
   totalProdutos: number;
   totalCategorias: number;
   totalDevedores: number;
-  alertasStock: { id: number; nome: string; stock: number; stockMinimo: number }[];
-  vendasRecentes: { id: number; produto: string; quantidade: number; total: number; data: string }[];
-  vendasPorDia: { dia: string; total: number }[];
+  alertasStock: {
+    id: number;
+    nome: string;
+    stock: string;
+    stockMinimo: string;
+    unidade?: string;
+  }[];
+  vendasRecentes: {
+    id: number;
+    produto: string;
+    quantidade: string;
+    total: string;
+    data: string;
+  }[];
+  vendasPorDia: { dia: string; total: string }[];
 }
+const loadDashboard = (signal: AbortSignal) =>
+  apiRequest<DashboardData>('/api/dashboard', { signal });
 
-const DashboardPage: React.FC = () => {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    apiFetch('/api/dashboard')
-      .then(r => r.json())
-      .then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, []);
-
-  if (loading) return <div style={{ color: 'var(--text-secondary)', padding: 40 }}>A carregar...</div>;
-  if (!data)   return <div style={{ color: 'var(--color-danger)', padding: 40 }}>Erro ao carregar dados.</div>;
-
-  const cards = [
-    { label: 'Vendas Hoje', value: `MT ${data.totalVendasHoje.toFixed(2)}`, icon: <TrendingUp size={22} />, color: 'var(--color-brand)' },
-    { label: 'Produtos',    value: data.totalProdutos,    icon: <Package size={22} />,     color: 'var(--color-info)' },
-    { label: 'Vendas',      value: data.totalCategorias,  icon: <ShoppingCart size={22} />, color: 'var(--color-warning)' },
-    { label: 'Devedores',   value: data.totalDevedores,   icon: <Users size={22} />,        color: 'var(--color-danger)' },
+export default function DashboardPage({ navigate }: { navigate: (page: PageId) => void }) {
+  const { data, loading, error, reload } = useResource(loadDashboard);
+  const [tableView, setTableView] = useState(false);
+  const today = new Intl.DateTimeFormat('pt-MZ', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(new Date());
+  if (loading && !data) return <Loading label="A preparar a visão geral da loja…" />;
+  if (!data)
+    return (
+      <LoadError message={error || 'Não foi possível carregar a visão geral.'} retry={reload} />
+    );
+  const chartData = data.vendasPorDia.map((item) => ({
+    ...item,
+    total: decimal(item.total).toNumber(),
+  }));
+  const metrics = [
+    {
+      label: 'Produtos no catálogo',
+      value: data.totalProdutos,
+      icon: Package,
+      page: 'produtos' as const,
+    },
+    { label: 'Categorias', value: data.totalCategorias, icon: Tag, page: 'categorias' as const },
+    { label: 'Devedores', value: data.totalDevedores, icon: Users, page: 'devedores' as const },
   ];
-
   return (
     <div className="dashboard-page">
-      {/* KPI Cards */}
-      <div className="kpi-grid">
-        {cards.map(c => (
-          <div className="card kpi-card" key={c.label}>
-            <div className="kpi-icon" style={{ backgroundColor: c.color + '20', color: c.color }}>{c.icon}</div>
-            <div>
-              <p className="kpi-label">{c.label}</p>
-              <p className="kpi-value">{c.value}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="dashboard-grid">
-        {/* Chart */}
-        <div className="card dashboard-chart">
-          <div className="section-header">
-            <h3>Vendas dos Últimos 7 Dias</h3>
-          </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={data.vendasPorDia} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-              <XAxis dataKey="dia" tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
-              <YAxis tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
-              <Tooltip
-                contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 8 }}
-                labelStyle={{ color: 'var(--text-primary)' }}
-              />
-              <Bar dataKey="total" fill="var(--color-brand)" radius={[4,4,0,0]} name="MT" />
-            </BarChart>
-          </ResponsiveContainer>
+      <PageHeading title="A sua loja, hoje" description={today}>
+        <button className="btn-primary" onClick={() => navigate('vendas')}>
+          <Plus size={18} /> Ir para vendas
+        </button>
+      </PageHeading>
+      {error && <LoadError message={error} retry={reload} />}
+      <section className="store-overview" aria-label="Resumo da loja">
+        <div className="today-sales">
+          <span className="today-label">
+            <ReceiptText size={18} /> Vendas de hoje
+          </span>
+          <p className="today-value">{formatMoney(data.totalVendasHoje)}</p>
+          <span className="today-description">Total registado no dia</span>
         </div>
-
-        {/* Alertas de Stock */}
-        {data.alertasStock.length > 0 && (
-          <div className="card dashboard-alerts">
-            <div className="section-header">
-              <h3><AlertTriangle size={16} style={{ color: 'var(--color-warning)', marginRight: 6 }} />Alertas de Stock</h3>
+        <div className="store-metrics">
+          {metrics.map(({ label, value, icon: Icon, page }) => (
+            <button key={label} className="store-metric" onClick={() => navigate(page)}>
+              <span className="metric-label">
+                <Icon size={18} />
+                {label}
+              </span>
+              <span className="metric-value">
+                {value}
+                <ArrowUpRight size={18} aria-hidden="true" />
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+      <div className="dashboard-grid">
+        <section className="card dashboard-chart" aria-labelledby="sales-chart-title">
+          <div className="section-header">
+            <div>
+              <h3 id="sales-chart-title">Vendas dos últimos 7 dias</h3>
+              <p>Total diário em meticais (MT)</p>
             </div>
-            <ul className="alert-list">
-              {data.alertasStock.map(p => (
-                <li key={p.id} className="alert-item">
-                  <span className="alert-name">{p.nome}</span>
-                  <span className="badge badge-warning">{p.stock} / {p.stockMinimo} mín.</span>
-                </li>
-              ))}
-            </ul>
+            <button
+              className="btn-secondary chart-toggle"
+              aria-pressed={tableView}
+              onClick={() => setTableView((value) => !value)}
+            >
+              {tableView ? 'Ver gráfico' : 'Ver tabela'}
+            </button>
+          </div>
+          {tableView ? (
+            <div className="table-wrapper">
+              <table>
+                <caption className="sr-only">Vendas dos últimos sete dias em meticais</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Dia</th>
+                    <th scope="col" className="numeric">
+                      Total
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.vendasPorDia.map((item) => (
+                    <tr key={item.dia}>
+                      <td>{item.dia}</td>
+                      <td className="numeric">{formatMoney(item.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <>
+              <div className="chart-container">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                  <BarChart
+                    data={chartData}
+                    margin={{ top: 12, right: 8, left: 0, bottom: 0 }}
+                    accessibilityLayer
+                  >
+                    <CartesianGrid vertical={false} stroke="var(--border-color)" />
+                    <XAxis
+                      dataKey="dia"
+                      tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                      interval="preserveStartEnd"
+                      minTickGap={12}
+                    />
+                    <YAxis
+                      width={44}
+                      tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(value) =>
+                        new Intl.NumberFormat('pt-MZ', {
+                          notation: 'compact',
+                          maximumFractionDigits: 1,
+                        }).format(value)
+                      }
+                    />
+                    <Tooltip
+                      cursor={{ fill: 'var(--bg-subtle)' }}
+                      contentStyle={{
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--input-border)',
+                        borderRadius: 8,
+                        color: 'var(--text-primary)',
+                        fontSize: 13,
+                      }}
+                      itemStyle={{ color: 'var(--text-primary)' }}
+                      formatter={(value) => [formatMoney(String(value)), 'Vendas']}
+                      labelFormatter={(label) => `Dia ${label}`}
+                    />
+                    <Bar
+                      dataKey="total"
+                      name="Vendas"
+                      fill="var(--chart-color)"
+                      maxBarSize={22}
+                      radius={[4, 4, 0, 0]}
+                      isAnimationActive={false}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              {chartData.every((item) => item.total === 0) && (
+                <p className="chart-note">Ainda não há vendas registadas neste período.</p>
+              )}
+            </>
+          )}
+        </section>
+        <section className="card dashboard-alerts" aria-labelledby="stock-title">
+          <div className="section-header">
+            <div>
+              <h3 id="stock-title">Atenção ao stock</h3>
+              <p>Produtos no mínimo ou abaixo</p>
+            </div>
+            <AlertTriangle size={20} />
+          </div>
+          {data.alertasStock.length > 0 ? (
+            <>
+              <ul className="alert-list">
+                {data.alertasStock.slice(0, 5).map((p) => (
+                  <li key={p.id}>
+                    <strong>{p.nome}</strong>
+                    <span className="badge badge-warning">
+                      <AlertTriangle size={13} />
+                      {formatQuantity(p.stock, p.unidade || '')} disponível
+                    </span>
+                    <small>Mínimo: {formatQuantity(p.stockMinimo, p.unidade || '')}</small>
+                  </li>
+                ))}
+              </ul>
+              <button className="btn-secondary stock-action" onClick={() => navigate('produtos')}>
+                Consultar stock
+                {data.alertasStock.length > 5 ? ` (${data.alertasStock.length} alertas)` : ''}
+              </button>
+            </>
+          ) : (
+            <div className="stock-ok">
+              <CheckCircle2 size={30} />
+              <h4>Sem alertas de stock</h4>
+              <p>
+                {data.totalProdutos === 0
+                  ? 'Os níveis de stock aparecerão aqui depois de adicionar produtos.'
+                  : 'Todos os produtos estão acima do stock mínimo.'}
+              </p>
+              <button className="btn-secondary" onClick={() => navigate('produtos')}>
+                Ver produtos
+              </button>
+            </div>
+          )}
+        </section>
+      </div>
+      <section className="card recent-sales" aria-labelledby="recent-title">
+        <div className="section-header">
+          <div>
+            <h3 id="recent-title">Vendas recentes</h3>
+            <p>Os últimos movimentos da loja</p>
+          </div>
+          <button className="btn-secondary" onClick={() => navigate('vendas')}>
+            Ver vendas
+          </button>
+        </div>
+        {data.vendasRecentes.length === 0 ? (
+          <EmptyState
+            title="Ainda não há vendas"
+            description="As vendas registadas aparecerão aqui, com produto, quantidade e valor."
+            icon={<ReceiptText size={28} />}
+          />
+        ) : (
+          <div className="table-wrapper">
+            <table className="responsive-table">
+              <caption className="sr-only">Vendas recentes da loja</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Produto</th>
+                  <th scope="col" className="numeric">
+                    Quantidade
+                  </th>
+                  <th scope="col" className="numeric">
+                    Total
+                  </th>
+                  <th scope="col">Data</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.vendasRecentes.map((v) => (
+                  <tr key={v.id}>
+                    <td className="cell-name" data-label="Produto">
+                      {v.produto}
+                    </td>
+                    <td className="numeric" data-label="Quantidade">
+                      {formatQuantity(v.quantidade, '')}
+                    </td>
+                    <td className="numeric" data-label="Total">
+                      {formatMoney(v.total)}
+                    </td>
+                    <td className="cell-secondary" data-label="Data">
+                      {v.data}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
-      </div>
-
-      {/* Vendas Recentes */}
-      <div className="card" style={{ marginTop: 24 }}>
-        <div className="section-header" style={{ padding: '16px 20px' }}>
-          <h3>Vendas Recentes</h3>
-        </div>
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Produto</th>
-                <th>Qtd</th>
-                <th>Total</th>
-                <th>Data</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.vendasRecentes.length === 0
-                ? <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: 24 }}>Nenhuma venda registada.</td></tr>
-                : data.vendasRecentes.map(v => (
-                  <tr key={v.id}>
-                    <td>{v.produto}</td>
-                    <td>{v.quantidade}</td>
-                    <td>MT {v.total.toFixed(2)}</td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{v.data}</td>
-                  </tr>
-                ))
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>
+      </section>
     </div>
   );
-};
-
-export default DashboardPage;
+}

@@ -1,18 +1,40 @@
-/**
- * apiFetch — wrapper de fetch que adiciona automaticamente
- * X-User-Id e X-Role da sessão guardada no localStorage.
- * Substitui todos os `fetch('/api/...')` nas páginas.
- */
-export const apiFetch = (url: string, options?: RequestInit): Promise<Response> => {
-  const raw = localStorage.getItem('currentUser');
-  const session = raw ? JSON.parse(raw) : {};
-  return fetch(url, {
+export const apiFetch = async (url: string, options?: RequestInit): Promise<Response> => {
+  const response = await fetch(url, {
     ...options,
+    signal: options?.signal
+      ? AbortSignal.any([options.signal, AbortSignal.timeout(20000)])
+      : AbortSignal.timeout(20000),
+    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
-      ...(options?.headers as Record<string, string> || {}),
-      'X-User-Id': session.userId != null ? String(session.userId) : '',
-      'X-Role':    session.role   ?? '',
+      ...((options?.headers as Record<string, string>) || {}),
     },
   });
+  if (response.status === 401) {
+    window.dispatchEvent(new Event('bstore:unauthenticated'));
+  }
+  return response;
 };
+
+export class ApiError extends Error {
+  constructor(message: string, public status: number, public code?: string) {
+    super(message);
+  }
+}
+
+export async function apiRequest<T = void>(url: string, options?: RequestInit): Promise<T> {
+  let response: Response;
+  try {
+    response = await apiFetch(url, options);
+  } catch (error) {
+    if (options?.signal?.aborted) throw error;
+    throw new Error('Não foi possível ligar ao servidor. Verifique a ligação e tente novamente.');
+  }
+  if (!response.ok) {
+    if (response.status >= 500)
+      throw new ApiError('O servidor não conseguiu concluir o pedido. Tente novamente.', response.status);
+    const body = await response.json().catch(() => ({}));
+    throw new ApiError(body.erro || 'Não foi possível concluir o pedido. Tente novamente.', response.status, body.codigo);
+  }
+  return response.status === 204 ? (undefined as T) : response.json();
+}

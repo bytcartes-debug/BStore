@@ -1,130 +1,225 @@
-import React, { useState, useRef } from 'react';
-import { UserCircle, Key, Save, Camera } from 'lucide-react';
+import { useToast } from '../utils/toast';
+import { useRef, useState } from 'react';
+import { UserCircle, KeyRound, Save, Camera, Eye, EyeOff } from 'lucide-react';
 import type { UserSession } from '../App';
-import { apiFetch } from '../utils/api';
+import { apiRequest } from '../utils/api';
+import { useMutation } from '../utils/useResource';
+import { PageHeading, Field, Notice, Spinner } from '../components/UI';
 
-interface Props { user: UserSession | null; }
-
-const PerfilSegurancaPage: React.FC<Props> = ({ user }) => {
-  const [nome, setNome]   = useState(localStorage.getItem('profileFullName') || '');
-  const [pic, setPic]     = useState(localStorage.getItem('profilePic') || '');
-  const [senhaAtual, setSenhaAtual]       = useState('');
-  const [novaSenha, setNovaSenha]         = useState('');
-  const [confirmarSenha, setConfirmarSenha] = useState('');
-  const [msgPerfil, setMsgPerfil]   = useState('');
-  const [msgSenha, setMsgSenha]     = useState('');
-  const [msgSenhaTipo, setMsgSenhaTipo] = useState<'ok' | 'err'>('ok');
-  const [loadingSenha, setLoadingSenha] = useState(false);
+export default function PerfilSegurancaPage({ user }: { user: UserSession | null }) {
+  const [name, setName] = useState(localStorage.getItem('profileFullName') || '');
+  const [pic, setPic] = useState(localStorage.getItem('profilePic') || '');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  const handleFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const password = useMutation();
+  const toast = useToast();
+  const updateProfile = () => window.dispatchEvent(new Event('bstore:profile'));
+  const handlePhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (!file) return;
+    setProfileError(null);
+    if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 2 * 1024 * 1024) {
+      setProfileError('Escolha uma imagem JPG ou PNG com até 2 MB.');
+      event.target.value = '';
+      return;
+    }
     const reader = new FileReader();
+    reader.onerror = () =>
+      setProfileError('Não foi possível ler a imagem. Escolha outro ficheiro.');
     reader.onload = () => {
-      const data = reader.result as string;
-      setPic(data);
-      localStorage.setItem('profilePic', data);
+      try {
+        const result = String(reader.result);
+        localStorage.setItem('profilePic', result);
+        setPic(result);
+        updateProfile();
+        toast('Foto atualizada neste dispositivo.');
+      } catch {
+        setProfileError(
+          'Não há espaço no navegador para guardar esta imagem. Escolha uma imagem menor.',
+        );
+      }
     };
     reader.readAsDataURL(file);
   };
-
-  const handleSalvarPerfil = () => {
-    localStorage.setItem('profileFullName', nome);
-    localStorage.setItem('profileName', nome.split(' ')[0]);
-    setMsgPerfil('✅ Perfil atualizado! Recarregue a página para ver o novo nome no cabeçalho.');
-    setTimeout(() => setMsgPerfil(''), 4000);
-  };
-
-  const handleAlterarSenha = async () => {
-    if (novaSenha.length < 4) { setMsgSenha('❌ A nova senha deve ter pelo menos 4 caracteres.'); setMsgSenhaTipo('err'); return; }
-    if (novaSenha !== confirmarSenha) { setMsgSenha('❌ As senhas não coincidem.'); setMsgSenhaTipo('err'); return; }
-    if (!user?.userId) { setMsgSenha('❌ Sessão inválida. Faça login novamente.'); setMsgSenhaTipo('err'); return; }
-
-    setLoadingSenha(true);
+  const saveProfile = (event: React.FormEvent) => {
+    event.preventDefault();
+    setProfileError(null);
+    if (!name.trim()) {
+      setProfileError('Preencha o seu nome.');
+      return;
+    }
     try {
-      const r = await apiFetch(`/api/usuarios/${user.userId}/alterar-senha`, {
-        method: 'POST',
-        body: JSON.stringify({ senhaAtual, novaSenha }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        setMsgSenha(`❌ ${d.erro || 'Erro ao alterar senha.'}`); setMsgSenhaTipo('err');
-      } else {
-        setSenhaAtual(''); setNovaSenha(''); setConfirmarSenha('');
-        setMsgSenha('✅ Senha alterada com sucesso!'); setMsgSenhaTipo('ok');
-        setTimeout(() => setMsgSenha(''), 4000);
-      }
+      localStorage.setItem('profileFullName', name.trim());
+      localStorage.setItem('profileName', name.trim().split(' ')[0]);
+      updateProfile();
+      toast('Perfil guardado neste dispositivo.');
     } catch {
-      setMsgSenha('❌ Não foi possível ligar ao servidor.'); setMsgSenhaTipo('err');
-    } finally {
-      setLoadingSenha(false);
+      setProfileError('Não foi possível guardar o perfil no navegador.');
     }
   };
-
+  const changePassword = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (newPassword !== confirmation) {
+      password.setError('As senhas não coincidem. Confirme a nova senha.');
+      return;
+    }
+    if (!user) return;
+    void password.run(async () => {
+      await apiRequest(`/api/usuarios/${user.userId}/alterar-senha`, {
+        method: 'POST',
+        body: JSON.stringify({ senhaAtual: currentPassword, novaSenha: newPassword }),
+      });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmation('');
+      toast('Senha alterada. Entre novamente com a nova senha.');
+      window.dispatchEvent(new Event('bstore:unauthenticated'));
+    });
+  };
   return (
-    <div style={{ maxWidth: 600 }}>
-      {/* Foto de Perfil */}
-      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 20, color: 'var(--text-primary)' }}>📸 Foto de Perfil</h3>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          <div style={{ position: 'relative' }}>
-            {pic
-              ? <img src={pic} style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--color-brand)' }} alt="Perfil" />
-              : <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'var(--color-brand)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, fontWeight: 700 }}>
-                  {nome.charAt(0).toUpperCase() || <UserCircle size={40} />}
-                </div>
-            }
-          </div>
+    <div className="profile-page">
+      <PageHeading
+        title="Perfil e segurança"
+        description="Personalize a sua conta e mantenha o acesso protegido."
+      />
+      <section className="card panel">
+        <h3 className="section-title">
+          <UserCircle size={20} /> O seu perfil
+        </h3>
+        <p className="profile-note">
+          O nome de apresentação e a foto são guardados apenas neste navegador. Não alteram os dados
+          da conta no servidor.
+        </p>
+        {profileError && <Notice>{profileError}</Notice>}
+        <div className="profile-photo-row">
+          {pic ? (
+            <img src={pic} className="profile-photo" alt="Foto do perfil" />
+          ) : (
+            <div className="profile-photo" aria-hidden="true">
+              {name.charAt(0).toUpperCase() || <UserCircle size={36} />}
+            </div>
+          )}
           <div>
-            <button className="btn-secondary" onClick={() => fileRef.current?.click()} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <Camera size={16} /> Alterar Foto
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => fileRef.current?.click()}
+            >
+              <Camera size={18} /> Alterar foto
             </button>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>JPG ou PNG. Máx 2MB.</p>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFoto} />
+            <p className="field-hint">JPG ou PNG. Até 2 MB.</p>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png"
+              className="sr-only"
+              tabIndex={-1}
+              aria-label="Escolher foto de perfil"
+              onChange={handlePhoto}
+            />
           </div>
         </div>
-      </div>
-
-      {/* Dados Pessoais */}
-      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 20, color: 'var(--text-primary)' }}>👤 Dados Pessoais</h3>
-        <div className="form-group">
-          <label>Nome Completo</label>
-          <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Seu nome" />
-        </div>
-        <div className="form-group">
-          <label>E-mail</label>
-          <input value={user?.email || ''} disabled style={{ opacity: 0.5 }} />
-        </div>
-        {msgPerfil && <p style={{ fontSize: 13, color: 'var(--color-brand)', marginBottom: 12 }}>{msgPerfil}</p>}
-        <button className="btn-primary" onClick={handleSalvarPerfil} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          <Save size={16} /> Salvar Perfil
-        </button>
-      </div>
-
-      {/* Alterar Senha */}
-      <div className="card" style={{ padding: 24 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 20, color: 'var(--text-primary)' }}>🔒 Alterar Senha</h3>
-        <div className="form-group">
-          <label>Senha Atual</label>
-          <input type="password" value={senhaAtual} onChange={e => setSenhaAtual(e.target.value)} placeholder="••••••••" />
-        </div>
-        <div className="form-group">
-          <label>Nova Senha</label>
-          <input type="password" value={novaSenha} onChange={e => setNovaSenha(e.target.value)} placeholder="Mínimo 4 caracteres" />
-        </div>
-        <div className="form-group">
-          <label>Confirmar Nova Senha</label>
-          <input type="password" value={confirmarSenha} onChange={e => setConfirmarSenha(e.target.value)} placeholder="Repita a nova senha" />
-        </div>
-        {msgSenha && <p style={{ fontSize: 13, color: msgSenhaTipo === 'ok' ? 'var(--color-brand)' : 'var(--color-danger)', marginBottom: 12 }}>{msgSenha}</p>}
-        <button className="btn-primary" onClick={handleAlterarSenha} disabled={loadingSenha} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          <Key size={16} /> {loadingSenha ? 'A alterar...' : 'Alterar Senha'}
-        </button>
-      </div>
+        <form className="profile-form" onSubmit={saveProfile}>
+          <Field id="profile-name" label="Nome de apresentação *">
+            <input
+              id="profile-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoComplete="name"
+              required
+            />
+          </Field>
+          <Field id="profile-email" label="Email da conta">
+            <input id="profile-email" value={user?.email || ''} disabled />
+          </Field>
+          <button className="btn-primary" type="submit">
+            <Save size={18} /> Guardar perfil
+          </button>
+        </form>
+      </section>
+      <section className="card panel">
+        <h3 className="section-title">
+          <KeyRound size={20} /> Alterar senha
+        </h3>
+        <p className="profile-note">Depois de alterar a senha, terá de entrar novamente.</p>
+        <form onSubmit={changePassword}>
+          {password.error && <Notice>{password.error}</Notice>}
+          <fieldset disabled={password.pending}>
+            <Field
+              id="current-password"
+              label={user?.role === 'superuser' ? 'Senha atual' : 'Senha atual *'}
+            >
+              <input
+                id="current-password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required={user?.role !== 'superuser'}
+              />
+            </Field>
+            <Field
+              id="new-password"
+              label="Nova senha *"
+              hint="Use uma senha única. Mínimo de 4 caracteres."
+            >
+              <input
+                id="new-password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                minLength={4}
+                required
+                aria-describedby="new-password-hint"
+              />
+            </Field>
+            <Field id="confirm-password" label="Confirmar nova senha *">
+              <input
+                id="confirm-password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={confirmation}
+                onChange={(e) => setConfirmation(e.target.value)}
+                minLength={4}
+                required
+                aria-invalid={
+                  confirmation.length > 0 && confirmation !== newPassword ? true : undefined
+                }
+                aria-describedby={
+                  confirmation.length > 0 && confirmation !== newPassword
+                    ? 'password-match-error'
+                    : undefined
+                }
+              />
+              {confirmation.length > 0 && confirmation !== newPassword && (
+                <p className="field-error" id="password-match-error">
+                  As senhas não coincidem.
+                </p>
+              )}
+            </Field>
+            <div className="profile-password-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowPassword((value) => !value)}
+                aria-pressed={showPassword}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                {showPassword ? 'Ocultar senhas' : 'Mostrar senhas'}
+              </button>
+              <button type="submit" className="btn-primary">
+                {password.pending ? <Spinner /> : <KeyRound size={18} />}
+                {password.pending ? 'A alterar…' : 'Alterar senha'}
+              </button>
+            </div>
+          </fieldset>
+        </form>
+      </section>
     </div>
   );
-};
-
-export default PerfilSegurancaPage;
+}

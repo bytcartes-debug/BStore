@@ -1,209 +1,284 @@
-import { apiFetch } from '../utils/api';
-import React, { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, X, AlertTriangle } from 'lucide-react';
+import { useToast } from '../utils/toast';
+import { useState } from 'react';
+import { Plus, Pencil, Trash2, Tag } from 'lucide-react';
+import { apiRequest } from '../utils/api';
+import { useMutation, useResource } from '../utils/useResource';
+import { formatMoney, formatQuantity } from '../utils/decimal';
+import {
+  PageHeading,
+  SearchField,
+  Loading,
+  LoadError,
+  EmptyState,
+  Modal,
+  Field,
+  Notice,
+  Spinner,
+  ConfirmDialog,
+} from '../components/UI';
+import CategoryIcon from '../components/CategoryIcon';
+import { categoryIcons, categoryIconKey } from '../utils/categoryIcons';
 
-const EMOJIS = ['🛍️','🏷️','🍎','🥤','🧴','📦','🍞','🥩','🧀','🥦','🍺','☕','🧹','🪣','💊','👕','👟','📱','🔧','💡','🐔','🥚','🌽','🫙','🧂','🫒','🍫','🍬'];
+interface Categoria {
+  id: number;
+  nome: string;
+  descricao: string;
+  icone: string;
+  totalProdutos?: number;
+}
+interface ProdutoSimples {
+  id: number;
+  nome: string;
+  preco: string;
+  stock: string;
+  unidade?: string;
+}
+const loadCategories = (signal: AbortSignal) =>
+  apiRequest<Categoria[]>('/api/categorias', { signal });
+const emptyForm = { nome: '', descricao: '', icone: 'tag' };
 
-interface Categoria { id: number; nome: string; descricao: string; icone: string; totalProdutos?: number; }
-interface ProdutoSimples { id: number; nome: string; preco: number; stock: number; }
-
-const CategoriasPage: React.FC = () => {
-  const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [showModal, setShowModal]   = useState(false);
-  const [editing, setEditing]       = useState<Categoria | null>(null);
-  const [form, setForm]             = useState({ nome: '', descricao: '', icone: '🏷️' });
-  const [loading, setLoading]       = useState(false);
-  const [erro, setErro]             = useState<string | null>(null);
-
-  // Modal de confirmação de exclusão
-  const [confirmarDelete, setConfirmarDelete] = useState<{ cat: Categoria; produtos: ProdutoSimples[] } | null>(null);
-  const [loadingDelete, setLoadingDelete]     = useState(false);
-
-  const load = async () => {
-    try {
-      const r = await apiFetch('/api/categorias');
-      if (!r.ok) throw new Error('Erro ao carregar categorias');
-      setCategorias(await r.json());
-    } catch {
-      setErro('Não foi possível ligar ao servidor.');
-    }
+export default function CategoriasPage() {
+  const { data, loading, error, reload } = useResource(loadCategories);
+  const [search, setSearch] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState<Categoria | null>(null);
+  const [form, setForm] = useState(emptyForm);
+  const [confirmDelete, setConfirmDelete] = useState<{
+    cat: Categoria;
+    produtos: ProdutoSimples[];
+  } | null>(null);
+  const save = useMutation();
+  const remove = useMutation();
+  const inspect = useMutation();
+  const toast = useToast();
+  const categories = data || [];
+  const filtered = categories.filter((item) =>
+    item.nome.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
+  );
+  const openNew = () => {
+    setEditing(null);
+    setForm(emptyForm);
+    save.setError(null);
+    setShowModal(true);
   };
-
-  useEffect(() => { load(); }, []);
-
-  const openNew  = () => { setEditing(null); setForm({ nome: '', descricao: '', icone: '🏷️' }); setErro(null); setShowModal(true); };
-  const openEdit = (c: Categoria) => { setEditing(c); setForm({ nome: c.nome, descricao: c.descricao || '', icone: c.icone || '🏷️' }); setErro(null); setShowModal(true); };
-
-  const handleSave = async () => {
-    if (!form.nome.trim()) return;
-    setLoading(true); setErro(null);
-    try {
-      const body = { nome: form.nome.trim(), descricao: form.descricao.trim(), icone: form.icone };
-      const url    = editing ? `/api/categorias/${editing.id}` : '/api/categorias';
-      const method = editing ? 'PUT' : 'POST';
-      const r = await apiFetch(url, { method, body: JSON.stringify(body) });
-      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.erro || `Erro ${r.status}`); }
+  const openEdit = (cat: Categoria) => {
+    setEditing(cat);
+    setForm({ nome: cat.nome, descricao: cat.descricao || '', icone: cat.icone || 'tag' });
+    save.setError(null);
+    setShowModal(true);
+  };
+  const handleSave = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!form.nome.trim()) {
+      save.setError('Preencha o nome da categoria.');
+      return;
+    }
+    void save.run(async () => {
+      await apiRequest(editing ? `/api/categorias/${editing.id}` : '/api/categorias', {
+        method: editing ? 'PUT' : 'POST',
+        body: JSON.stringify({ ...form, nome: form.nome.trim(), descricao: form.descricao.trim() }),
+      });
       setShowModal(false);
-      await load();
-    } catch (e: any) {
-      setErro(e.message || 'Erro ao guardar. Tente novamente.');
-    } finally { setLoading(false); }
+      toast(editing ? 'Categoria guardada.' : 'Categoria criada.');
+      void reload();
+    });
   };
-
-  // Clique em 🗑️ — busca produtos antes de perguntar
-  const handleDeleteClick = async (cat: Categoria) => {
-    try {
-      const r = await apiFetch(`/api/categorias/${cat.id}/produtos`);
-      const produtos: ProdutoSimples[] = r.ok ? await r.json() : [];
-      setConfirmarDelete({ cat, produtos });
-    } catch {
-      setConfirmarDelete({ cat, produtos: [] });
-    }
-  };
-
-  // Confirma e executa a exclusão
-  const handleDeleteConfirm = async () => {
-    if (!confirmarDelete) return;
-    setLoadingDelete(true);
-    try {
-      const r = await apiFetch(`/api/categorias/${confirmarDelete.cat.id}`, { method: 'DELETE' });
-      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.erro || 'Erro ao apagar.'); return; }
-      setConfirmarDelete(null);
-      await load();
-    } catch { alert('Não foi possível ligar ao servidor.'); }
-    finally { setLoadingDelete(false); }
-  };
+  const inspectDelete = (cat: Categoria) =>
+    void inspect.run(async () => {
+      const produtos = await apiRequest<ProdutoSimples[]>(`/api/categorias/${cat.id}/produtos`);
+      remove.setError(null);
+      setConfirmDelete({ cat, produtos });
+    });
+  const handleDelete = () =>
+    void remove.run(async () => {
+      if (!confirmDelete) return;
+      await apiRequest(`/api/categorias/${confirmDelete.cat.id}`, { method: 'DELETE' });
+      setConfirmDelete(null);
+      toast('Categoria removida.');
+      void reload();
+    });
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24, flexWrap:'wrap', gap:12 }}>
-        <div>
-          <h2 style={{ fontSize:22, fontWeight:700, color:'var(--text-primary)' }}>Categorias</h2>
-          <p style={{ fontSize:14, color:'var(--text-secondary)', marginTop:4 }}>Organize os seus produtos por categoria</p>
-        </div>
-        <button className="btn-primary" onClick={openNew}><Plus size={18} /> Nova Categoria</button>
+      <PageHeading
+        title="Categorias"
+        description="Um lugar para cada produto. Organize o seu catálogo."
+      >
+        <button className="btn-primary" onClick={openNew}>
+          <Plus size={18} /> Nova categoria
+        </button>
+      </PageHeading>
+      <div className="toolbar">
+        <SearchField value={search} onChange={setSearch} label="Pesquisar categorias" />
+        <span className="result-count">
+          {filtered.length} de {categories.length} categorias
+        </span>
       </div>
-
-      {/* Grid */}
-      {categorias.length === 0
-        ? <div className="empty-state"><h3>Nenhuma categoria criada</h3><p>Clique em "Nova Categoria" para começar.</p></div>
-        : (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:16 }}>
-            {categorias.map(c => (
-              <div className="card" key={c.id} style={{ display:'flex', alignItems:'center', gap:14, padding:18 }}>
-                <div style={{ width:48, height:48, borderRadius:12, backgroundColor:'var(--color-brand-light)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:24, flexShrink:0 }}>
-                  {c.icone || '🏷️'}
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <p style={{ fontWeight:600, color:'var(--text-primary)', fontSize:14 }}>{c.nome}</p>
-                  {c.descricao && <p style={{ fontSize:12, color:'var(--text-secondary)', marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.descricao}</p>}
-                  {c.totalProdutos !== undefined && <p style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>{c.totalProdutos} produto(s)</p>}
-                </div>
-                <div style={{ display:'flex', gap:6 }}>
-                  <button className="icon-btn" onClick={() => openEdit(c)}><Pencil size={14} /></button>
-                  <button className="icon-btn delete" onClick={() => handleDeleteClick(c)}><Trash2 size={14} /></button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )
-      }
-
-      {/* Modal criar/editar */}
-      {showModal && (
-        <div className="modal-overlay">
-          <div className="modal-container">
-            <div className="modal-header">
-              <h3>{editing ? 'Editar Categoria' : 'Nova Categoria'}</h3>
-              <button className="modal-close-btn" onClick={() => setShowModal(false)}><X size={20} /></button>
-            </div>
-            {erro && <p style={{ color:'var(--color-danger)', fontSize:13, background:'rgba(239,68,68,0.1)', borderRadius:6, padding:'8px 10px', marginBottom:8 }}>⚠️ {erro}</p>}
-            <div className="form-group">
-              <label>Nome *</label>
-              <input value={form.nome} onChange={e => setForm({...form, nome:e.target.value})} placeholder="Ex: Bebidas" />
-            </div>
-            <div className="form-group">
-              <label>Descrição</label>
-              <input value={form.descricao} onChange={e => setForm({...form, descricao:e.target.value})} placeholder="Descrição opcional" />
-            </div>
-            <div className="form-group">
-              <label>Ícone</label>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(8, 1fr)', gap:6, maxHeight:160, overflowY:'auto' }}>
-                {EMOJIS.map(em => (
-                  <button key={em} onClick={() => setForm({...form, icone:em})} style={{
-                    background: form.icone === em ? 'var(--color-brand-light)' : 'transparent',
-                    border: `1px solid ${form.icone === em ? 'var(--color-brand)' : 'var(--border-color)'}`,
-                    borderRadius:6, padding:6, fontSize:18, cursor:'pointer'
-                  }}>{em}</button>
-                ))}
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleSave} disabled={loading}>
-                {loading ? 'A guardar...' : (editing ? 'Guardar' : 'Criar')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de confirmação de exclusão */}
-      {confirmarDelete && (
-        <div className="modal-overlay">
-          <div className="modal-container">
-            <div className="modal-header">
-              <h3 style={{ color:'var(--color-danger)', display:'flex', alignItems:'center', gap:8 }}>
-                <AlertTriangle size={20} /> Remover Categoria
-              </h3>
-              <button className="modal-close-btn" onClick={() => setConfirmarDelete(null)}><X size={20} /></button>
-            </div>
-
-            <p style={{ fontSize:14, color:'var(--text-primary)', marginBottom:12 }}>
-              Tem a certeza que quer remover a categoria <strong>"{confirmarDelete.cat.nome}"</strong>?
-            </p>
-
-            {confirmarDelete.produtos.length > 0 ? (
-              <>
-                <div style={{ background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:8, padding:12, marginBottom:14 }}>
-                  <p style={{ fontSize:13, fontWeight:700, color:'var(--color-danger)', marginBottom:8 }}>
-                    ⚠️ Esta categoria contém {confirmarDelete.produtos.length} produto(s). Todos serão apagados:
-                  </p>
-                  <ul style={{ margin:0, paddingLeft:18, fontSize:13, color:'var(--text-secondary)' }}>
-                    {confirmarDelete.produtos.map(p => (
-                      <li key={p.id} style={{ marginBottom:2 }}>
-                        <strong>{p.nome}</strong> — MT {p.preco.toFixed(2)} · Stock: {p.stock}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <p style={{ fontSize:12, color:'var(--text-muted)', marginBottom:16 }}>
-                  ⚠️ As vendas associadas a estes produtos também serão removidas permanentemente.
-                </p>
-              </>
-            ) : (
-              <p style={{ fontSize:13, color:'var(--text-secondary)', marginBottom:16 }}>
-                Esta categoria está vazia. A remoção é segura.
+      {error && <LoadError message={error} retry={reload} />}
+      {inspect.error && <Notice>{inspect.error}</Notice>}
+      {loading && !data ? (
+        <Loading />
+      ) : (
+        data &&
+        (categories.length === 0 ? (
+          <EmptyState
+            title="Comece a organizar a sua loja"
+            description="Crie a primeira categoria para depois adicionar os seus produtos."
+            icon={<Tag size={28} />}
+          >
+            <button className="btn-secondary" onClick={openNew}>
+              Criar categoria
+            </button>
+          </EmptyState>
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            title="Nenhuma categoria encontrada"
+            description="Experimente outro nome ou limpe a pesquisa."
+          >
+            <button className="btn-secondary" onClick={() => setSearch('')}>
+              Limpar pesquisa
+            </button>
+          </EmptyState>
+        ) : (
+          <>
+            {loading && (
+              <p className="refresh-state" role="status">
+                <Spinner /> A atualizar categorias…
               </p>
             )}
-
-            <div className="modal-actions">
-              <button className="btn-secondary" onClick={() => setConfirmarDelete(null)}>Cancelar</button>
-              <button
-                onClick={handleDeleteConfirm}
-                disabled={loadingDelete}
-                style={{ background:'var(--color-danger)', color:'#fff', border:'none', padding:'10px 18px', borderRadius:8, fontWeight:600, cursor:'pointer', opacity: loadingDelete ? 0.7 : 1 }}
-              >
-                <Trash2 size={16} style={{ marginRight:6, verticalAlign:'middle' }} />
-                {loadingDelete ? 'A remover...' : confirmarDelete.produtos.length > 0 ? `Remover categoria e ${confirmarDelete.produtos.length} produto(s)` : 'Remover categoria'}
-              </button>
+            <div className="category-grid">
+              {filtered.map((cat) => (
+                <article key={cat.id} className="card category-card">
+                  <div className="category-icon">
+                    <CategoryIcon value={cat.icone || 'tag'} />
+                  </div>
+                  <div>
+                    <h3>{cat.nome}</h3>
+                    <p className="category-description">{cat.descricao || 'Sem descrição'}</p>
+                  </div>
+                  <div className="category-footer">
+                    <span>
+                      {cat.totalProdutos !== undefined
+                        ? `${cat.totalProdutos} produto${cat.totalProdutos === 1 ? '' : 's'}`
+                        : 'Categoria de produtos'}
+                    </span>
+                    <div className="action-group">
+                      <button
+                        className="icon-btn"
+                        title={`Editar ${cat.nome}`}
+                        aria-label={`Editar categoria ${cat.nome}`}
+                        onClick={() => openEdit(cat)}
+                      >
+                        <Pencil size={17} />
+                      </button>
+                      <button
+                        className="icon-btn delete"
+                        title={`Remover ${cat.nome}`}
+                        aria-label={`Remover categoria ${cat.nome}`}
+                        disabled={inspect.pending}
+                        onClick={() => inspectDelete(cat)}
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
             </div>
-          </div>
-        </div>
+          </>
+        ))
+      )}
+      {showModal && (
+        <Modal
+          title={editing ? 'Editar categoria' : 'Nova categoria'}
+          onClose={() => setShowModal(false)}
+          busy={save.pending}
+        >
+          <form onSubmit={handleSave}>
+            <p className="required-note">Os campos com * são obrigatórios.</p>
+            {save.error && <Notice>{save.error}</Notice>}
+            <fieldset disabled={save.pending}>
+              <Field id="category-name" label="Nome *">
+                <input
+                  id="category-name"
+                  value={form.nome}
+                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                  placeholder="Ex.: Bebidas"
+                  required
+                />
+              </Field>
+              <Field id="category-description" label="Descrição">
+                <textarea
+                  id="category-description"
+                  value={form.descricao}
+                  onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+                  placeholder="Que produtos pertencem a esta categoria?"
+                />
+              </Field>
+              <fieldset className="form-group">
+                <legend className="field-label">Símbolo da categoria</legend>
+                <div className="icon-picker">
+                  {categoryIcons.map(({ key, label, icon: Icon }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      title={label}
+                      aria-label={label}
+                      aria-pressed={categoryIconKey(form.icone) === key}
+                      onClick={() => setForm({ ...form, icone: key })}
+                    >
+                      <Icon size={21} />
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
+                  Cancelar
+                </button>
+                <button className="btn-primary" type="submit">
+                  {save.pending && <Spinner />}
+                  {save.pending ? 'A guardar…' : editing ? 'Guardar alterações' : 'Criar categoria'}
+                </button>
+              </div>
+            </fieldset>
+          </form>
+        </Modal>
+      )}
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Remover categoria?"
+          onClose={() => setConfirmDelete(null)}
+          onConfirm={handleDelete}
+          busy={remove.pending}
+          error={remove.error}
+          danger
+          label="Remover categoria"
+        >
+          <p>
+            Está a remover <strong>{confirmDelete.cat.nome}</strong>. Esta ação não pode ser
+            desfeita.
+          </p>
+          {confirmDelete.produtos.length > 0 ? (
+            <>
+              <Notice>
+                Esta categoria contém {confirmDelete.produtos.length} produto(s). A remoção inclui
+                esses produtos e as vendas associadas.
+              </Notice>
+              <ul className="confirm-list">
+                {confirmDelete.produtos.map((item) => (
+                  <li key={item.id}>
+                    {item.nome} — {formatMoney(item.preco)}; stock:{' '}
+                    {formatQuantity(item.stock, item.unidade || '')}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p>Esta categoria não tem produtos associados.</p>
+          )}
+        </ConfirmDialog>
       )}
     </div>
   );
-};
-
-export default CategoriasPage;
+}

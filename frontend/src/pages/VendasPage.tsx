@@ -1,423 +1,547 @@
-import { apiFetch } from '../utils/api';
-import React, { useEffect, useState, useRef } from 'react';
-import { Plus, X, Search, Trash2, ShoppingCart, ScanLine, Loader2 } from 'lucide-react';
+import { useToast } from '../utils/toast';
+import { useEffect, useRef, useState } from 'react';
+import { Plus, Minus, Trash2, ShoppingCart, ScanLine, Search, CheckCircle2 } from 'lucide-react';
+import { apiFetch, apiRequest } from '../utils/api';
+import { useMutation, useResource } from '../utils/useResource';
 import { abrirScanner } from '../utils/scanner';
+import { notificarVendaRegistada } from '../utils/notificacoes';
+import { decimal, formatMoney, formatQuantity, parseDecimalInput } from '../utils/decimal';
+import type Decimal from 'decimal.js';
+import {
+  PageHeading,
+  SearchField,
+  Loading,
+  LoadError,
+  EmptyState,
+  Modal,
+  Field,
+  Notice,
+  Spinner,
+} from '../components/UI';
+import './VendasPage.css';
 
-interface Produto { id: number; nome: string; preco: number; stock: number; unidade: string; }
-interface Venda   { id: number; produto: string; quantidade: number; total: number; data: string; }
-interface ItemCarrinho { produto: Produto; quantidade: number; }
+interface Produto {
+  id: number;
+  nome: string;
+  preco: string;
+  stock: string;
+  unidade: string;
+}
+interface Venda {
+  id: number;
+  produto: string;
+  quantidade: string;
+  total: string;
+  data: string;
+}
+interface ItemCarrinho {
+  produto: Produto;
+  quantidade: Decimal;
+}
+const loadSales = async (signal: AbortSignal) => {
+  const [vendas, produtos] = await Promise.all([
+    apiRequest<Venda[]>('/api/vendas', { signal }),
+    apiRequest<Produto[]>('/api/produtos', { signal }),
+  ]);
+  return { vendas, produtos };
+};
 
-const VendasPage: React.FC = () => {
-  const [vendas, setVendas]         = useState<Venda[]>([]);
-  const [produtos, setProdutos]     = useState<Produto[]>([]);
-  const [showModal, setShowModal]   = useState(false);
-
-  // Carrinho
-  const [carrinho, setCarrinho]     = useState<ItemCarrinho[]>([]);
-  const [busca, setBusca]           = useState('');
-  const [showSugestoes, setShowSugestoes] = useState(false);
-  const [selectedProd, setSelectedProd]   = useState<Produto | null>(null);
-  const [qtdAtual, setQtdAtual]     = useState('1');
-  const buscaRef = useRef<HTMLDivElement>(null);
-
-  // Troco
-  const [valorEntregue, setValorEntregue] = useState('');
-
-  // Estado do botão
-  const [loading, setLoading]       = useState(false);
-  const [erro, setErro]             = useState<string | null>(null);
-  const [scanning, setScanning]     = useState(false);
-  const [scanMsg, setScanMsg]       = useState<string | null>(null);
-
-  const load = () => {
-    apiFetch('/api/vendas').then(r => r.json()).then(setVendas).catch(() => {});
-    apiFetch('/api/produtos').then(r => r.json()).then(setProdutos).catch(() => {});
-  };
-
-  useEffect(() => { load(); }, []);
-
-  // Fechar sugestões ao clicar fora
+export default function VendasPage() {
+  const { data, loading, error, reload } = useResource(loadSales);
+  const [search, setSearch] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
+  const [busca, setBusca] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeOption, setActiveOption] = useState(-1);
+  const [selectedProd, setSelectedProd] = useState<Produto | null>(null);
+  const [quantity, setQuantity] = useState('1');
+  const [amount, setAmount] = useState('');
+  const [cartError, setCartError] = useState<string | null>(null);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLUListElement>(null);
+  const save = useMutation();
+  const scan = useMutation();
+  const toast = useToast();
+  const vendas = data?.vendas || [];
+  const produtos = data?.produtos || [];
+  const filteredSales = vendas.filter((v) =>
+    `${v.produto} ${v.data}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
+  );
+  const suggestions = produtos
+    .filter((p) => p.nome.toLocaleLowerCase().includes(busca.trim().toLocaleLowerCase()))
+    .slice(0, 30);
+  const total = carrinho.reduce(
+    (sum, item) => sum.plus(decimal(item.produto.preco).times(item.quantidade)),
+    decimal(0),
+  );
+  const paid = parseDecimalInput(amount);
+  const change = paid && paid.gt(0) ? paid.minus(total) : null;
   useEffect(() => {
-    const handle = (e: MouseEvent) => {
-      if (buscaRef.current && !buscaRef.current.contains(e.target as Node))
-        setShowSugestoes(false);
-    };
-    document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, []);
+    suggestionsRef.current?.children[activeOption]?.scrollIntoView({ block: 'nearest' });
+  }, [activeOption]);
 
-  const totalCarrinho = carrinho.reduce((s, i) => s + i.produto.preco * i.quantidade, 0);
-
-  // Troco calculado automaticamente
-  const trocoCalculado = (() => {
-    const v = parseFloat(valorEntregue);
-    if (isNaN(v) || valorEntregue === '' || v <= 0) return null;
-    return v - totalCarrinho;
-  })();
-
-  const handleSelectProduto = (p: Produto) => {
-    setSelectedProd(p);
-    setBusca(p.nome);
-    setShowSugestoes(false);
-    setQtdAtual('1');
+  const selectProduct = (product: Produto) => {
+    setSelectedProd(product);
+    setBusca(product.nome);
+    setQuantity('1');
+    setShowSuggestions(false);
+    setActiveOption(-1);
+    setCartError(null);
   };
-
-  const handleAdicionarAoCarrinho = () => {
-    if (!selectedProd) return;
-    const qtd = parseFloat(qtdAtual) || 1;
-    if (qtd <= 0) return;
-
-    // Se já está no carrinho, soma a quantidade
-    setCarrinho(prev => {
-      const existente = prev.find(i => i.produto.id === selectedProd.id);
-      if (existente) {
-        return prev.map(i => i.produto.id === selectedProd.id
-          ? { ...i, quantidade: i.quantidade + qtd }
-          : i);
-      }
-      return [...prev, { produto: selectedProd, quantidade: qtd }];
-    });
-
-    // Limpar pesquisa
+  const addProduct = (product: Produto, qty: Decimal) => {
+    const existing = carrinho.find((item) => item.produto.id === product.id);
+    if (qty.lte(0) || qty.decimalPlaces() > 3) {
+      setCartError('Introduza uma quantidade positiva com até três casas decimais.');
+      return false;
+    }
+    if ((existing?.quantidade || decimal(0)).plus(qty).gt(product.stock)) {
+      setCartError(
+        `Stock insuficiente de ${product.nome}. Disponível: ${formatQuantity(product.stock, product.unidade)}.`,
+      );
+      return false;
+    }
+    setCarrinho((previous) =>
+      existing
+        ? previous.map((item) =>
+            item.produto.id === product.id
+              ? { ...item, quantidade: item.quantidade.plus(qty) }
+              : item,
+          )
+        : [...previous, { produto: product, quantidade: qty }],
+    );
+    setCartError(null);
+    return true;
+  };
+  const addSelected = () => {
+    if (!selectedProd) {
+      setCartError('Selecione um produto da lista.');
+      return;
+    }
+    const qty = parseDecimalInput(quantity);
+    if (!qty) {
+      setCartError('Introduza uma quantidade válida.');
+      return;
+    }
+    if (!addProduct(selectedProd, qty)) return;
     setBusca('');
     setSelectedProd(null);
-    setQtdAtual('1');
-    setValorEntregue('');
+    setQuantity('1');
+    setAmount('');
+    inputRef.current?.focus();
   };
-
-  const handleRemoverItem = (produtoId: number) => {
-    setCarrinho(prev => prev.filter(i => i.produto.id !== produtoId));
-  };
-
-  const handleAlterarQtd = (produtoId: number, novaQtd: number) => {
-    if (novaQtd <= 0) { handleRemoverItem(produtoId); return; }
-    setCarrinho(prev => prev.map(i => i.produto.id === produtoId ? { ...i, quantidade: novaQtd } : i));
-  };
-
-  const handleFinalizarVenda = async () => {
-    if (carrinho.length === 0) return;
-    setLoading(true);
-    setErro(null);
-    try {
-      const itens = carrinho.map(i => ({ produtoId: i.produto.id, quantidade: i.quantidade }));
-      const r = await apiFetch('/api/vendas/lote', {
-        method: 'POST',
-        body: JSON.stringify(itens),
-      });
-      if (!r.ok) {
-        const d = await r.json().catch(() => ({}));
-        throw new Error(d.erro || `Erro ${r.status}`);
-      }
-      const resultado = await r.json();
-
-      // Notificação
-      const { notificarVendaRegistada } = await import('../utils/notificacoes');
-      await notificarVendaRegistada(`${resultado.itens} produtos`, resultado.total);
-
-      setShowModal(false);
-      setCarrinho([]);
-      setBusca('');
-      setSelectedProd(null);
-      setQtdAtual('1');
-      setValorEntregue('');
-      load();
-    } catch (e: any) {
-      setErro(e.message || 'Erro ao registar venda.');
-    } finally {
-      setLoading(false);
+  const changeQuantity = (id: number, qty: Decimal) => {
+    const item = carrinho.find((entry) => entry.produto.id === id);
+    if (item && qty.gt(item.produto.stock)) {
+      setCartError(`Stock insuficiente de ${item.produto.nome}.`);
+      return;
     }
+    setCartError(null);
+    setCarrinho((previous) =>
+      qty.lte(0)
+        ? previous.filter((entry) => entry.produto.id !== id)
+        : previous.map((entry) =>
+            entry.produto.id === id ? { ...entry, quantidade: qty } : entry,
+          ),
+    );
   };
-
-  const handleFecharModal = () => {
-    setShowModal(false);
+  const resetCart = () => {
     setCarrinho([]);
     setBusca('');
     setSelectedProd(null);
-    setQtdAtual('1');
-    setValorEntregue('');
-    setErro(null);
-    setScanMsg(null);
+    setQuantity('1');
+    setAmount('');
+    setCartError(null);
+    setScanMessage(null);
+    setShowSuggestions(false);
+    save.setError(null);
+    scan.setError(null);
   };
-
-  /** Scan na venda: lê código → procura na BD → adiciona ao carrinho */
-  const handleScanVenda = async () => {
-    setScanning(true); setScanMsg(null);
-    try {
-      const codigo = await abrirScanner();
-      if (!codigo) return;
-
-      const r = await apiFetch(`/api/produtos/barcode/${encodeURIComponent(codigo)}`);
-      if (!r.ok) {
-        setScanMsg(`⚠️ Produto com código "${codigo}" não está cadastrado.`);
-        setTimeout(() => setScanMsg(null), 4000);
-        return;
-      }
-      const p: Produto = await r.json();
-
-      // Adicionar ao carrinho (ou incrementar se já existe)
-      setCarrinho(prev => {
-        const existente = prev.find(i => i.produto.id === p.id);
-        if (existente) {
-          const step = ['kg','g','L','ml'].includes(p.unidade) ? 0.5 : 1;
-          return prev.map(i => i.produto.id === p.id ? { ...i, quantidade: i.quantidade + step } : i);
-        }
-        return [...prev, { produto: p, quantidade: 1 }];
+  const closeModal = () => {
+    if (
+      carrinho.length > 0 &&
+      !window.confirm('Descartar esta venda? Os produtos do carrinho não serão registados.')
+    )
+      return;
+    setShowModal(false);
+    resetCart();
+  };
+  const handleScan = () =>
+    void scan.run(async () => {
+      setScanMessage(null);
+      setCartError(null);
+      const code = await abrirScanner();
+      if (!code) return;
+      const response = await apiFetch(`/api/produtos/barcode/${encodeURIComponent(code)}`);
+      if (response.status === 404)
+        throw new Error(
+          `O código ${code} não está associado a um produto. Adicione-o na página Produtos.`,
+        );
+      if (!response.ok) throw new Error('Não foi possível consultar este código. Tente novamente.');
+      const product: Produto = await response.json();
+      const existing = carrinho.some((item) => item.produto.id === product.id);
+      const step = decimal(
+        existing && ['kg', 'g', 'L', 'ml'].includes(product.unidade) ? '0.5' : '1',
+      );
+      if (addProduct(product, step)) setScanMessage(`${product.nome} adicionado ao carrinho.`);
+    });
+  const finishSale = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (carrinho.length === 0) return;
+    void save.run(async () => {
+      const result = await apiRequest<{ itens: number; total: string }>('/api/vendas/lote', {
+        method: 'POST',
+        body: JSON.stringify(
+          carrinho.map((item) => ({
+            produtoId: item.produto.id,
+            quantidade: item.quantidade.toFixed(3),
+          })),
+        ),
       });
-
-      setScanMsg(`✅ "${p.nome}" adicionado ao carrinho.`);
-      setTimeout(() => setScanMsg(null), 2500);
-    } finally {
-      setScanning(false);
-    }
+      setShowModal(false);
+      resetCart();
+      toast(`Venda registada: ${formatMoney(result.total)}.`);
+      void reload();
+      // Uma notificação indisponível não pode transformar uma venda concluída numa falha.
+      void notificarVendaRegistada(`${result.itens} produtos`, result.total).catch(() => {});
+    });
   };
-
-  const produtosFiltrados = produtos.filter(p =>
-    p.nome.toLowerCase().includes(busca.toLowerCase())
-  );
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20, flexWrap:'wrap', gap:12 }}>
-        <div>
-          <h2 style={{ fontSize:22, fontWeight:700, color:'var(--text-primary)' }}>Vendas</h2>
-          <p style={{ fontSize:14, color:'var(--text-secondary)', marginTop:4 }}>{vendas.length} venda(s) registada(s)</p>
-        </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}>
-          <ShoppingCart size={18} /> Nova Venda
+      <PageHeading
+        title="Vendas"
+        description="Do carrinho ao troco. Registe cada venda com clareza."
+      >
+        <button className="btn-primary" disabled={!data} onClick={() => setShowModal(true)}>
+          <Plus size={18} /> Registar venda
         </button>
+      </PageHeading>
+      <div className="toolbar">
+        <SearchField value={search} onChange={setSearch} label="Pesquisar por produto ou data" />
+        <span className="result-count">
+          {filteredSales.length} de {vendas.length} registos
+        </span>
       </div>
-
-      {/* Tabela de vendas */}
-      <div className="card">
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr><th>Produto</th><th>Qtd</th><th>Total (MT)</th><th>Data</th></tr>
-            </thead>
-            <tbody>
-              {vendas.length === 0
-                ? <tr><td colSpan={4} style={{ textAlign:'center', color:'var(--text-secondary)', padding:32 }}>Nenhuma venda registada.</td></tr>
-                : vendas.map(v => (
-                  <tr key={v.id}>
-                    <td style={{ fontWeight:600 }}>{v.produto}</td>
-                    <td>{v.quantidade}</td>
-                    <td>MT {v.total.toFixed(2)}</td>
-                    <td style={{ color:'var(--text-secondary)' }}>{v.data}</td>
-                  </tr>
-                ))
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Modal de Venda com Carrinho */}
-      {showModal && (
-        <div className="modal-overlay">
-          <div className="modal-container" style={{ maxWidth: 540 }}>
-            <div className="modal-header">
-              <h3>🛒 Nova Venda</h3>
-              <button className="modal-close-btn" onClick={handleFecharModal}><X size={20} /></button>
-            </div>
-
-            {erro && (
-              <p style={{ color:'var(--color-danger)', fontSize:13, background:'rgba(239,68,68,0.1)', borderRadius:6, padding:'8px 10px', marginBottom:8 }}>
-                ⚠️ {erro}
-              </p>
-            )}
-
-            {/* Mensagem de scan */}
-            {scanMsg && (
-              <div style={{ fontSize:13, padding:'8px 12px', borderRadius:6, marginBottom:8,
-                background: scanMsg.startsWith('✅') ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.1)',
-                color: scanMsg.startsWith('✅') ? 'var(--color-brand)' : 'var(--color-danger)' }}>
-                {scanMsg}
+      {error && <LoadError message={error} retry={reload} />}
+      {loading && !data ? (
+        <Loading />
+      ) : (
+        data && (
+          <div className="card">
+            {vendas.length === 0 ? (
+              <EmptyState
+                title="A primeira venda começa aqui"
+                description="Adicione produtos ao carrinho e confirme a venda para a ver neste histórico."
+                icon={<ShoppingCart size={28} />}
+              >
+                <button className="btn-secondary" onClick={() => setShowModal(true)}>
+                  Registar venda
+                </button>
+              </EmptyState>
+            ) : filteredSales.length === 0 ? (
+              <EmptyState
+                title="Nenhuma venda encontrada"
+                description="Pesquise por outro produto ou data."
+              >
+                <button className="btn-secondary" onClick={() => setSearch('')}>
+                  Limpar pesquisa
+                </button>
+              </EmptyState>
+            ) : (
+              <div className="table-wrapper">
+                <table className="responsive-table">
+                  <caption className="sr-only">Histórico de vendas</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Produto</th>
+                      <th scope="col" className="numeric">
+                        Quantidade
+                      </th>
+                      <th scope="col" className="numeric">
+                        Total
+                      </th>
+                      <th scope="col">Data</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSales.map((v) => (
+                      <tr key={v.id}>
+                        <td data-label="Produto" className="cell-name">
+                          {v.produto}
+                        </td>
+                        <td data-label="Quantidade" className="numeric">
+                          {formatQuantity(v.quantidade, '')}
+                        </td>
+                        <td data-label="Total" className="numeric">
+                          {formatMoney(v.total)}
+                        </td>
+                        <td data-label="Data" className="cell-secondary">
+                          {v.data}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
-
-            {/* Pesquisa de produto */}
-            <div className="form-group" ref={buscaRef} style={{ position:'relative' }}>
-              <label>Adicionar Produto</label>
-              <div style={{ display:'flex', gap:8 }}>
-                <div style={{ position:'relative', flex:1 }}>
-                  <Search size={16} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--text-muted)' }} />
-                  <input
-                    value={busca}
-                    onChange={e => { setBusca(e.target.value); setShowSugestoes(true); setSelectedProd(null); }}
-                    onFocus={() => setShowSugestoes(true)}
-                    placeholder="🔍 Pesquisar produto..."
-                    style={{ paddingLeft:34, width:'100%' }}
-                  />
-                </div>
-                {/* Botão Scan */}
-                <button
-                  className="btn-secondary"
-                  onClick={handleScanVenda}
-                  disabled={scanning}
-                  title="Scan de código de barras"
-                  style={{ display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap', padding:'0 12px' }}
-                >
-                  {scanning ? <Loader2 size={16} className="spin" /> : <ScanLine size={16} />}
-                  {scanning ? '' : 'Scan'}
-                </button>
-                <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-                  <input
-                    type="number" min="0.001" step="0.001" value={qtdAtual}
-                    onChange={e => setQtdAtual(e.target.value)}
-                    style={{ width:75, textAlign:'center' }}
-                    placeholder="Qtd"
-                  />
-                  {selectedProd && (
-                    <span style={{ fontSize:12, color:'var(--text-secondary)', whiteSpace:'nowrap' }}>
-                      {selectedProd.unidade || 'un'}
-                    </span>
+          </div>
+        )
+      )}
+      {showModal && (
+        <Modal title="Registar venda" onClose={closeModal} busy={save.pending || scan.pending} wide>
+          <form onSubmit={finishSale}>
+            {save.error && <Notice>{save.error}</Notice>}
+            {scan.error && <Notice>{scan.error}</Notice>}
+            {cartError && <Notice>{cartError}</Notice>}
+            {scanMessage && <Notice kind="success">{scanMessage}</Notice>}
+            <fieldset disabled={save.pending || scan.pending}>
+              <div className="sale-add-row">
+                <div className="product-combobox">
+                  <label htmlFor="sale-product" className="field-label">
+                    Pesquisar produto
+                  </label>
+                  <div className="search-field">
+                    <Search size={18} />
+                    <input
+                      id="sale-product"
+                      ref={inputRef}
+                      role="combobox"
+                      aria-autocomplete="list"
+                      aria-expanded={showSuggestions}
+                      aria-controls="sale-suggestions"
+                      aria-activedescendant={
+                        showSuggestions && activeOption >= 0
+                          ? `sale-option-${suggestions[activeOption]?.id}`
+                          : undefined
+                      }
+                      autoComplete="off"
+                      value={busca}
+                      placeholder="Nome do produto"
+                      onChange={(e) => {
+                        setBusca(e.target.value);
+                        setSelectedProd(null);
+                        setShowSuggestions(true);
+                        setActiveOption(-1);
+                      }}
+                      onFocus={() => {
+                        if (!selectedProd) setShowSuggestions(true);
+                      }}
+                      onBlur={() => setShowSuggestions(false)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'ArrowDown') {
+                          event.preventDefault();
+                          setShowSuggestions(true);
+                          setActiveOption((index) => Math.min(index + 1, suggestions.length - 1));
+                        }
+                        if (event.key === 'ArrowUp') {
+                          event.preventDefault();
+                          setActiveOption((index) => Math.max(0, index - 1));
+                        }
+                        if (event.key === 'Escape' && showSuggestions) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setShowSuggestions(false);
+                        }
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          if (showSuggestions && activeOption >= 0 && suggestions[activeOption])
+                            selectProduct(suggestions[activeOption]);
+                          else if (selectedProd) addSelected();
+                        }
+                      }}
+                    />
+                  </div>
+                  {showSuggestions && (
+                    <ul
+                      id="sale-suggestions"
+                      ref={suggestionsRef}
+                      role="listbox"
+                      aria-label="Produtos disponíveis"
+                      className="product-suggestions"
+                    >
+                      {suggestions.length === 0 ? (
+                        <li
+                          className="suggestion-empty"
+                          role="option"
+                          aria-disabled="true"
+                          aria-selected="false"
+                        >
+                          {produtos.length === 0
+                            ? 'Adicione produtos na página Produtos para começar.'
+                            : 'Nenhum produto encontrado.'}
+                        </li>
+                      ) : (
+                        suggestions.map((p, index) => (
+                          <li
+                            id={`sale-option-${p.id}`}
+                            role="option"
+                            key={p.id}
+                            aria-selected={index === activeOption}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => selectProduct(p)}
+                          >
+                            <strong>{p.nome}</strong>
+                            <span>
+                              {formatMoney(p.preco)} · Stock:{' '}
+                              {formatQuantity(p.stock, p.unidade || 'un')}
+                            </span>
+                          </li>
+                        ))
+                      )}
+                    </ul>
                   )}
                 </div>
-                <button
-                  className="btn-primary"
-                  onClick={handleAdicionarAoCarrinho}
-                  disabled={!selectedProd}
-                  style={{ whiteSpace:'nowrap', padding:'0 12px' }}
-                  title="Adicionar ao carrinho"
+                <Field
+                  id="sale-quantity"
+                  label={
+                    selectedProd ? `Quantidade (${selectedProd.unidade || 'un'})` : 'Quantidade'
+                  }
                 >
-                  <Plus size={18} />
+                  <input
+                    id="sale-quantity"
+                    type="number"
+                    min="0.001"
+                    step="0.001"
+                    inputMode="decimal"
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addSelected();
+                      }
+                    }}
+                  />
+                </Field>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={addSelected}
+                  disabled={!selectedProd}
+                >
+                  <Plus size={18} /> Adicionar
+                </button>
+                <button type="button" className="btn-secondary sale-scan" onClick={handleScan}>
+                  {scan.pending ? <Spinner /> : <ScanLine size={18} />} Ler código
                 </button>
               </div>
-
-              {/* Sugestões */}
-              {showSugestoes && busca.length > 0 && (
-                <div style={{
-                  position:'absolute', top:'100%', left:0, right:0, zIndex:100,
-                  background:'var(--bg-card)', border:'1px solid var(--border-color)',
-                  borderRadius:8, boxShadow:'0 8px 24px rgba(0,0,0,0.3)',
-                  maxHeight:200, overflowY:'auto',
-                }}>
-                  {produtosFiltrados.length === 0
-                    ? <div style={{ padding:'12px 16px', color:'var(--text-muted)', fontSize:13 }}>Nenhum produto encontrado</div>
-                    : produtosFiltrados.map(p => (
-                      <div
-                        key={p.id}
-                        onClick={() => handleSelectProduto(p)}
-                        style={{
-                          padding:'10px 16px', cursor:'pointer',
-                          borderBottom:'1px solid var(--border-color)',
-                          display:'flex', justifyContent:'space-between', alignItems:'center',
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-brand-light)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                      >
-                        <span style={{ fontWeight:600, color:'var(--text-primary)' }}>{p.nome}</span>
-                        <span style={{ fontSize:12, color:'var(--text-secondary)' }}>
-                          MT {p.preco.toFixed(2)} · {p.stock} {p.unidade || 'un'}
-                        </span>
-                      </div>
-                    ))
-                  }
+              <div className="cart-heading">
+                <h4>Carrinho</h4>
+                <span>
+                  {carrinho.length} produto{carrinho.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              {carrinho.length === 0 ? (
+                <div className="cart-empty">
+                  <ShoppingCart size={28} />
+                  <p>O carrinho está vazio.</p>
+                  <span>Pesquise um produto ou leia o código de barras para o adicionar.</span>
                 </div>
-              )}
-            </div>
-
-            {/* Carrinho */}
-            {carrinho.length > 0 && (
-              <div style={{ marginBottom:16 }}>
-                <p style={{ fontSize:13, fontWeight:600, color:'var(--text-secondary)', marginBottom:8 }}>
-                  🛒 Carrinho ({carrinho.length} produto{carrinho.length !== 1 ? 's' : ''})
-                </p>
-                <div style={{ border:'1px solid var(--border-color)', borderRadius:8, overflow:'hidden' }}>
-                  {carrinho.map((item, idx) => {
-                    const u = item.produto.unidade || 'un';
-                    const step = ['kg','L','g','ml','m'].includes(u) ? 0.5 : 1;
-                    const fmtQtd = Number.isInteger(item.quantidade) ? `${item.quantidade}` : `${item.quantidade}`;
+              ) : (
+                <div className="cart-list">
+                  {carrinho.map((item) => {
+                    const unit = item.produto.unidade || 'un';
+                    const step = decimal(['kg', 'L', 'g', 'ml', 'm'].includes(unit) ? '0.5' : '1');
                     return (
-                      <div key={item.produto.id} style={{
-                        display:'flex', alignItems:'center', gap:8,
-                        padding:'10px 12px',
-                        borderBottom: idx < carrinho.length - 1 ? '1px solid var(--border-color)' : 'none',
-                        background: 'var(--bg-card)',
-                      }}>
-                        <span style={{ flex:1, fontWeight:600, fontSize:14, color:'var(--text-primary)' }}>
-                          {item.produto.nome}
-                        </span>
-                        {/* Ajustar quantidade */}
+                      <div className="cart-item" key={item.produto.id}>
+                        <div className="cart-product">
+                          <strong>{item.produto.nome}</strong>
+                          <span>
+                            {formatMoney(item.produto.preco)} / {unit}
+                          </span>
+                        </div>
+                        <div className="quantity-control">
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            aria-label={`Diminuir quantidade de ${item.produto.nome}`}
+                            onClick={() =>
+                              changeQuantity(item.produto.id, item.quantidade.minus(step))
+                            }
+                          >
+                            <Minus size={16} />
+                          </button>
+                          <span>{formatQuantity(item.quantidade, unit)}</span>
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            aria-label={`Aumentar quantidade de ${item.produto.nome}`}
+                            onClick={() =>
+                              changeQuantity(item.produto.id, item.quantidade.plus(step))
+                            }
+                          >
+                            <Plus size={16} />
+                          </button>
+                        </div>
+                        <strong className="cart-subtotal numeric">
+                          {formatMoney(decimal(item.produto.preco).times(item.quantidade))}
+                        </strong>
                         <button
-                          onClick={() => handleAlterarQtd(item.produto.id, Math.max(0, +(item.quantidade - step).toFixed(3)))}
-                          style={{ width:28, height:28, borderRadius:6, border:'1px solid var(--border-color)', background:'transparent', cursor:'pointer', color:'var(--text-primary)', fontSize:16 }}
-                        >−</button>
-                        <span style={{ minWidth:52, textAlign:'center', fontWeight:700, fontSize:13 }}>
-                          {fmtQtd} {u}
-                        </span>
-                        <button
-                          onClick={() => handleAlterarQtd(item.produto.id, +(item.quantidade + step).toFixed(3))}
-                          style={{ width:28, height:28, borderRadius:6, border:'1px solid var(--border-color)', background:'transparent', cursor:'pointer', color:'var(--text-primary)', fontSize:16 }}
-                        >+</button>
-                        <span style={{ minWidth:84, textAlign:'right', color:'var(--color-brand)', fontWeight:700, fontSize:13 }}>
-                          MT {(item.produto.preco * item.quantidade).toFixed(2)}
-                        </span>
-                        <button className="icon-btn delete" onClick={() => handleRemoverItem(item.produto.id)} style={{ marginLeft:4 }}>
-                          <Trash2 size={14} />
+                          type="button"
+                          className="icon-btn delete cart-remove"
+                          aria-label={`Remover ${item.produto.nome} do carrinho`}
+                          onClick={() =>
+                            setCarrinho((previous) =>
+                              previous.filter((entry) => entry.produto.id !== item.produto.id),
+                            )
+                          }
+                        >
+                          <Trash2 size={17} />
                         </button>
                       </div>
                     );
                   })}
                 </div>
-
-                {/* Total */}
-                <div style={{
-                  display:'flex', justifyContent:'space-between', alignItems:'center',
-                  padding:'12px 14px', background:'var(--color-brand-light)',
-                  border:'1px solid var(--color-brand)', borderRadius:8, marginTop:8,
-                }}>
-                  <span style={{ fontWeight:700, color:'var(--color-brand)' }}>Total a pagar</span>
-                  <span style={{ fontWeight:800, fontSize:18, color:'var(--color-brand)' }}>MT {totalCarrinho.toFixed(2)}</span>
+              )}
+              <div className="sale-payment">
+                <div className="sale-total">
+                  <span>Total a pagar</span>
+                  <strong>{formatMoney(total)}</strong>
                 </div>
-
-                {/* Troco automático */}
-                <div className="form-group" style={{ marginTop:12, marginBottom:0 }}>
-                  <label>💰 Valor entregue pelo cliente (MT)</label>
-                  <input
-                    type="number" min="0" step="0.01"
-                    value={valorEntregue}
-                    onChange={e => setValorEntregue(e.target.value)}
-                    placeholder="0.00"
-                  />
-                  {trocoCalculado !== null && (
-                    <div style={{
-                      marginTop:8, padding:'10px 12px',
-                      background: trocoCalculado >= 0 ? 'var(--color-brand-light)' : 'var(--color-danger-light)',
-                      borderRadius:8, fontSize:14, fontWeight:700,
-                      color: trocoCalculado >= 0 ? 'var(--color-brand)' : 'var(--color-danger)',
-                    }}>
-                      {trocoCalculado >= 0
-                        ? `✅ Troco: MT ${trocoCalculado.toFixed(2)}`
-                        : `❌ Falta MT ${Math.abs(trocoCalculado).toFixed(2)}`}
-                    </div>
-                  )}
-                </div>
+                {carrinho.length > 0 && (
+                  <>
+                    <Field
+                      id="sale-paid"
+                      label="Valor entregue pelo cliente (MT)"
+                      hint="Opcional. Serve apenas para calcular o troco."
+                    >
+                      <input
+                        id="sale-paid"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        inputMode="decimal"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        placeholder="0,00"
+                        aria-describedby="sale-paid-hint"
+                      />
+                    </Field>
+                    {change !== null && (
+                      <Notice kind={change.gte(0) ? 'success' : 'error'}>
+                        {change.gte(0)
+                          ? `Troco: ${formatMoney(change)}`
+                          : `Falta receber ${formatMoney(change.abs())}`}
+                      </Notice>
+                    )}
+                  </>
+                )}
               </div>
-            )}
-
-            {carrinho.length === 0 && (
-              <div style={{ textAlign:'center', padding:'24px 0', color:'var(--text-muted)', fontSize:14 }}>
-                🛒 Carrinho vazio — pesquise e adicione produtos acima
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={closeModal}>
+                  Cancelar
+                </button>
+                <button className="btn-primary" type="submit" disabled={carrinho.length === 0}>
+                  {save.pending ? <Spinner /> : <CheckCircle2 size={18} />}
+                  {save.pending ? 'A registar…' : 'Confirmar venda'}
+                </button>
               </div>
-            )}
-
-            <div className="modal-actions">
-              <button className="btn-secondary" onClick={handleFecharModal}>Cancelar</button>
-              <button
-                className="btn-primary"
-                onClick={handleFinalizarVenda}
-                disabled={loading || carrinho.length === 0}
-              >
-                {loading ? 'A registar...' : `✅ Finalizar Venda${carrinho.length > 0 ? ` (${carrinho.length} item${carrinho.length !== 1 ? 's' : ''})` : ''}`}
-              </button>
-            </div>
-          </div>
-        </div>
+            </fieldset>
+          </form>
+        </Modal>
       )}
     </div>
   );
-};
-
-export default VendasPage;
+}
