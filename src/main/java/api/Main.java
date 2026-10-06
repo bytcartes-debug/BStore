@@ -7,6 +7,8 @@ import util.JPAUtil;
 public class Main {
 
     public static void main(String[] args) {
+        System.setProperty("java.awt.headless", "true");
+
         // Inicializa a base de dados
         JPAUtil.inicializar();
 

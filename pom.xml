@@ -99,6 +99,20 @@
     <build>
         <directory>${bstore.build.directory}</directory>
         <plugins>
+            <!-- Plugin para definir a classe principal padrão da aplicação web -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.3.0</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>api.Main</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+
             <!-- Plugin para criar um jar executável com todas as dependências -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
