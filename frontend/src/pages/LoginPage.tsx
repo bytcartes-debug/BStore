@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react';
-import { Store, Eye, EyeOff, LogIn, Package, ReceiptText, Users } from 'lucide-react';
 import type { UserSession } from '../App';
 import { Field, Notice, Spinner } from '../components/UI';
 import './LoginPage.css';
@@ -11,6 +10,7 @@ export default function LoginPage({ setUser }: { setUser: (user: UserSession) =>
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const lock = useRef(false);
+
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
     if (lock.current) return;
@@ -51,98 +51,117 @@ export default function LoginPage({ setUser }: { setUser: (user: UserSession) =>
       setLoading(false);
     }
   };
+
   return (
     <main className="login-page">
-      <section className="login-story" aria-label="BStore, gestão de loja">
-        <div className="login-brand">
-          <span className="login-brand-mark">
-            <Store size={28} />
-          </span>
-          <span>BStore</span>
-        </div>
-        <div className="login-intro">
-          <h1>
-            Mais atenção à loja.
-            <br />
-            Menos tempo nas contas.
-          </h1>
-          <p>Vendas, stock e clientes. Tudo no mesmo lugar, do primeiro produto ao fecho do dia.</p>
-          <ul className="login-features">
-            <li>
-              <ReceiptText size={20} />
-              <span>Registe vendas e calcule o troco</span>
-            </li>
-            <li>
-              <Package size={20} />
-              <span>Acompanhe o stock dos seus produtos</span>
-            </li>
-            <li>
-              <Users size={20} />
-              <span>Tenha as dívidas sempre organizadas</span>
-            </li>
-          </ul>
-        </div>
-        <p className="login-story-footer">Uma rotina mais simples para o seu negócio.</p>
-      </section>
-      <section className="login-form-panel" aria-labelledby="login-title">
-        <div className="login-card">
-          <div className="login-mobile-brand">
-            <Store size={24} /> BStore
+      <div className="login-wrapper">
+        <section className="login-story" aria-label="BStore, gestão de loja">
+          <div className="login-brand">
+            <span className="login-brand-mark" aria-hidden="true">
+              🏪
+            </span>
+            <span>BStore</span>
           </div>
-          <h2 id="login-title">Bem-vindo de volta</h2>
-          <p>Entre para continuar a gerir a sua loja.</p>
-          <form onSubmit={handleLogin} aria-busy={loading}>
-            {error && <Notice>{error}</Notice>}
-            <fieldset disabled={loading}>
-              <Field id="login-email" label="Email">
-                <input
-                  id="login-email"
-                  name="email"
-                  type="email"
-                  autoComplete="username"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  placeholder="nome@exemplo.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </Field>
-              <Field id="login-password" label="Senha">
-                <div className="password-field">
+
+          <div className="login-intro">
+            <h1>
+              Mais atenção à loja.
+              <br />
+              Menos tempo nas contas.
+            </h1>
+            <p>Vendas, stock e clientes. Tudo no mesmo lugar, do primeiro produto ao fecho do dia.</p>
+
+            <ul className="login-features">
+              <li>
+                <span className="feature-emoji" aria-hidden="true">
+                  🧾
+                </span>
+                <span>Registe vendas e calcule o troco na hora</span>
+              </li>
+              <li>
+                <span className="feature-emoji" aria-hidden="true">
+                  📦
+                </span>
+                <span>Acompanhe o stock dos seus produtos</span>
+              </li>
+              <li>
+                <span className="feature-emoji" aria-hidden="true">
+                  👥
+                </span>
+                <span>Tenha as dívidas e clientes organizados</span>
+              </li>
+            </ul>
+          </div>
+
+          <p className="login-story-footer">FlexStock — O seu negócio, organizado.</p>
+        </section>
+
+        <section className="login-form-panel" aria-labelledby="login-title">
+          <div className="login-card">
+            <div className="login-mobile-brand">
+              <span aria-hidden="true">🏪</span> BStore
+            </div>
+
+            <h2 id="login-title">Bem-vindo de volta</h2>
+            <p className="login-subtitle">Entre para continuar a gerir a sua loja.</p>
+
+            <form onSubmit={handleLogin} aria-busy={loading}>
+              {error && <Notice>{error}</Notice>}
+
+              <fieldset disabled={loading}>
+                <Field id="login-email" label="Email">
                   <input
-                    id="login-password"
-                    name="password"
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    id="login-email"
+                    name="email"
+                    type="email"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    placeholder="nome@exemplo.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     required
                   />
-                  <button
-                    type="button"
-                    className="password-toggle"
-                    aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                    aria-pressed={showPassword}
-                    onClick={() => setShowPassword((value) => !value)}
-                  >
-                    {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
-                  </button>
-                </div>
-              </Field>
-              <button type="submit" className="btn-primary login-submit" disabled={loading}>
-                {loading ? <Spinner /> : <LogIn size={18} />}
-                {loading ? 'A entrar…' : 'Entrar na minha loja'}
-              </button>
-            </fieldset>
-          </form>
-          <p className="login-help">
-            Precisa de acesso ou de recuperar a senha?
-            <br />
-            Contacte o administrador da sua loja.
-          </p>
-        </div>
-      </section>
+                </Field>
+
+                <Field id="login-password" label="Senha">
+                  <div className="password-field">
+                    <input
+                      id="login-password"
+                      name="password"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle"
+                      aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                      aria-pressed={showPassword}
+                      onClick={() => setShowPassword((value) => !value)}
+                    >
+                      {showPassword ? '🙈' : '👁️'}
+                    </button>
+                  </div>
+                </Field>
+
+                <button type="submit" className="btn-primary login-submit" disabled={loading}>
+                  {loading ? <Spinner size="small" /> : <span aria-hidden="true">🚀</span>}
+                  <span>{loading ? 'A entrar…' : 'Entrar na minha loja'}</span>
+                </button>
+              </fieldset>
+            </form>
+
+            <p className="login-help">
+              Precisa de acesso ou de recuperar a senha?
+              <br />
+              Contacte o administrador da loja.
+            </p>
+          </div>
+        </section>
+      </div>
     </main>
   );
 }

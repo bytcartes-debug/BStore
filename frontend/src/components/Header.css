@@ -31,6 +31,7 @@
 }
 .header-menu-btn {
   display: none;
+  font-size: 20px;
 }
 .header-profile {
   display: flex;

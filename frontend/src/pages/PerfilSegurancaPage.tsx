@@ -1,6 +1,5 @@
 import { useToast } from '../utils/toast';
 import { useRef, useState } from 'react';
-import { UserCircle, KeyRound, Save, Camera, Eye, EyeOff } from 'lucide-react';
 import type { UserSession } from '../App';
 import { apiRequest } from '../utils/api';
 import { useMutation } from '../utils/useResource';
@@ -88,7 +87,7 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
       />
       <section className="card panel">
         <h3 className="section-title">
-          <UserCircle size={20} /> O seu perfil
+          <span aria-hidden="true">👤</span> O seu perfil
         </h3>
         <p className="profile-note">
           O nome de apresentação e a foto são guardados apenas neste navegador. Não alteram os dados
@@ -100,7 +99,7 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
             <img src={pic} className="profile-photo" alt="Foto do perfil" />
           ) : (
             <div className="profile-photo" aria-hidden="true">
-              {name.charAt(0).toUpperCase() || <UserCircle size={36} />}
+              {name.charAt(0).toUpperCase() || '👤'}
             </div>
           )}
           <div>
@@ -109,7 +108,7 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
               className="btn-secondary"
               onClick={() => fileRef.current?.click()}
             >
-              <Camera size={18} /> Alterar foto
+              <span aria-hidden="true">📷</span> Alterar foto
             </button>
             <p className="field-hint">JPG ou PNG. Até 2 MB.</p>
             <input
@@ -137,13 +136,13 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
             <input id="profile-email" value={user?.email || ''} disabled />
           </Field>
           <button className="btn-primary" type="submit">
-            <Save size={18} /> Guardar perfil
+            <span aria-hidden="true">💾</span> Guardar perfil
           </button>
         </form>
       </section>
       <section className="card panel">
         <h3 className="section-title">
-          <KeyRound size={20} /> Alterar senha
+          <span aria-hidden="true">🔑</span> Alterar senha
         </h3>
         <p className="profile-note">Depois de alterar a senha, terá de entrar novamente.</p>
         <form onSubmit={changePassword}>
@@ -209,11 +208,11 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
                 onClick={() => setShowPassword((value) => !value)}
                 aria-pressed={showPassword}
               >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                <span aria-hidden="true">{showPassword ? '🙈' : '👁️'}</span>
                 {showPassword ? 'Ocultar senhas' : 'Mostrar senhas'}
               </button>
               <button type="submit" className="btn-primary">
-                {password.pending ? <Spinner /> : <KeyRound size={18} />}
+                {password.pending ? <Spinner size="small" /> : <span aria-hidden="true">🔑</span>}
                 {password.pending ? 'A alterar…' : 'Alterar senha'}
               </button>
             </div>

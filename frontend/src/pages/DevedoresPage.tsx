@@ -1,6 +1,5 @@
 import { useToast } from '../utils/toast';
 import { useState } from 'react';
-import { Plus, CheckCircle2, Users } from 'lucide-react';
 import { apiRequest } from '../utils/api';
 import { useMutation, useResource } from '../utils/useResource';
 import { decimal, formatMoney } from '../utils/decimal';
@@ -76,32 +75,37 @@ export default function DevedoresPage() {
       toast('Pagamento confirmado. Dívida removida.');
       void reload();
     });
+
   return (
-    <div>
+    <div className="devedores-page">
       <PageHeading
-        title="Devedores"
+        title="👥 Devedores"
         description="Saiba quem tem valores por pagar e confirme os pagamentos."
       >
         <button className="btn-primary" onClick={openNew}>
-          <Plus size={18} /> Registar dívida
+          <span aria-hidden="true">➕</span> Registar dívida
         </button>
       </PageHeading>
-      <div className="debt-summary">
-        <div>
+
+      <div className="debt-summary card">
+        <div className="debt-summary-amount">
           <span>Total em dívida</span>
           <strong>{data ? formatMoney(total) : '—'}</strong>
         </div>
-        <p>
-          {devedores.length} devedor{devedores.length === 1 ? '' : 'es'} com pagamento pendente
+        <p className="debt-summary-count">
+          👥 {devedores.length} devedor{devedores.length === 1 ? '' : 'es'} com pagamento pendente
         </p>
       </div>
+
       <div className="toolbar">
         <SearchField value={search} onChange={setSearch} label="Pesquisar devedores" />
         <span className="result-count">{filtered.length} registo(s)</span>
       </div>
+
       {error && <LoadError message={error} retry={reload} />}
+
       {loading && !data ? (
-        <Loading />
+        <Loading label="A carregar a lista de devedores…" />
       ) : (
         data && (
           <div className="card">
@@ -109,19 +113,20 @@ export default function DevedoresPage() {
               <EmptyState
                 title="Nenhuma dívida registada"
                 description="Quando um cliente ficar a dever, registe aqui o nome e o valor."
-                icon={<Users size={28} />}
+                icon="👥"
               >
                 <button className="btn-secondary" onClick={openNew}>
-                  Registar dívida
+                  ➕ Registar dívida
                 </button>
               </EmptyState>
             ) : filtered.length === 0 ? (
               <EmptyState
                 title="Nenhum devedor encontrado"
                 description="Experimente outro nome ou limpe a pesquisa."
+                icon="🔍"
               >
                 <button className="btn-secondary" onClick={() => setSearch('')}>
-                  Limpar pesquisa
+                  🔄 Limpar pesquisa
                 </button>
               </EmptyState>
             ) : (
@@ -163,7 +168,7 @@ export default function DevedoresPage() {
                               setSelected(item);
                             }}
                           >
-                            <CheckCircle2 size={17} /> Confirmar pagamento
+                            <span aria-hidden="true">✅</span> Confirmar pagamento
                           </button>
                         </td>
                       </tr>
@@ -175,6 +180,7 @@ export default function DevedoresPage() {
           </div>
         )
       )}
+
       {showModal && (
         <Modal title="Registar dívida" onClose={() => setShowModal(false)} busy={save.pending}>
           <form onSubmit={handleSave}>
@@ -217,14 +223,15 @@ export default function DevedoresPage() {
                   Cancelar
                 </button>
                 <button type="submit" className="btn-primary">
-                  {save.pending && <Spinner />}
-                  {save.pending ? 'A guardar…' : 'Registar dívida'}
+                  {save.pending && <Spinner size="small" />}
+                  {save.pending ? ' A guardar…' : '💾 Registar dívida'}
                 </button>
               </div>
             </fieldset>
           </form>
         </Modal>
       )}
+
       {selected && (
         <ConfirmDialog
           title="Confirmar pagamento?"

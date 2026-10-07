@@ -1,15 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  Store,
-  LayoutDashboard,
-  Tag,
-  Package,
-  ShoppingCart,
-  Users,
-  Shield,
-  UserCircle,
-  X,
-} from 'lucide-react';
 import type { PageId } from '../App';
 import { useDialog } from '../utils/useDialog';
 import './Sidebar.css';
@@ -21,12 +10,13 @@ interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
 const navItems = [
-  { id: 'dashboard', label: 'Visão geral', icon: LayoutDashboard },
-  { id: 'vendas', label: 'Vendas', icon: ShoppingCart },
-  { id: 'produtos', label: 'Produtos', icon: Package },
-  { id: 'categorias', label: 'Categorias', icon: Tag },
-  { id: 'devedores', label: 'Devedores', icon: Users },
+  { id: 'dashboard', label: 'Visão Geral', emoji: '📊' },
+  { id: 'vendas', label: 'Vendas & Caixa', emoji: '🛒' },
+  { id: 'produtos', label: 'Produtos', emoji: '📦' },
+  { id: 'categorias', label: 'Categorias', emoji: '🏷️' },
+  { id: 'devedores', label: 'Devedores', emoji: '👥' },
 ] as const;
 
 export default function Sidebar({
@@ -38,69 +28,81 @@ export default function Sidebar({
 }: SidebarProps) {
   const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 767px)').matches);
   const ref = useRef<HTMLDialogElement>(null);
+
   useEffect(() => {
     const query = window.matchMedia('(max-width: 767px)');
     const change = () => setMobile(query.matches);
     query.addEventListener('change', change);
     return () => query.removeEventListener('change', change);
   }, []);
+
   useDialog(ref, mobile && isOpen);
 
   const content = (
     <>
       <div className="sidebar-logo">
-        <span className="sidebar-logo-icon">
-          <Store size={24} />
+        <span className="sidebar-logo-icon" aria-hidden="true">
+          🏪
         </span>
-        <div>
+        <div className="sidebar-logo-text-group">
           <span className="sidebar-logo-text">BStore</span>
-          <span className="sidebar-tagline">Gestão de loja</span>
+          <span className="sidebar-tagline">Gestão de Loja</span>
         </div>
         {mobile && (
           <button className="icon-btn sidebar-close" aria-label="Fechar menu" onClick={onClose}>
-            <X size={20} />
+            ✕
           </button>
         )}
       </div>
+
       <nav className="sidebar-nav" aria-label="Navegação principal">
-        {navItems.map(({ id, label, icon: Icon }) => (
+        {navItems.map(({ id, label, emoji }) => (
           <button
             key={id}
             className={`sidebar-item${currentPage === id ? ' active' : ''}`}
             aria-current={currentPage === id ? 'page' : undefined}
             onClick={() => setCurrentPage(id)}
           >
-            <Icon size={19} aria-hidden="true" />
+            <span className="sidebar-emoji" aria-hidden="true">
+              {emoji}
+            </span>
             <span>{label}</span>
           </button>
         ))}
+
         {userRole === 'superuser' && (
           <div className="sidebar-section">
-            <p>Acessos</p>
+            <p className="sidebar-section-title">Administração</p>
             <button
               className={`sidebar-item${currentPage === 'usuarios' ? ' active' : ''}`}
               aria-current={currentPage === 'usuarios' ? 'page' : undefined}
               onClick={() => setCurrentPage('usuarios')}
             >
-              <Shield size={19} />
+              <span className="sidebar-emoji" aria-hidden="true">
+                👤
+              </span>
               <span>Utilizadores</span>
             </button>
           </div>
         )}
       </nav>
+
       <div className="sidebar-footer">
         <button
           className={`sidebar-item${currentPage === 'perfil' ? ' active' : ''}`}
           aria-current={currentPage === 'perfil' ? 'page' : undefined}
           onClick={() => setCurrentPage('perfil')}
         >
-          <UserCircle size={19} />
-          <span>Perfil e segurança</span>
+          <span className="sidebar-emoji" aria-hidden="true">
+            🔒
+          </span>
+          <span>Perfil & Segurança</span>
         </button>
-        <p>O seu negócio, organizado.</p>
+        <p className="sidebar-motto">O seu negócio, organizado.</p>
       </div>
     </>
   );
+
   if (mobile)
     return isOpen ? (
       <dialog
@@ -122,6 +124,7 @@ export default function Sidebar({
         {content}
       </dialog>
     ) : null;
+
   return (
     <aside id="navigation-menu" className="sidebar">
       {content}

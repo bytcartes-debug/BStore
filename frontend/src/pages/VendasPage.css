@@ -162,13 +162,20 @@
 }
 @media (max-width: 600px) {
   .sale-add-row {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .sale-add-row .btn-primary {
+    width: 100%;
   }
   .product-combobox {
     grid-column: 1/-1;
   }
   .sale-scan {
-    justify-self: stretch;
+    width: 100%;
+  }
+  .sale-scan button {
+    width: 100%;
   }
   .cart-item {
     grid-template-columns: minmax(0, 1fr) auto 44px;

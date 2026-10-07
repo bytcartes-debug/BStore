@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Sun, Moon, LogOut, Menu } from 'lucide-react';
 import type { PageId } from '../App';
 import { Spinner } from './UI';
 import './Header.css';
 
 const titles: Record<PageId, string> = {
-  dashboard: 'Visão geral',
-  categorias: 'Categorias',
-  produtos: 'Produtos',
-  vendas: 'Vendas',
-  devedores: 'Devedores',
-  usuarios: 'Utilizadores',
-  perfil: 'Perfil e segurança',
+  dashboard: '📊 Visão Geral',
+  categorias: '🏷️ Categorias',
+  produtos: '📦 Produtos',
+  vendas: '🛒 Registo de Vendas',
+  devedores: '👥 Gestão de Devedores',
+  usuarios: '👤 Utilizadores & Acessos',
+  perfil: '🔒 Perfil & Segurança',
 };
+
 interface HeaderProps {
   currentPage: PageId;
   isDark: boolean;
@@ -24,6 +24,7 @@ interface HeaderProps {
   menuOpen: boolean;
   onProfileClick: () => void;
 }
+
 export default function Header({
   currentPage,
   isDark,
@@ -36,13 +37,16 @@ export default function Header({
   onProfileClick,
 }: HeaderProps) {
   const [, refresh] = useState(0);
+
   useEffect(() => {
     const update = () => refresh((value) => value + 1);
     window.addEventListener('bstore:profile', update);
     return () => window.removeEventListener('bstore:profile', update);
   }, []);
+
   const pic = localStorage.getItem('profilePic');
   const name = localStorage.getItem('profileName') || userEmail.split('@')[0];
+
   return (
     <header className="app-header">
       <div className="header-left">
@@ -53,18 +57,18 @@ export default function Header({
           aria-expanded={menuOpen}
           aria-controls={menuOpen ? 'navigation-menu' : undefined}
         >
-          <Menu size={20} />
+          ☰
         </button>
         <h1 className="header-title">{titles[currentPage]}</h1>
       </div>
       <div className="header-right">
         <button
-          className="icon-btn"
+          className="icon-btn header-theme-btn"
           onClick={toggleTheme}
           aria-label={isDark ? 'Ativar tema claro' : 'Ativar tema escuro'}
           title={isDark ? 'Tema claro' : 'Tema escuro'}
         >
-          {isDark ? <Sun size={19} /> : <Moon size={19} />}
+          {isDark ? '☀️' : '🌙'}
         </button>
         <button
           className="header-profile"
@@ -86,7 +90,7 @@ export default function Header({
           aria-label="Terminar sessão"
           title="Terminar sessão"
         >
-          {loggingOut ? <Spinner /> : <LogOut size={19} />}
+          {loggingOut ? <Spinner size="small" /> : '🚪'}
         </button>
       </div>
     </header>

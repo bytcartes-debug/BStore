@@ -1,80 +1,96 @@
-import {
-  Tag,
-  ShoppingBag,
-  Apple,
-  CupSoda,
-  SprayCan,
-  Package,
-  Wheat,
-  Beef,
-  Milk,
-  Carrot,
-  Coffee,
-  BrushCleaning,
-  Pill,
-  Shirt,
-  Footprints,
-  Smartphone,
-  Wrench,
-  Lightbulb,
-  Egg,
-  Candy,
-} from 'lucide-react';
+export interface CategoryIconItem {
+  key: string;
+  label: string;
+  emoji: string;
+}
 
-export const categoryIcons = [
-  { key: 'tag', label: 'Geral', icon: Tag },
-  { key: 'bag', label: 'Compras', icon: ShoppingBag },
-  { key: 'fruit', label: 'Fruta', icon: Apple },
-  { key: 'drink', label: 'Bebidas', icon: CupSoda },
-  { key: 'care', label: 'Higiene', icon: SprayCan },
-  { key: 'box', label: 'Embalagens', icon: Package },
-  { key: 'bread', label: 'Cereais', icon: Wheat },
-  { key: 'meat', label: 'Carne', icon: Beef },
-  { key: 'milk', label: 'Laticínios', icon: Milk },
-  { key: 'vegetable', label: 'Legumes', icon: Carrot },
-  { key: 'coffee', label: 'Café', icon: Coffee },
-  { key: 'cleaning', label: 'Limpeza', icon: BrushCleaning },
-  { key: 'health', label: 'Saúde', icon: Pill },
-  { key: 'clothes', label: 'Roupa', icon: Shirt },
-  { key: 'shoes', label: 'Calçado', icon: Footprints },
-  { key: 'phone', label: 'Eletrónica', icon: Smartphone },
-  { key: 'tools', label: 'Ferramentas', icon: Wrench },
-  { key: 'light', label: 'Iluminação', icon: Lightbulb },
-  { key: 'egg', label: 'Ovos', icon: Egg },
-  { key: 'sweets', label: 'Doces', icon: Candy },
+export const categoryIcons: CategoryIconItem[] = [
+  { key: 'tag', label: 'Geral', emoji: '🏷️' },
+  { key: 'bag', label: 'Compras', emoji: '🛍️' },
+  { key: 'fruit', label: 'Frutas', emoji: '🍎' },
+  { key: 'drink', label: 'Bebidas', emoji: '🥤' },
+  { key: 'care', label: 'Higiene', emoji: '🧴' },
+  { key: 'box', label: 'Embalagens', emoji: '📦' },
+  { key: 'bread', label: 'Padaria / Pão', emoji: '🍞' },
+  { key: 'meat', label: 'Carnes', emoji: '🥩' },
+  { key: 'milk', label: 'Laticínios', emoji: '🧀' },
+  { key: 'vegetable', label: 'Legumes', emoji: '🥦' },
+  { key: 'coffee', label: 'Café', emoji: '☕' },
+  { key: 'cleaning', label: 'Limpeza', emoji: '🧹' },
+  { key: 'health', label: 'Saúde', emoji: '💊' },
+  { key: 'clothes', label: 'Vestuário', emoji: '👕' },
+  { key: 'shoes', label: 'Calçado', emoji: '👟' },
+  { key: 'phone', label: 'Eletrónica', emoji: '📱' },
+  { key: 'tools', label: 'Ferramentas', emoji: '🔧' },
+  { key: 'light', label: 'Iluminação', emoji: '💡' },
+  { key: 'egg', label: 'Ovos', emoji: '🥚' },
+  { key: 'sweets', label: 'Doces & Snacks', emoji: '🍬' },
+  { key: 'cereal', label: 'Cereais', emoji: '🌾' },
+  { key: 'oil', label: 'Óleos & Condimentos', emoji: '🫒' },
 ];
 
-// Os valores antigos são apenas interpretados na apresentação, sem reescrever os registos.
-const legacyIcons: Record<string, string> = {
-  '🛍': 'bag',
-  '🏷': 'tag',
-  '🍎': 'fruit',
-  '🥤': 'drink',
-  '🧴': 'care',
-  '📦': 'box',
-  '🍞': 'bread',
-  '🥩': 'meat',
-  '🧀': 'milk',
-  '🥦': 'vegetable',
-  '🍺': 'drink',
-  '☕': 'coffee',
-  '🧹': 'cleaning',
-  '🪣': 'cleaning',
-  '💊': 'health',
-  '👕': 'clothes',
-  '👟': 'shoes',
-  '📱': 'phone',
-  '🔧': 'tools',
-  '💡': 'light',
-  '🐔': 'meat',
-  '🥚': 'egg',
-  '🌽': 'vegetable',
-  '🫙': 'box',
-  '🧂': 'box',
-  '🫒': 'vegetable',
-  '🍫': 'sweets',
-  '🍬': 'sweets',
+const emojiMap: Record<string, string> = {
+  tag: '🏷️',
+  bag: '🛍️',
+  fruit: '🍎',
+  drink: '🥤',
+  care: '🧴',
+  box: '📦',
+  bread: '🍞',
+  meat: '🥩',
+  milk: '🧀',
+  vegetable: '🥦',
+  coffee: '☕',
+  cleaning: '🧹',
+  health: '💊',
+  clothes: '👕',
+  shoes: '👟',
+  phone: '📱',
+  tools: '🔧',
+  light: '💡',
+  egg: '🥚',
+  sweets: '🍬',
+  cereal: '🌾',
+  oil: '🫒',
+  // Caso o utilizador já tenha guardado o emoji diretamente
+  '🛍️': '🛍️',
+  '🏷️': '🏷️',
+  '🍎': '🍎',
+  '🥤': '🥤',
+  '🧴': '🧴',
+  '📦': '📦',
+  '🍞': '🍞',
+  '🥩': '🥩',
+  '🧀': '🧀',
+  '🥦': '🥦',
+  '🍺': '🥤',
+  '☕': '☕',
+  '🧹': '🧹',
+  '🪣': '🧹',
+  '💊': '💊',
+  '👕': '👕',
+  '👟': '👟',
+  '📱': '📱',
+  '🔧': '🔧',
+  '💡': '💡',
+  '🐔': '🥩',
+  '🥚': '🥚',
+  '🌽': '🥦',
+  '🍫': '🍬',
+  '🍬': '🍬',
 };
-export function categoryIconKey(value: string) {
-  return legacyIcons[value.replace(/️/g, '')] || value || 'tag';
+
+export function categoryIconKey(value: string): string {
+  const clean = (value || '').replace(/\ufe0f/g, '').trim();
+  return clean || 'tag';
+}
+
+export function getCategoryEmoji(value: string): string {
+  if (!value) return '🏷️';
+  if (emojiMap[value]) return emojiMap[value];
+  const clean = value.replace(/\ufe0f/g, '').trim();
+  if (emojiMap[clean]) return emojiMap[clean];
+  // Se for qualquer outro emoji de 1 ou 2 caracteres, usa-o diretamente
+  if (value.length <= 4) return value;
+  return '🏷️';
 }

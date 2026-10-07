@@ -1,6 +1,5 @@
 import { useToast } from '../utils/toast';
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Minus, Trash2, ShoppingCart, ScanLine, Search, CheckCircle2 } from 'lucide-react';
 import { apiFetch, apiRequest } from '../utils/api';
 import { useMutation, useResource } from '../utils/useResource';
 import { abrirScanner } from '../utils/scanner';
@@ -215,7 +214,7 @@ export default function VendasPage() {
         description="Do carrinho ao troco. Registe cada venda com clareza."
       >
         <button className="btn-primary" disabled={!data} onClick={() => setShowModal(true)}>
-          <Plus size={18} /> Registar venda
+          <span aria-hidden="true">➕</span> Registar venda
         </button>
       </PageHeading>
       <div className="toolbar">
@@ -234,19 +233,20 @@ export default function VendasPage() {
               <EmptyState
                 title="A primeira venda começa aqui"
                 description="Adicione produtos ao carrinho e confirme a venda para a ver neste histórico."
-                icon={<ShoppingCart size={28} />}
+                icon="🛒"
               >
                 <button className="btn-secondary" onClick={() => setShowModal(true)}>
-                  Registar venda
+                  ➕ Registar venda
                 </button>
               </EmptyState>
             ) : filteredSales.length === 0 ? (
               <EmptyState
                 title="Nenhuma venda encontrada"
                 description="Pesquise por outro produto ou data."
+                icon="🔍"
               >
                 <button className="btn-secondary" onClick={() => setSearch('')}>
-                  Limpar pesquisa
+                  🔄 Limpar pesquisa
                 </button>
               </EmptyState>
             ) : (
@@ -303,7 +303,7 @@ export default function VendasPage() {
                     Pesquisar produto
                   </label>
                   <div className="search-field">
-                    <Search size={18} />
+                    <span className="search-icon" aria-hidden="true">🔍</span>
                     <input
                       id="sale-product"
                       ref={inputRef}
@@ -421,21 +421,23 @@ export default function VendasPage() {
                   onClick={addSelected}
                   disabled={!selectedProd}
                 >
-                  <Plus size={18} /> Adicionar
+                  <span aria-hidden="true">➕</span> Adicionar
                 </button>
                 <button type="button" className="btn-secondary sale-scan" onClick={handleScan}>
-                  {scan.pending ? <Spinner /> : <ScanLine size={18} />} Ler código
+                  {scan.pending ? <Spinner size="small" /> : <span aria-hidden="true">📷</span>} Ler código
                 </button>
               </div>
               <div className="cart-heading">
-                <h4>Carrinho</h4>
+                <h4>🛒 Carrinho</h4>
                 <span>
                   {carrinho.length} produto{carrinho.length === 1 ? '' : 's'}
                 </span>
               </div>
               {carrinho.length === 0 ? (
                 <div className="cart-empty">
-                  <ShoppingCart size={28} />
+                  <span className="cart-empty-emoji" aria-hidden="true">
+                    🛒
+                  </span>
                   <p>O carrinho está vazio.</p>
                   <span>Pesquise um produto ou leia o código de barras para o adicionar.</span>
                 </div>
@@ -461,7 +463,7 @@ export default function VendasPage() {
                               changeQuantity(item.produto.id, item.quantidade.minus(step))
                             }
                           >
-                            <Minus size={16} />
+                            ➖
                           </button>
                           <span>{formatQuantity(item.quantidade, unit)}</span>
                           <button
@@ -472,7 +474,7 @@ export default function VendasPage() {
                               changeQuantity(item.produto.id, item.quantidade.plus(step))
                             }
                           >
-                            <Plus size={16} />
+                            ➕
                           </button>
                         </div>
                         <strong className="cart-subtotal numeric">
@@ -488,7 +490,7 @@ export default function VendasPage() {
                             )
                           }
                         >
-                          <Trash2 size={17} />
+                          🗑️
                         </button>
                       </div>
                     );
@@ -534,8 +536,8 @@ export default function VendasPage() {
                   Cancelar
                 </button>
                 <button className="btn-primary" type="submit" disabled={carrinho.length === 0}>
-                  {save.pending ? <Spinner /> : <CheckCircle2 size={18} />}
-                  {save.pending ? 'A registar…' : 'Confirmar venda'}
+                  {save.pending ? <Spinner size="small" /> : <span aria-hidden="true">✅</span>}
+                  {save.pending ? ' A registar…' : ' Confirmar venda'}
                 </button>
               </div>
             </fieldset>

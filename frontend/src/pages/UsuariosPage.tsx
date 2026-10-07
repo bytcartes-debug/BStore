@@ -1,17 +1,5 @@
 import { useToast } from '../utils/toast';
 import { useState } from 'react';
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  RefreshCw,
-  AlertTriangle,
-  Shield,
-  CircleX,
-  Infinity as InfinityIcon,
-  Eye,
-  EyeOff,
-} from 'lucide-react';
 import { apiRequest } from '../utils/api';
 import { useMutation, useResource } from '../utils/useResource';
 import type { UserSession } from '../App';
@@ -50,18 +38,18 @@ function AccessBadge({ user }: { user: Usuario }) {
   if (user.role === 'superuser' || user.diasRestantes === -1)
     return (
       <span className="badge badge-success">
-        <InfinityIcon size={14} /> Permanente
+        ♾️ Permanente
       </span>
     );
   if (user.expirado)
     return (
       <span className="badge badge-danger">
-        <CircleX size={14} /> Expirado
+        ⛔ Expirado
       </span>
     );
   return (
     <span className={`badge ${user.diasRestantes <= 7 ? 'badge-warning' : 'badge-info'}`}>
-      {user.diasRestantes <= 7 && <AlertTriangle size={14} />}
+      {user.diasRestantes <= 7 ? '⚠️ ' : ''}
       {user.diasRestantes} dia(s) restantes
     </span>
   );
@@ -142,7 +130,7 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
         description="Controle quem entra na loja e durante quanto tempo."
       >
         <button className="btn-primary" onClick={openNew}>
-          <Plus size={18} /> Novo utilizador
+          <span aria-hidden="true">➕</span> Novo utilizador
         </button>
       </PageHeading>
       <div className="toolbar">
@@ -165,8 +153,18 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
                     ? 'Experimente outro nome ou email.'
                     : 'Crie um utilizador para dar acesso ao sistema.'
                 }
-                icon={<Shield size={28} />}
-              />
+                icon={users.length ? '🔍' : '👤'}
+              >
+                {users.length ? (
+                  <button className="btn-secondary" onClick={() => setSearch('')}>
+                    🔄 Limpar pesquisa
+                  </button>
+                ) : (
+                  <button className="btn-secondary" onClick={openNew}>
+                    ➕ Novo utilizador
+                  </button>
+                )}
+              </EmptyState>
             ) : (
               <div className="table-wrapper">
                 <table className="responsive-table">
@@ -174,7 +172,7 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
                   <thead>
                     <tr>
                       <th scope="col">Nome</th>
-                      <th scope="col">Email</th>
+                      <th scope="col" className="numeric">Email</th>
                       <th scope="col">Perfil</th>
                       <th scope="col">Acesso</th>
                       <th scope="col">Ações</th>
@@ -196,8 +194,7 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
                           <span
                             className={`badge ${item.role === 'superuser' ? 'badge-warning' : 'badge-info'}`}
                           >
-                            {item.role === 'superuser' && <Shield size={14} />}
-                            {item.role === 'superuser' ? 'Administrador' : 'Operador'}
+                            {item.role === 'superuser' ? '🛡️ Administrador' : '👤 Operador'}
                           </span>
                         </td>
                         <td data-label="Acesso">
@@ -215,7 +212,7 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
                                 aria-label={`Renovar acesso de ${item.nome}`}
                                 onClick={() => openEdit(item)}
                               >
-                                <RefreshCw size={17} />
+                                🔄
                               </button>
                             )}
                             <button
@@ -224,7 +221,7 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
                               aria-label={`Editar ${item.nome}`}
                               onClick={() => openEdit(item)}
                             >
-                              <Pencil size={17} />
+                              ✏️
                             </button>
                             <button
                               className="icon-btn delete"
@@ -240,7 +237,7 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
                                 setDeleting(item);
                               }}
                             >
-                              <Trash2 size={17} />
+                              🗑️
                             </button>
                           </div>
                         </td>
@@ -306,7 +303,7 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
                     aria-pressed={showPassword}
                     onClick={() => setShowPassword((value) => !value)}
                   >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    <span aria-hidden="true">{showPassword ? '🙈' : '👁️'}</span>
                   </button>
                 </div>
               </Field>

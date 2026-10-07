@@ -2,10 +2,9 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { ToastContext } from '../utils/toast';
 import { useDialog } from '../utils/useDialog';
-import { AlertCircle, CheckCircle2, Inbox, RefreshCw, Search, X } from 'lucide-react';
 
-export function Spinner() {
-  return <span className="spinner" aria-hidden="true" />;
+export function Spinner({ size = 'normal' }: { size?: 'small' | 'normal' | 'large' }) {
+  return <span className={`spinner spinner-${size}`} aria-hidden="true" />;
 }
 
 export function Loading({
@@ -21,8 +20,8 @@ export function Loading({
       role="status"
       aria-live="polite"
     >
-      <Spinner />
-      <p>{label}</p>
+      <Spinner size={fullScreen ? 'large' : 'normal'} />
+      <p className="loading-label">{label}</p>
     </div>
   );
 }
@@ -34,14 +33,13 @@ export function Notice({
   children: ReactNode;
   kind?: 'error' | 'success' | 'info';
 }) {
+  const emoji = kind === 'success' ? '✅' : kind === 'info' ? 'ℹ️' : '⚠️';
   return (
     <div className={`notice notice-${kind}`} role={kind === 'error' ? 'alert' : 'status'}>
-      {kind === 'success' ? (
-        <CheckCircle2 size={18} aria-hidden="true" />
-      ) : (
-        <AlertCircle size={18} aria-hidden="true" />
-      )}
-      <div>{children}</div>
+      <span className="notice-icon" aria-hidden="true">
+        {emoji}
+      </span>
+      <div className="notice-content">{children}</div>
     </div>
   );
 }
@@ -51,7 +49,7 @@ export function LoadError({ message, retry }: { message: string; retry: () => vo
     <div className="load-error">
       <Notice>{message}</Notice>
       <button className="btn-secondary" onClick={retry}>
-        <RefreshCw size={16} /> Tentar novamente
+        <span aria-hidden="true">🔄</span> Tentar novamente
       </button>
     </div>
   );
@@ -61,7 +59,7 @@ export function EmptyState({
   title,
   description,
   children,
-  icon = <Inbox size={28} />,
+  icon = '📭',
 }: {
   title: string;
   description: string;
@@ -91,11 +89,11 @@ export function PageHeading({
 }) {
   return (
     <div className="page-heading">
-      <div>
+      <div className="page-heading-info">
         <h2>{title}</h2>
         <p>{description}</p>
       </div>
-      {children}
+      {children && <div className="page-heading-actions">{children}</div>}
     </div>
   );
 }
@@ -117,7 +115,9 @@ export function SearchField({
       <label className="sr-only" htmlFor={id}>
         {label}
       </label>
-      <Search size={18} aria-hidden="true" />
+      <span className="search-icon" aria-hidden="true">
+        🔍
+      </span>
       <input
         id={id}
         type="search"
@@ -211,12 +211,12 @@ export function Modal({
         <h3 id={titleId}>{title}</h3>
         <button
           type="button"
-          className="icon-btn"
+          className="icon-btn modal-close-btn"
           aria-label="Fechar janela"
           onClick={onClose}
           disabled={busy}
         >
-          <X size={20} />
+          ✕
         </button>
       </div>
       {children}
@@ -256,8 +256,8 @@ export function ConfirmDialog({
           onClick={onConfirm}
           disabled={busy}
         >
-          {busy && <Spinner />}
-          {busy ? 'A processar…' : label}
+          {busy ? <Spinner size="small" /> : '✅'}
+          {busy ? ' A processar…' : ` ${label}`}
         </button>
       </div>
     </Modal>
@@ -277,14 +277,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <div className="toast-region" aria-live="polite" aria-atomic="true">
         {toast && (
           <div className="toast">
-            <CheckCircle2 size={20} aria-hidden="true" />
+            <span className="toast-icon" aria-hidden="true">
+              ✅
+            </span>
             <p>{toast.message}</p>
             <button
               className="icon-btn"
               aria-label="Fechar notificação"
               onClick={() => setToast(null)}
             >
-              <X size={18} />
+              ✕
             </button>
           </div>
         )}

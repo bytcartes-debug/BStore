@@ -1,6 +1,5 @@
 import { useToast } from '../utils/toast';
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Tag } from 'lucide-react';
 import { apiRequest } from '../utils/api';
 import { useMutation, useResource } from '../utils/useResource';
 import { formatMoney, formatQuantity } from '../utils/decimal';
@@ -99,65 +98,69 @@ export default function CategoriasPage() {
     });
 
   return (
-    <div>
+    <div className="categorias-page">
       <PageHeading
-        title="Categorias"
+        title="🏷️ Categorias"
         description="Um lugar para cada produto. Organize o seu catálogo."
       >
         <button className="btn-primary" onClick={openNew}>
-          <Plus size={18} /> Nova categoria
+          <span aria-hidden="true">➕</span> Nova Categoria
         </button>
       </PageHeading>
+
       <div className="toolbar">
         <SearchField value={search} onChange={setSearch} label="Pesquisar categorias" />
         <span className="result-count">
           {filtered.length} de {categories.length} categorias
         </span>
       </div>
+
       {error && <LoadError message={error} retry={reload} />}
       {inspect.error && <Notice>{inspect.error}</Notice>}
+
       {loading && !data ? (
-        <Loading />
+        <Loading label="A carregar as categorias da loja…" />
       ) : (
         data &&
         (categories.length === 0 ? (
           <EmptyState
             title="Comece a organizar a sua loja"
             description="Crie a primeira categoria para depois adicionar os seus produtos."
-            icon={<Tag size={28} />}
+            icon="🏷️"
           >
             <button className="btn-secondary" onClick={openNew}>
-              Criar categoria
+              ➕ Criar primeira categoria
             </button>
           </EmptyState>
         ) : filtered.length === 0 ? (
           <EmptyState
             title="Nenhuma categoria encontrada"
             description="Experimente outro nome ou limpe a pesquisa."
+            icon="🔍"
           >
             <button className="btn-secondary" onClick={() => setSearch('')}>
-              Limpar pesquisa
+              🔄 Limpar pesquisa
             </button>
           </EmptyState>
         ) : (
           <>
             {loading && (
               <p className="refresh-state" role="status">
-                <Spinner /> A atualizar categorias…
+                <Spinner size="small" /> A atualizar categorias…
               </p>
             )}
             <div className="category-grid">
               {filtered.map((cat) => (
                 <article key={cat.id} className="card category-card">
                   <div className="category-icon">
-                    <CategoryIcon value={cat.icone || 'tag'} />
+                    <CategoryIcon value={cat.icone || 'tag'} size={32} />
                   </div>
-                  <div>
+                  <div className="category-details">
                     <h3>{cat.nome}</h3>
                     <p className="category-description">{cat.descricao || 'Sem descrição'}</p>
                   </div>
                   <div className="category-footer">
-                    <span>
+                    <span className="category-count">
                       {cat.totalProdutos !== undefined
                         ? `${cat.totalProdutos} produto${cat.totalProdutos === 1 ? '' : 's'}`
                         : 'Categoria de produtos'}
@@ -169,7 +172,7 @@ export default function CategoriasPage() {
                         aria-label={`Editar categoria ${cat.nome}`}
                         onClick={() => openEdit(cat)}
                       >
-                        <Pencil size={17} />
+                        ✏️
                       </button>
                       <button
                         className="icon-btn delete"
@@ -178,7 +181,7 @@ export default function CategoriasPage() {
                         disabled={inspect.pending}
                         onClick={() => inspectDelete(cat)}
                       >
-                        <Trash2 size={17} />
+                        🗑️
                       </button>
                     </div>
                   </div>
@@ -188,6 +191,7 @@ export default function CategoriasPage() {
           </>
         ))
       )}
+
       {showModal && (
         <Modal
           title={editing ? 'Editar categoria' : 'Nova categoria'}
@@ -216,9 +220,9 @@ export default function CategoriasPage() {
                 />
               </Field>
               <fieldset className="form-group">
-                <legend className="field-label">Símbolo da categoria</legend>
+                <legend className="field-label">Emoji / Símbolo da categoria</legend>
                 <div className="icon-picker">
-                  {categoryIcons.map(({ key, label, icon: Icon }) => (
+                  {categoryIcons.map(({ key, label, emoji }) => (
                     <button
                       key={key}
                       type="button"
@@ -226,8 +230,9 @@ export default function CategoriasPage() {
                       aria-label={label}
                       aria-pressed={categoryIconKey(form.icone) === key}
                       onClick={() => setForm({ ...form, icone: key })}
+                      style={{ fontSize: '20px', lineHeight: 1 }}
                     >
-                      <Icon size={21} />
+                      {emoji}
                     </button>
                   ))}
                 </div>
@@ -237,14 +242,19 @@ export default function CategoriasPage() {
                   Cancelar
                 </button>
                 <button className="btn-primary" type="submit">
-                  {save.pending && <Spinner />}
-                  {save.pending ? 'A guardar…' : editing ? 'Guardar alterações' : 'Criar categoria'}
+                  {save.pending && <Spinner size="small" />}
+                  {save.pending
+                    ? ' A guardar…'
+                    : editing
+                      ? '💾 Guardar alterações'
+                      : '➕ Criar categoria'}
                 </button>
               </div>
             </fieldset>
           </form>
         </Modal>
       )}
+
       {confirmDelete && (
         <ConfirmDialog
           title="Remover categoria?"

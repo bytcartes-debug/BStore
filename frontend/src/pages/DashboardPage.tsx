@@ -1,14 +1,4 @@
 import { useState } from 'react';
-import {
-  Package,
-  Tag,
-  Users,
-  AlertTriangle,
-  CheckCircle2,
-  Plus,
-  ArrowUpRight,
-  ReceiptText,
-} from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { apiRequest } from '../utils/api';
 import { useResource } from '../utils/useResource';
@@ -38,72 +28,96 @@ interface DashboardData {
   }[];
   vendasPorDia: { dia: string; total: string }[];
 }
+
 const loadDashboard = (signal: AbortSignal) =>
   apiRequest<DashboardData>('/api/dashboard', { signal });
 
 export default function DashboardPage({ navigate }: { navigate: (page: PageId) => void }) {
   const { data, loading, error, reload } = useResource(loadDashboard);
   const [tableView, setTableView] = useState(false);
+
   const today = new Intl.DateTimeFormat('pt-MZ', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
   }).format(new Date());
+
   if (loading && !data) return <Loading label="A preparar a visão geral da loja…" />;
   if (!data)
     return (
       <LoadError message={error || 'Não foi possível carregar a visão geral.'} retry={reload} />
     );
+
   const chartData = data.vendasPorDia.map((item) => ({
     ...item,
     total: decimal(item.total).toNumber(),
   }));
+
   const metrics = [
     {
-      label: 'Produtos no catálogo',
+      label: 'Produtos no Catálogo',
       value: data.totalProdutos,
-      icon: Package,
+      emoji: '📦',
       page: 'produtos' as const,
     },
-    { label: 'Categorias', value: data.totalCategorias, icon: Tag, page: 'categorias' as const },
-    { label: 'Devedores', value: data.totalDevedores, icon: Users, page: 'devedores' as const },
+    {
+      label: 'Categorias Ativas',
+      value: data.totalCategorias,
+      emoji: '🏷️',
+      page: 'categorias' as const,
+    },
+    {
+      label: 'Total de Devedores',
+      value: data.totalDevedores,
+      emoji: '👥',
+      page: 'devedores' as const,
+    },
   ];
+
   return (
     <div className="dashboard-page">
       <PageHeading title="A sua loja, hoje" description={today}>
         <button className="btn-primary" onClick={() => navigate('vendas')}>
-          <Plus size={18} /> Ir para vendas
+          <span aria-hidden="true">🛒</span> Nova Venda
         </button>
       </PageHeading>
+
       {error && <LoadError message={error} retry={reload} />}
+
       <section className="store-overview" aria-label="Resumo da loja">
         <div className="today-sales">
           <span className="today-label">
-            <ReceiptText size={18} /> Vendas de hoje
+            <span aria-hidden="true">💰</span> Vendas de Hoje
           </span>
           <p className="today-value">{formatMoney(data.totalVendasHoje)}</p>
           <span className="today-description">Total registado no dia</span>
         </div>
+
         <div className="store-metrics">
-          {metrics.map(({ label, value, icon: Icon, page }) => (
+          {metrics.map(({ label, value, emoji, page }) => (
             <button key={label} className="store-metric" onClick={() => navigate(page)}>
               <span className="metric-label">
-                <Icon size={18} />
+                <span className="metric-emoji" aria-hidden="true">
+                  {emoji}
+                </span>
                 {label}
               </span>
               <span className="metric-value">
                 {value}
-                <ArrowUpRight size={18} aria-hidden="true" />
+                <span className="metric-arrow" aria-hidden="true">
+                  ↗️
+                </span>
               </span>
             </button>
           ))}
         </div>
       </section>
+
       <div className="dashboard-grid">
         <section className="card dashboard-chart" aria-labelledby="sales-chart-title">
           <div className="section-header">
             <div>
-              <h3 id="sales-chart-title">Vendas dos últimos 7 dias</h3>
+              <h3 id="sales-chart-title">📈 Vendas dos últimos 7 dias</h3>
               <p>Total diário em meticais (MT)</p>
             </div>
             <button
@@ -111,9 +125,10 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
               aria-pressed={tableView}
               onClick={() => setTableView((value) => !value)}
             >
-              {tableView ? 'Ver gráfico' : 'Ver tabela'}
+              {tableView ? '📊 Ver gráfico' : '📋 Ver tabela'}
             </button>
           </div>
+
           {tableView ? (
             <div className="table-wrapper">
               <table>
@@ -196,14 +211,15 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
             </>
           )}
         </section>
+
         <section className="card dashboard-alerts" aria-labelledby="stock-title">
           <div className="section-header">
             <div>
-              <h3 id="stock-title">Atenção ao stock</h3>
+              <h3 id="stock-title">⚠️ Atenção ao stock</h3>
               <p>Produtos no mínimo ou abaixo</p>
             </div>
-            <AlertTriangle size={20} />
           </div>
+
           {data.alertasStock.length > 0 ? (
             <>
               <ul className="alert-list">
@@ -211,8 +227,7 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
                   <li key={p.id}>
                     <strong>{p.nome}</strong>
                     <span className="badge badge-warning">
-                      <AlertTriangle size={13} />
-                      {formatQuantity(p.stock, p.unidade || '')} disponível
+                      ⚠️ {formatQuantity(p.stock, p.unidade || '')} disponível
                     </span>
                     <small>Mínimo: {formatQuantity(p.stockMinimo, p.unidade || '')}</small>
                   </li>
@@ -225,7 +240,9 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
             </>
           ) : (
             <div className="stock-ok">
-              <CheckCircle2 size={30} />
+              <span className="stock-ok-emoji" aria-hidden="true">
+                ✅
+              </span>
               <h4>Sem alertas de stock</h4>
               <p>
                 {data.totalProdutos === 0
@@ -233,27 +250,29 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
                   : 'Todos os produtos estão acima do stock mínimo.'}
               </p>
               <button className="btn-secondary" onClick={() => navigate('produtos')}>
-                Ver produtos
+                📦 Ver produtos
               </button>
             </div>
           )}
         </section>
       </div>
+
       <section className="card recent-sales" aria-labelledby="recent-title">
         <div className="section-header">
           <div>
-            <h3 id="recent-title">Vendas recentes</h3>
+            <h3 id="recent-title">🧾 Vendas recentes</h3>
             <p>Os últimos movimentos da loja</p>
           </div>
           <button className="btn-secondary" onClick={() => navigate('vendas')}>
-            Ver vendas
+            🛒 Ir para vendas
           </button>
         </div>
+
         {data.vendasRecentes.length === 0 ? (
           <EmptyState
             title="Ainda não há vendas"
             description="As vendas registadas aparecerão aqui, com produto, quantidade e valor."
-            icon={<ReceiptText size={28} />}
+            icon="🧾"
           />
         ) : (
           <div className="table-wrapper">

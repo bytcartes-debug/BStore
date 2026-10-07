@@ -1,6 +1,5 @@
 import { useToast } from '../utils/toast';
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, ScanLine, Package, AlertTriangle } from 'lucide-react';
 import { apiFetch, apiRequest } from '../utils/api';
 import { useMutation, useResource } from '../utils/useResource';
 import { abrirScanner } from '../utils/scanner';
@@ -183,7 +182,7 @@ export default function ProdutosPage() {
         description="Preços, quantidades e reposição. O seu stock, à vista."
       >
         <button className="btn-primary" onClick={openNew} disabled={!data}>
-          <Plus size={18} /> Adicionar produto
+          <span aria-hidden="true">➕</span> Adicionar produto
         </button>
       </PageHeading>
       <div className="toolbar">
@@ -230,19 +229,20 @@ export default function ProdutosPage() {
               <EmptyState
                 title="O seu catálogo começa aqui"
                 description="Adicione produtos para acompanhar o stock e começar a vender."
-                icon={<Package size={28} />}
+                icon="📦"
               >
                 <button className="btn-secondary" onClick={openNew}>
-                  Adicionar primeiro produto
+                  ➕ Adicionar primeiro produto
                 </button>
               </EmptyState>
             ) : filtered.length === 0 ? (
               <EmptyState
                 title="Nenhum produto corresponde à pesquisa"
                 description="Altere o nome, o código ou os filtros para encontrar o que procura."
+                icon="🔍"
               >
                 <button className="btn-secondary" onClick={clearFilters}>
-                  Limpar filtros
+                  🔄 Limpar filtros
                 </button>
               </EmptyState>
             ) : (
@@ -288,7 +288,7 @@ export default function ProdutosPage() {
                               <span>{formatQuantity(p.stock, p.unidade)}</span>
                               {decimal(p.stock).lte(p.stockMinimo) && (
                                 <span className="badge badge-warning">
-                                  <AlertTriangle size={13} /> Stock baixo
+                                  ⚠️ Stock baixo
                                 </span>
                               )}
                             </div>
@@ -307,7 +307,7 @@ export default function ProdutosPage() {
                                 aria-label={`Editar ${p.nome}`}
                                 title="Editar produto"
                               >
-                                <Pencil size={17} />
+                                ✏️
                               </button>
                               <button
                                 className="icon-btn delete"
@@ -318,7 +318,7 @@ export default function ProdutosPage() {
                                 aria-label={`Remover ${p.nome}`}
                                 title="Remover produto"
                               >
-                                <Trash2 size={17} />
+                                🗑️
                               </button>
                             </div>
                           </td>
@@ -358,7 +358,7 @@ export default function ProdutosPage() {
                     placeholder="Opcional"
                   />
                   <button type="button" className="btn-secondary" onClick={handleScan}>
-                    {scan.pending ? <Spinner /> : <ScanLine size={18} />} Ler código
+                    {scan.pending ? <Spinner size="small" /> : <span aria-hidden="true">📷</span>} Ler código
                   </button>
                 </div>
               </Field>

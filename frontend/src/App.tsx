@@ -12,7 +12,6 @@ import UsuariosPage from './pages/UsuariosPage';
 import PerfilSegurancaPage from './pages/PerfilSegurancaPage';
 import { pedirPermissaoNotificacoes, verificarStockBaixo } from './utils/notificacoes';
 import { apiFetch, apiRequest } from './utils/api';
-import { AlertTriangle } from 'lucide-react';
 import { Loading, LoadError, ToastProvider, Notice } from './components/UI';
 import PageErrorBoundary from './components/PageErrorBoundary';
 
@@ -161,7 +160,7 @@ function AppContent() {
       <div className="main-content">
         {user.role !== 'superuser' && user.diasRestantes !== -1 && user.diasRestantes <= 7 && (
           <div className="expiration-banner" role="status">
-            <AlertTriangle size={18} />
+            <span aria-hidden="true">⚠️</span>
             <p>
               {user.diasRestantes <= 0
                 ? 'A sua conta expirou. Contacte o administrador.'
