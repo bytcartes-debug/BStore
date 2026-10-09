@@ -1,5 +1,15 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  Inbox,
+  Info,
+  RefreshCw,
+  Search,
+  X,
+} from 'lucide-react';
 import { ToastContext } from '../utils/toast';
 import { useDialog } from '../utils/useDialog';
 
@@ -33,11 +43,11 @@ export function Notice({
   children: ReactNode;
   kind?: 'error' | 'success' | 'info';
 }) {
-  const emoji = kind === 'success' ? '✅' : kind === 'info' ? 'ℹ️' : '⚠️';
+  const Icon = kind === 'success' ? CheckCircle2 : kind === 'info' ? Info : AlertTriangle;
   return (
     <div className={`notice notice-${kind}`} role={kind === 'error' ? 'alert' : 'status'}>
       <span className="notice-icon" aria-hidden="true">
-        {emoji}
+        <Icon size={18} strokeWidth={2} />
       </span>
       <div className="notice-content">{children}</div>
     </div>
@@ -49,7 +59,7 @@ export function LoadError({ message, retry }: { message: string; retry: () => vo
     <div className="load-error">
       <Notice>{message}</Notice>
       <button className="btn-secondary" onClick={retry}>
-        <span aria-hidden="true">🔄</span> Tentar novamente
+        <RefreshCw size={15} strokeWidth={2} aria-hidden="true" /> Tentar novamente
       </button>
     </div>
   );
@@ -59,7 +69,7 @@ export function EmptyState({
   title,
   description,
   children,
-  icon = '📭',
+  icon,
 }: {
   title: string;
   description: string;
@@ -69,7 +79,7 @@ export function EmptyState({
   return (
     <div className="empty-state">
       <span className="empty-icon" aria-hidden="true">
-        {icon}
+        {icon || <Inbox size={34} strokeWidth={1.8} />}
       </span>
       <h3>{title}</h3>
       <p>{description}</p>
@@ -116,7 +126,7 @@ export function SearchField({
         {label}
       </label>
       <span className="search-icon" aria-hidden="true">
-        🔍
+        <Search size={18} strokeWidth={2} />
       </span>
       <input
         id={id}
@@ -216,7 +226,7 @@ export function Modal({
           onClick={onClose}
           disabled={busy}
         >
-          ✕
+          <X size={18} strokeWidth={2} aria-hidden="true" />
         </button>
       </div>
       {children}
@@ -256,7 +266,11 @@ export function ConfirmDialog({
           onClick={onConfirm}
           disabled={busy}
         >
-          {busy ? <Spinner size="small" /> : '✅'}
+          {busy ? (
+            <Spinner size="small" />
+          ) : (
+            <Check size={16} strokeWidth={2.2} aria-hidden="true" />
+          )}
           {busy ? ' A processar…' : ` ${label}`}
         </button>
       </div>
@@ -278,7 +292,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toast && (
           <div className="toast">
             <span className="toast-icon" aria-hidden="true">
-              ✅
+              <CheckCircle2 size={18} strokeWidth={2.2} />
             </span>
             <p>{toast.message}</p>
             <button
@@ -286,7 +300,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               aria-label="Fechar notificação"
               onClick={() => setToast(null)}
             >
-              ✕
+              <X size={16} strokeWidth={2} aria-hidden="true" />
             </button>
           </div>
         )}

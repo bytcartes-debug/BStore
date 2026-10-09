@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
 import type { PageId } from '../App';
+import { LogOut, Menu, Moon, Sun } from 'lucide-react';
 import { Spinner } from './UI';
 import './Header.css';
 
 const titles: Record<PageId, string> = {
-  dashboard: '📊 Visão Geral',
-  categorias: '🏷️ Categorias',
-  produtos: '📦 Produtos',
-  vendas: '🛒 Registo de Vendas',
-  devedores: '👥 Gestão de Devedores',
-  usuarios: '👤 Utilizadores & Acessos',
-  perfil: '🔒 Perfil & Segurança',
+  dashboard: 'Visão Geral',
+  categorias: 'Categorias',
+  produtos: 'Produtos',
+  vendas: 'Registo de Vendas',
+  devedores: 'Gestão de Devedores',
+  usuarios: 'Utilizadores & Acessos',
+  perfil: 'Perfil & Segurança',
+  reposicao: 'Falta Repor',
 };
 
 interface HeaderProps {
@@ -57,7 +59,7 @@ export default function Header({
           aria-expanded={menuOpen}
           aria-controls={menuOpen ? 'navigation-menu' : undefined}
         >
-          ☰
+          <Menu size={20} strokeWidth={2} aria-hidden="true" />
         </button>
         <h1 className="header-title">{titles[currentPage]}</h1>
       </div>
@@ -68,7 +70,11 @@ export default function Header({
           aria-label={isDark ? 'Ativar tema claro' : 'Ativar tema escuro'}
           title={isDark ? 'Tema claro' : 'Tema escuro'}
         >
-          {isDark ? '☀️' : '🌙'}
+          {isDark ? (
+            <Sun size={18} strokeWidth={2} aria-hidden="true" />
+          ) : (
+            <Moon size={18} strokeWidth={2} aria-hidden="true" />
+          )}
         </button>
         <button
           className="header-profile"
@@ -90,7 +96,11 @@ export default function Header({
           aria-label="Terminar sessão"
           title="Terminar sessão"
         >
-          {loggingOut ? <Spinner size="small" /> : '🚪'}
+          {loggingOut ? (
+            <Spinner size="small" />
+          ) : (
+            <LogOut size={18} strokeWidth={2} aria-hidden="true" />
+          )}
         </button>
       </div>
     </header>

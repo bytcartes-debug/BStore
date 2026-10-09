@@ -19,6 +19,11 @@
         <class>model.Sessao</class>
         <class>model.PedidoVenda</class>
         <class>model.MovimentoStock</class>
+        <class>model.MetodoPagamento</class>
+        <class>model.DefinicaoLoja</class>
+        <class>model.SessaoCaixa</class>
+        <class>model.Devolucao</class>
+        <class>model.ItemDevolucao</class>
 
         <properties>
             <!-- Configuração base (será sobrescrita pelo JPAUtil via variáveis de ambiente) -->

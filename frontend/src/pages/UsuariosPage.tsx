@@ -4,6 +4,20 @@ import { apiRequest } from '../utils/api';
 import { useMutation, useResource } from '../utils/useResource';
 import type { UserSession } from '../App';
 import {
+  AlertTriangle,
+  Clock,
+  Eye,
+  EyeOff,
+  Infinity as InfinityIcon,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Trash2,
+  User,
+} from 'lucide-react';
+import {
   PageHeading,
   SearchField,
   Loading,
@@ -38,18 +52,18 @@ function AccessBadge({ user }: { user: Usuario }) {
   if (user.role === 'superuser' || user.diasRestantes === -1)
     return (
       <span className="badge badge-success">
-        ♾️ Permanente
+        <InfinityIcon size={13} strokeWidth={2.5} aria-hidden="true" /> Permanente
       </span>
     );
   if (user.expirado)
     return (
       <span className="badge badge-danger">
-        ⛔ Expirado
+        <Clock size={13} strokeWidth={2} aria-hidden="true" /> Expirado
       </span>
     );
   return (
     <span className={`badge ${user.diasRestantes <= 7 ? 'badge-warning' : 'badge-info'}`}>
-      {user.diasRestantes <= 7 ? '⚠️ ' : ''}
+      {user.diasRestantes <= 7 && <AlertTriangle size={12} strokeWidth={2} aria-hidden="true" />}
       {user.diasRestantes} dia(s) restantes
     </span>
   );
@@ -130,7 +144,7 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
         description="Controle quem entra na loja e durante quanto tempo."
       >
         <button className="btn-primary" onClick={openNew}>
-          <span aria-hidden="true">➕</span> Novo utilizador
+          <Plus size={16} strokeWidth={2.2} aria-hidden="true" /> Novo utilizador
         </button>
       </PageHeading>
       <div className="toolbar">
@@ -153,15 +167,21 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
                     ? 'Experimente outro nome ou email.'
                     : 'Crie um utilizador para dar acesso ao sistema.'
                 }
-                icon={users.length ? '🔍' : '👤'}
+                icon={
+                  users.length ? (
+                    <Search size={36} strokeWidth={1.8} aria-hidden="true" />
+                  ) : (
+                    <User size={36} strokeWidth={1.8} aria-hidden="true" />
+                  )
+                }
               >
                 {users.length ? (
                   <button className="btn-secondary" onClick={() => setSearch('')}>
-                    🔄 Limpar pesquisa
+                    <RefreshCw size={14} strokeWidth={2} aria-hidden="true" /> Limpar pesquisa
                   </button>
                 ) : (
                   <button className="btn-secondary" onClick={openNew}>
-                    ➕ Novo utilizador
+                    <Plus size={16} strokeWidth={2} aria-hidden="true" /> Novo utilizador
                   </button>
                 )}
               </EmptyState>
@@ -194,7 +214,15 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
                           <span
                             className={`badge ${item.role === 'superuser' ? 'badge-warning' : 'badge-info'}`}
                           >
-                            {item.role === 'superuser' ? '🛡️ Administrador' : '👤 Operador'}
+                            {item.role === 'superuser' ? (
+                              <>
+                                <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" /> Administrador
+                              </>
+                            ) : (
+                              <>
+                                <User size={13} strokeWidth={2} aria-hidden="true" /> Operador
+                              </>
+                            )}
                           </span>
                         </td>
                         <td data-label="Acesso">
@@ -212,7 +240,7 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
                                 aria-label={`Renovar acesso de ${item.nome}`}
                                 onClick={() => openEdit(item)}
                               >
-                                🔄
+                                <RefreshCw size={15} strokeWidth={2} aria-hidden="true" />
                               </button>
                             )}
                             <button
@@ -221,7 +249,7 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
                               aria-label={`Editar ${item.nome}`}
                               onClick={() => openEdit(item)}
                             >
-                              ✏️
+                              <Pencil size={15} strokeWidth={2} aria-hidden="true" />
                             </button>
                             <button
                               className="icon-btn delete"
@@ -237,7 +265,7 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
                                 setDeleting(item);
                               }}
                             >
-                              🗑️
+                              <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
                             </button>
                           </div>
                         </td>
@@ -303,7 +331,9 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
                     aria-pressed={showPassword}
                     onClick={() => setShowPassword((value) => !value)}
                   >
-                    <span aria-hidden="true">{showPassword ? '🙈' : '👁️'}</span>
+                    <span aria-hidden="true">
+                      {showPassword ? <EyeOff size={18} strokeWidth={2} /> : <Eye size={18} strokeWidth={2} />}
+                    </span>
                   </button>
                 </div>
               </Field>

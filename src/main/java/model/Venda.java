@@ -21,6 +21,9 @@ public class Venda {
     @Column(name = "numero", nullable = false)
     private Long numero;
 
+    @Column(name = "uuid_cliente", length = 100)
+    private String uuidCliente;
+
     @Column(name = "criada_em", nullable = false)
     private LocalDateTime criadaEm;
 
@@ -30,7 +33,7 @@ public class Venda {
     @Column(name = "total_custo", nullable = false, precision = 19, scale = 2)
     private BigDecimal totalCusto = BigDecimal.ZERO;
 
-    @Column(name = "estado", nullable = false, length = 15)
+    @Column(name = "estado", nullable = false, length = 30)
     private String estado = "CONCLUIDA";
 
     @Column(name = "cliente_id")
@@ -50,6 +53,10 @@ public class Venda {
 
     @Column(name = "criado_por")
     private Long criadoPor;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "sessao_id")
+    private SessaoCaixa sessaoCaixa;
 
     @OneToMany(mappedBy = "venda", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<ItemVenda> itens = new ArrayList<>();
@@ -81,6 +88,9 @@ public class Venda {
 
     public Long getNumero() { return numero; }
     public void setNumero(Long numero) { this.numero = numero; }
+
+    public String getUuidCliente() { return uuidCliente; }
+    public void setUuidCliente(String uuidCliente) { this.uuidCliente = uuidCliente; }
 
     public LocalDateTime getCriadaEm() { return criadaEm; }
     public void setCriadaEm(LocalDateTime criadaEm) { this.criadaEm = criadaEm; }
@@ -147,4 +157,7 @@ public class Venda {
         pagamentos.add(pagamento);
         pagamento.setVenda(this);
     }
+
+    public SessaoCaixa getSessaoCaixa() { return sessaoCaixa; }
+    public void setSessaoCaixa(SessaoCaixa sessaoCaixa) { this.sessaoCaixa = sessaoCaixa; }
 }

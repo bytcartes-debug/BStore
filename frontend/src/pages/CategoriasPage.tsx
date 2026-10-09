@@ -1,5 +1,6 @@
-import { useToast } from '../utils/toast';
 import { useState } from 'react';
+import { Pencil, Plus, RefreshCw, Search, Tag, Trash2 } from 'lucide-react';
+import { useToast } from '../utils/toast';
 import { apiRequest } from '../utils/api';
 import { useMutation, useResource } from '../utils/useResource';
 import { formatMoney, formatQuantity } from '../utils/decimal';
@@ -100,11 +101,11 @@ export default function CategoriasPage() {
   return (
     <div className="categorias-page">
       <PageHeading
-        title="🏷️ Categorias"
+        title="Categorias"
         description="Um lugar para cada produto. Organize o seu catálogo."
       >
         <button className="btn-primary" onClick={openNew}>
-          <span aria-hidden="true">➕</span> Nova categoria
+          <Plus size={16} strokeWidth={2.2} aria-hidden="true" /> Nova categoria
         </button>
       </PageHeading>
 
@@ -126,20 +127,20 @@ export default function CategoriasPage() {
           <EmptyState
             title="Comece a organizar a sua loja"
             description="Crie a primeira categoria para depois adicionar os seus produtos."
-            icon="🏷️"
+            icon={<Tag size={36} strokeWidth={1.8} aria-hidden="true" />}
           >
             <button className="btn-secondary" onClick={openNew}>
-              ➕ Criar primeira categoria
+              <Plus size={16} strokeWidth={2} aria-hidden="true" /> Criar primeira categoria
             </button>
           </EmptyState>
         ) : filtered.length === 0 ? (
           <EmptyState
             title="Nenhuma categoria encontrada"
             description="Experimente outro nome ou limpe a pesquisa."
-            icon="🔍"
+            icon={<Search size={36} strokeWidth={1.8} aria-hidden="true" />}
           >
             <button className="btn-secondary" onClick={() => setSearch('')}>
-              🔄 Limpar pesquisa
+              <RefreshCw size={14} strokeWidth={2} aria-hidden="true" /> Limpar pesquisa
             </button>
           </EmptyState>
         ) : (
@@ -153,7 +154,7 @@ export default function CategoriasPage() {
               {filtered.map((cat) => (
                 <article key={cat.id} className="card category-card">
                   <div className="category-icon">
-                    <CategoryIcon value={cat.icone || 'tag'} size={32} />
+                    <CategoryIcon value={cat.icone || 'tag'} size={28} />
                   </div>
                   <div className="category-details">
                     <h3>{cat.nome}</h3>
@@ -172,7 +173,7 @@ export default function CategoriasPage() {
                         aria-label={`Editar categoria ${cat.nome}`}
                         onClick={() => openEdit(cat)}
                       >
-                        ✏️
+                        <Pencil size={15} strokeWidth={2} aria-hidden="true" />
                       </button>
                       <button
                         className="icon-btn delete"
@@ -181,7 +182,7 @@ export default function CategoriasPage() {
                         disabled={inspect.pending}
                         onClick={() => inspectDelete(cat)}
                       >
-                        🗑️
+                        <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
                       </button>
                     </div>
                   </div>
@@ -220,9 +221,9 @@ export default function CategoriasPage() {
                 />
               </Field>
               <fieldset className="form-group">
-                <legend className="field-label">Emoji / Símbolo da categoria</legend>
+                <legend className="field-label">Símbolo da categoria</legend>
                 <div className="icon-picker">
-                  {categoryIcons.map(({ key, label, emoji }) => (
+                  {categoryIcons.map(({ key, label }) => (
                     <button
                       key={key}
                       type="button"
@@ -230,9 +231,8 @@ export default function CategoriasPage() {
                       aria-label={label}
                       aria-pressed={categoryIconKey(form.icone) === key}
                       onClick={() => setForm({ ...form, icone: key })}
-                      style={{ fontSize: '20px', lineHeight: 1 }}
                     >
-                      {emoji}
+                      <CategoryIcon value={key} size={20} />
                     </button>
                   ))}
                 </div>
@@ -246,8 +246,8 @@ export default function CategoriasPage() {
                   {save.pending
                     ? ' A guardar…'
                     : editing
-                      ? '💾 Guardar alterações'
-                      : '➕ Criar categoria'}
+                      ? 'Guardar alterações'
+                      : 'Criar categoria'}
                 </button>
               </div>
             </fieldset>

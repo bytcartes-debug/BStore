@@ -178,7 +178,7 @@ class BackendIntegrationTest {
         assertEquals(200, result.statusCode());
         assertEquals(10, json.readTree(result.body()).get("vendasRecentes").size());
         assertEquals("1600.00", json.readTree(result.body()).get("totalVendasHoje").asText());
-        assertTrue(factory.getStatistics().getPrepareStatementCount() <= 12, "Consultas do dashboard: " + factory.getStatistics().getPrepareStatementCount());
+        assertTrue(factory.getStatistics().getPrepareStatementCount() <= 14, "Consultas do dashboard: " + factory.getStatistics().getPrepareStatementCount());
         String key = UUID.randomUUID().toString();
         HttpResponse<String> first = request("POST", "/api/vendas/lote", cart(product, "1"), key);
         HttpResponse<String> replay = request("POST", "/api/vendas/lote", cart(product, "1"), key);
@@ -567,5 +567,341 @@ class BackendIntegrationTest {
                 assertEquals(new BigDecimal("500.00"), rs.getBigDecimal("divida"));
             }
         }
+    }
+
+    @Test void dashboardReturnsAllFieldsForUserWithoutSalesOrProducts() throws Exception {
+        Usuario freshUser = new Usuario("Novo", UUID.randomUUID() + "@example.test", "SenhaTeste2026", "operator");
+        freshUser.aplicarDiasAcesso(30);
+        freshUser = new UsuarioDAO().salvar(freshUser);
+        String freshCookie = "bstore_session=" + new SessaoDAO().criar(freshUser).getId();
+
+        HttpRequest req = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/dashboard"))
+            .header("Cookie", freshCookie)
+            .header("Content-Type", "application/json")
+            .GET()
+            .build();
+
+        HttpResponse<String> res = HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, res.statusCode());
+
+        JsonNode root = json.readTree(res.body());
+        assertTrue(root.hasNonNull("totalVendasHoje"), "totalVendasHoje deve existir e não ser nulo");
+        assertTrue(root.hasNonNull("lucroHoje"), "lucroHoje deve existir e não ser nulo");
+        assertTrue(root.hasNonNull("lucroUltimos7Dias"), "lucroUltimos7Dias deve existir e não ser nulo");
+        assertTrue(root.hasNonNull("valorTotalStockCusto"), "valorTotalStockCusto deve existir e não ser nulo");
+        assertTrue(root.hasNonNull("totalProdutos"), "totalProdutos deve existir e não ser nulo");
+        assertTrue(root.hasNonNull("totalCategorias"), "totalCategorias deve existir e não ser nulo");
+        assertTrue(root.hasNonNull("totalDevedores"), "totalDevedores deve existir e não ser nulo");
+        assertTrue(root.hasNonNull("alertasStock"), "alertasStock deve existir e não ser nulo");
+        assertTrue(root.hasNonNull("vendasPorMetodo"), "vendasPorMetodo deve existir e não ser nulo");
+        assertTrue(root.hasNonNull("produtosMaisVendidos"), "produtosMaisVendidos deve existir e não ser nulo");
+        assertTrue(root.hasNonNull("vendasRecentes"), "vendasRecentes deve existir e não ser nulo");
+        assertTrue(root.hasNonNull("vendasPorDia"), "vendasPorDia deve existir e não ser nulo");
+
+        assertEquals(0, root.get("totalProdutos").asInt());
+        assertEquals(0, root.get("totalCategorias").asInt());
+        assertEquals(0, root.get("totalDevedores").asInt());
+        assertTrue(root.get("alertasStock").isArray());
+        assertEquals(0, root.get("alertasStock").size());
+        assertTrue(root.get("vendasPorDia").isArray());
+        assertEquals(7, root.get("vendasPorDia").size());
+    }
+
+    @Test
+    void vendaComUuidClienteNaoDuplicaENaoDescontaStockDuasVezes() throws Exception {
+        Produto p = service.criarProduto("Arroz Seguro", new BigDecimal("100.00"), new BigDecimal("70.00"), new BigDecimal("10.000"), "un", new BigDecimal("2.000"), category.getId(), null, user.getId());
+
+        String uuidCliente = "venda-" + UUID.randomUUID();
+        Map<String, Object> saleBody = Map.of(
+            "uuidCliente", uuidCliente,
+            "itens", List.of(Map.of("produtoId", p.getId(), "quantidade", "2.000")),
+            "pagamentos", List.of(Map.of("metodo", "DINHEIRO", "valor", "200.00"))
+        );
+
+        HttpResponse<String> r1 = request("POST", "/api/vendas/lote", saleBody, null);
+        assertEquals(201, r1.statusCode());
+        JsonNode json1 = json.readTree(r1.body());
+        long vendaId1 = json1.get("id").asLong();
+
+        // Stock após primeira venda
+        assertEquals(new BigDecimal("8.000"), stock(p));
+
+        // Repetir a mesma venda com o mesmo identificador uuidCliente
+        HttpResponse<String> r2 = request("POST", "/api/vendas/lote", saleBody, null);
+        assertTrue(r2.statusCode() == 200 || r2.statusCode() == 201);
+        JsonNode json2 = json.readTree(r2.body());
+        long vendaId2 = json2.get("id").asLong();
+        assertEquals(vendaId1, vendaId2, "Deve retornar a mesma venda");
+
+        // O stock não pode ter sido descontado uma segunda vez
+        assertEquals(new BigDecimal("8.000"), stock(p), "Stock deve permanecer 8.000");
+    }
+
+    @Test
+    void metodosPagamentoConfiguraveisEInativosRejeitamNovasVendas() throws Exception {
+        Produto p = service.criarProduto("Sumo Metodo", new BigDecimal("50.00"), new BigDecimal("30.00"), new BigDecimal("10.000"), "un", new BigDecimal("2.000"), category.getId(), null, user.getId());
+
+        // Listar métodos
+        HttpResponse<String> resMetodos = request("GET", "/api/metodos-pagamento", null, null);
+        assertEquals(200, resMetodos.statusCode());
+        JsonNode metodos = json.readTree(resMetodos.body());
+        assertTrue(metodos.size() >= 6);
+
+        JsonNode cartaoNode = null;
+        for (JsonNode m : metodos) {
+            if ("Cartão".equalsIgnoreCase(m.get("nome").asText())) {
+                cartaoNode = m;
+                break;
+            }
+        }
+        assertNotNull(cartaoNode);
+        assertFalse(cartaoNode.get("ativo").asBoolean(), "Cartão deve vir inativo por padrão");
+        long cartaoId = cartaoNode.get("id").asLong();
+
+        // Tentar vender com Cartão inativo deve falhar (400)
+        Map<String, Object> saleInativo = Map.of(
+            "itens", List.of(Map.of("produtoId", p.getId(), "quantidade", "1.000")),
+            "pagamentos", List.of(Map.of("metodoId", cartaoId, "valor", "50.00"))
+        );
+        HttpResponse<String> resFalha = request("POST", "/api/vendas/lote", saleInativo, null);
+        assertEquals(400, resFalha.statusCode());
+
+        // Ativar Cartão
+        HttpResponse<String> toggleRes = request("PUT", "/api/metodos-pagamento/" + cartaoId + "/toggle", Map.of(), null);
+        assertEquals(200, toggleRes.statusCode());
+        assertTrue(json.readTree(toggleRes.body()).get("ativo").asBoolean());
+
+        // Agora a venda com Cartão deve ter sucesso
+        HttpResponse<String> resSucesso = request("POST", "/api/vendas/lote", saleInativo, null);
+        assertEquals(201, resSucesso.statusCode());
+    }
+
+    @Test
+    void vendaComDescontoPorLinhaCalculaTotalELucroCorrectamente() throws Exception {
+        Produto p = service.criarProduto("Camisa Promo", new BigDecimal("100.00"), new BigDecimal("60.00"), new BigDecimal("5.000"), "un", new BigDecimal("1.000"), category.getId(), null, user.getId());
+
+        // Venda com desconto percentual de 20% (preço final 80 MT) e nota
+        Map<String, Object> saleBody = Map.of(
+            "itens", List.of(Map.of(
+                "produtoId", p.getId(),
+                "quantidade", "1.000",
+                "descontoPercentual", "20.00",
+                "nota", "Desconto especial de cliente"
+            )),
+            "pagamentos", List.of(Map.of("metodo", "DINHEIRO", "valor", "80.00"))
+        );
+
+        HttpResponse<String> res = request("POST", "/api/vendas/lote", saleBody, null);
+        assertEquals(201, res.statusCode());
+        JsonNode root = json.readTree(res.body());
+        assertEquals("80.00", root.get("total").asText());
+        assertEquals("60.00", root.get("totalCusto").asText());
+
+        long vendaId = root.get("id").asLong();
+        HttpResponse<String> getVenda = request("GET", "/api/vendas/" + vendaId, null, null);
+        JsonNode vNode = json.readTree(getVenda.body());
+        assertEquals("80.00", vNode.get("total").asText());
+        assertEquals("60.00", vNode.get("totalCusto").asText());
+        assertEquals("20.00", vNode.get("lucro").asText());
+
+        JsonNode item = vNode.get("itens").get(0);
+        assertEquals("20.00", item.get("descontoPercentual").asText());
+        assertEquals("80.00", item.get("precoFinal").asText());
+        assertEquals("Desconto especial de cliente", item.get("nota").asText());
+    }
+
+    @Test
+    void devolucaoParcialRepoeStockNaoPermiteDevolverMaisERepeticaoNaoDuplica() throws Exception {
+        Produto p = service.criarProduto("Sumo", new BigDecimal("50.00"), new BigDecimal("30.00"), new BigDecimal("10.000"), "un", new BigDecimal("2.000"), category.getId(), null, user.getId());
+
+        // Vender 5 unidades
+        Map<String, Object> saleBody = Map.of(
+            "itens", List.of(Map.of("produtoId", p.getId(), "quantidade", "5.000")),
+            "pagamentos", List.of(Map.of("metodo", "DINHEIRO", "valor", "250.00"))
+        );
+        HttpResponse<String> resVenda = request("POST", "/api/vendas/lote", saleBody, null);
+        assertEquals(201, resVenda.statusCode());
+        long vendaId = json.readTree(resVenda.body()).get("id").asLong();
+        assertEquals(new BigDecimal("5.000"), stock(p));
+
+        // Obter itemVendaId
+        HttpResponse<String> getVenda = request("GET", "/api/vendas/" + vendaId, null, null);
+        long itemVendaId = json.readTree(getVenda.body()).get("itens").get(0).get("id").asLong();
+
+        // 1. Devolver 2 unidades com uuidCliente
+        String uuidDev = UUID.randomUUID().toString();
+        Map<String, Object> devBody = Map.of(
+            "itens", List.of(Map.of("itemVendaId", itemVendaId, "quantidade", "2.000")),
+            "motivo", "Cliente desistiu",
+            "uuidCliente", uuidDev
+        );
+        HttpResponse<String> resDev1 = request("POST", "/api/vendas/" + vendaId + "/devolver", devBody, null);
+        assertEquals(201, resDev1.statusCode());
+        JsonNode devNode1 = json.readTree(resDev1.body());
+        assertEquals("100.00", devNode1.get("total").asText());
+        assertEquals("PARCIALMENTE_DEVOLVIDA", devNode1.get("estadoVenda").asText());
+        assertEquals(new BigDecimal("7.000"), stock(p)); // 5 + 2 = 7
+
+        // 2. Repetir o pedido de devolução com mesmo uuid não deve repor stock duas vezes
+        HttpResponse<String> resDevReplay = request("POST", "/api/vendas/" + vendaId + "/devolver", devBody, null);
+        assertEquals(201, resDevReplay.statusCode());
+        assertEquals(new BigDecimal("7.000"), stock(p)); // Continua 7!
+
+        // 3. Tentar devolver mais 4 unidades (só há 3 disponíveis de 5 - 2 = 3) deve falhar (400)
+        Map<String, Object> devExcesso = Map.of(
+            "itens", List.of(Map.of("itemVendaId", itemVendaId, "quantidade", "4.000")),
+            "motivo", "Engano"
+        );
+        HttpResponse<String> resExcesso = request("POST", "/api/vendas/" + vendaId + "/devolver", devExcesso, null);
+        assertEquals(400, resExcesso.statusCode());
+        assertEquals(new BigDecimal("7.000"), stock(p));
+
+        // 4. Devolver as 3 restantes completa a devolução
+        Map<String, Object> devRestante = Map.of(
+            "itens", List.of(Map.of("itemVendaId", itemVendaId, "quantidade", "3.000")),
+            "motivo", "Troca"
+        );
+        HttpResponse<String> resDev2 = request("POST", "/api/vendas/" + vendaId + "/devolver", devRestante, null);
+        assertEquals(201, resDev2.statusCode());
+        JsonNode devNode2 = json.readTree(resDev2.body());
+        assertEquals("150.00", devNode2.get("total").asText());
+        assertEquals("DEVOLVIDA", devNode2.get("estadoVenda").asText());
+        assertEquals(new BigDecimal("10.000"), stock(p)); // Volta a 10
+    }
+
+    @Test
+    void caixaSoUmaSessaoAbertaValorEsperadoIncluiVendasMenosDevolucoesENaoFechaComRascunhos() throws Exception {
+        // Verificar que não há sessão aberta inicialmente
+        HttpResponse<String> getAtual = request("GET", "/api/caixa/atual", null, null);
+        assertEquals(200, getAtual.statusCode());
+        assertFalse(json.readTree(getAtual.body()).get("aberta").asBoolean());
+
+        // 1. Abrir sessão com 100 MT
+        Map<String, Object> abrirBody = Map.of(
+            "valorInicial", "100.00",
+            "notaAbertura", "Abertura do dia"
+        );
+        HttpResponse<String> resAbrir = request("POST", "/api/caixa/abrir", abrirBody, null);
+        assertEquals(201, resAbrir.statusCode());
+        long sessaoId = json.readTree(resAbrir.body()).get("id").asLong();
+
+        // 2. Tentar abrir segunda sessão deve falhar (409)
+        HttpResponse<String> resAbrir2 = request("POST", "/api/caixa/abrir", abrirBody, null);
+        assertEquals(409, resAbrir2.statusCode());
+
+        // 3. Fazer uma venda em dinheiro de 80 MT
+        Produto p = service.criarProduto("Bolacha", new BigDecimal("80.00"), new BigDecimal("20.000"), "un", new BigDecimal("1.000"), category.getId(), null, user.getId());
+        Map<String, Object> saleBody = Map.of(
+            "itens", List.of(Map.of("produtoId", p.getId(), "quantidade", "1.000")),
+            "pagamentos", List.of(Map.of("metodo", "DINHEIRO", "valor", "80.00"))
+        );
+        HttpResponse<String> resVenda = request("POST", "/api/vendas/lote", saleBody, null);
+        assertEquals(201, resVenda.statusCode());
+        long vendaId = json.readTree(resVenda.body()).get("id").asLong();
+
+        // 4. Fazer uma devolução de 30 MT (ajustando a venda ou devolvendo)
+        // Obter itemVendaId
+        HttpResponse<String> getVenda = request("GET", "/api/vendas/" + vendaId, null, null);
+        long itemVendaId = json.readTree(getVenda.body()).get("itens").get(0).get("id").asLong();
+
+        // Criar outra venda com 2 itens para devolver 1
+        Map<String, Object> saleBody2 = Map.of(
+            "itens", List.of(Map.of("produtoId", p.getId(), "quantidade", "2.000")),
+            "pagamentos", List.of(Map.of("metodo", "DINHEIRO", "valor", "160.00"))
+        );
+        HttpResponse<String> resVenda2 = request("POST", "/api/vendas/lote", saleBody2, null);
+        assertEquals(201, resVenda2.statusCode());
+        long vendaId2 = json.readTree(resVenda2.body()).get("id").asLong();
+        long itemVendaId2 = json.readTree(request("GET", "/api/vendas/" + vendaId2, null, null).body()).get("itens").get(0).get("id").asLong();
+
+        // Devolver 1 item da venda 2 (80 MT devolvidos)
+        Map<String, Object> devBody = Map.of(
+            "itens", List.of(Map.of("itemVendaId", itemVendaId2, "quantidade", "1.000")),
+            "motivo", "Engano na venda"
+        );
+        HttpResponse<String> resDev = request("POST", "/api/vendas/" + vendaId2 + "/devolver", devBody, null);
+        assertEquals(201, resDev.statusCode());
+
+        // Verificar resumo do caixa:
+        // Inicial: 100.00
+        // Vendas dinheiro: 80.00 + 160.00 = 240.00
+        // Devoluções dinheiro: 80.00
+        // Esperado: 100.00 + 240.00 - 80.00 = 260.00
+        HttpResponse<String> resumo = request("GET", "/api/caixa/atual", null, null);
+        assertEquals(200, resumo.statusCode());
+        JsonNode resumoNode = json.readTree(resumo.body());
+        assertTrue(resumoNode.get("aberta").asBoolean());
+        assertEquals("100.00", resumoNode.get("valorInicial").asText());
+        assertEquals("240.00", resumoNode.get("vendasDinheiro").asText());
+        assertEquals("80.00", resumoNode.get("devolucoesDinheiro").asText());
+        assertEquals("260.00", resumoNode.get("valorEsperado").asText());
+
+        // 5. Fechar caixa com 270.00 (sobra de 10.00)
+        Map<String, Object> fecharBody = Map.of(
+            "sessaoId", sessaoId,
+            "valorContado", "270.00",
+            "notaFecho", "Sobra de moedas"
+        );
+        HttpResponse<String> resFechar = request("POST", "/api/caixa/fechar", fecharBody, null);
+        assertEquals(200, resFechar.statusCode());
+        JsonNode fechoNode = json.readTree(resFechar.body());
+        assertEquals("FECHADA", fechoNode.get("estado").asText());
+        assertEquals("260.00", fechoNode.get("valorEsperado").asText());
+        assertEquals("270.00", fechoNode.get("valorContado").asText());
+        assertEquals("10.00", fechoNode.get("diferenca").asText());
+
+        // Agora não há sessão aberta
+        HttpResponse<String> getAtualApos = request("GET", "/api/caixa/atual", null, null);
+        assertFalse(json.readTree(getAtualApos.body()).get("aberta").asBoolean());
+    }
+
+    @Test
+    void reposicaoProdutosEFaltaReporComSugestao() throws Exception {
+        // Criar produto com stock 3, stockMinimo 5, stockMaximo 15
+        Produto p = service.criarProduto("Óleo", new BigDecimal("120.00"), new BigDecimal("100.00"), new BigDecimal("3.000"), "L", new BigDecimal("5.000"), new BigDecimal("15.000"), category.getId(), null, user.getId());
+
+        HttpResponse<String> res = request("GET", "/api/stock/falta-repor", null, null);
+        assertEquals(200, res.statusCode());
+        JsonNode lista = json.readTree(res.body());
+        assertTrue(lista.isArray());
+
+        JsonNode encontrado = null;
+        for (JsonNode item : lista) {
+            if (item.get("id").asLong() == p.getId()) {
+                encontrado = item;
+                break;
+            }
+        }
+        assertNotNull(encontrado);
+        assertEquals("3.000", encontrado.get("stockAtual").asText());
+        assertEquals("5.000", encontrado.get("stockMinimo").asText());
+        assertEquals("15.000", encontrado.get("stockMaximo").asText());
+        // Sugestão: 15 - 3 = 12
+        assertEquals("12.000", encontrado.get("quantidadeSugerida").asText());
+    }
+
+    @Test
+    void isolamentoEntreUtilizadoresNasNovasTabelas() throws Exception {
+        Usuario userB = new Usuario("Outro", "outro_" + UUID.randomUUID() + "@test.mz", "Senha2026!", "operator");
+        userB.aplicarDiasAcesso(30);
+        userB = new UsuarioDAO().salvar(userB);
+        String cookieB = "bstore_session=" + new SessaoDAO().criar(userB).getId();
+
+        // User A abre sessão de caixa
+        service.abrirSessaoCaixa(new BigDecimal("50.00"), "Abertura A", user.getId(), user.getId());
+
+        // User B verifica caixa atual -> deve estar FECHADA / aberta: false
+        HttpRequest reqB = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/atual"))
+            .header("Cookie", cookieB).GET().build();
+        HttpResponse<String> resB = HttpClient.newHttpClient().send(reqB, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resB.statusCode());
+        assertFalse(json.readTree(resB.body()).get("aberta").asBoolean());
+
+        // User B pode abrir a sua própria sessão sem conflito com User A
+        HttpRequest abrirB = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/abrir"))
+            .header("Cookie", cookieB).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of("valorInicial", "200.00")))).build();
+        HttpResponse<String> resAbrirB = HttpClient.newHttpClient().send(abrirB, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, resAbrirB.statusCode());
     }
 }

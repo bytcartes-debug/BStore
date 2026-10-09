@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { Store, Receipt, Package, Users, Eye, EyeOff, LogIn } from 'lucide-react';
 import type { UserSession } from '../App';
 import { Field, Notice, Spinner } from '../components/UI';
 import './LoginPage.css';
@@ -58,7 +59,7 @@ export default function LoginPage({ setUser }: { setUser: (user: UserSession) =>
         <section className="login-story" aria-label="BStore, gestão de loja">
           <div className="login-brand">
             <span className="login-brand-mark" aria-hidden="true">
-              🏪
+              <Store size={30} />
             </span>
             <span>BStore</span>
           </div>
@@ -74,19 +75,19 @@ export default function LoginPage({ setUser }: { setUser: (user: UserSession) =>
             <ul className="login-features">
               <li>
                 <span className="feature-emoji" aria-hidden="true">
-                  🧾
+                  <Receipt size={20} />
                 </span>
                 <span>Registe vendas e calcule o troco na hora</span>
               </li>
               <li>
                 <span className="feature-emoji" aria-hidden="true">
-                  📦
+                  <Package size={20} />
                 </span>
                 <span>Acompanhe o stock dos seus produtos</span>
               </li>
               <li>
                 <span className="feature-emoji" aria-hidden="true">
-                  👥
+                  <Users size={20} />
                 </span>
                 <span>Tenha as dívidas e clientes organizados</span>
               </li>
@@ -99,7 +100,7 @@ export default function LoginPage({ setUser }: { setUser: (user: UserSession) =>
         <section className="login-form-panel" aria-labelledby="login-title">
           <div className="login-card">
             <div className="login-mobile-brand">
-              <span aria-hidden="true">🏪</span> BStore
+              <span aria-hidden="true"><Store size={26} /></span> BStore
             </div>
 
             <h2 id="login-title">Bem-vindo de volta</h2>
@@ -142,13 +143,13 @@ export default function LoginPage({ setUser }: { setUser: (user: UserSession) =>
                       aria-pressed={showPassword}
                       onClick={() => setShowPassword((value) => !value)}
                     >
-                      {showPassword ? '🙈' : '👁️'}
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
                 </Field>
 
                 <button type="submit" className="btn-primary login-submit" disabled={loading}>
-                  {loading ? <Spinner size="small" /> : <span aria-hidden="true">🚀</span>}
+                  {loading ? <Spinner size="small" /> : <span aria-hidden="true"><LogIn size={18} /></span>}
                   <span>{loading ? 'A entrar…' : 'Entrar na minha loja'}</span>
                 </button>
               </fieldset>

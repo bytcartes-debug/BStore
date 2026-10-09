@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PageId } from '../App';
+import {
+  LayoutDashboard,
+  Package,
+  ShieldCheck,
+  ShoppingCart,
+  Store,
+  Tag,
+  UserCog,
+  Users,
+  X,
+} from 'lucide-react';
 import { useDialog } from '../utils/useDialog';
 import './Sidebar.css';
 
@@ -12,11 +23,11 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { id: 'dashboard', label: 'Visão Geral', emoji: '📊' },
-  { id: 'vendas', label: 'Vendas & Caixa', emoji: '🛒' },
-  { id: 'produtos', label: 'Produtos', emoji: '📦' },
-  { id: 'categorias', label: 'Categorias', emoji: '🏷️' },
-  { id: 'devedores', label: 'Devedores', emoji: '👥' },
+  { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard },
+  { id: 'vendas', label: 'Vendas & Caixa', icon: ShoppingCart },
+  { id: 'produtos', label: 'Produtos', icon: Package },
+  { id: 'categorias', label: 'Categorias', icon: Tag },
+  { id: 'devedores', label: 'Devedores', icon: Users },
 ] as const;
 
 export default function Sidebar({
@@ -42,7 +53,7 @@ export default function Sidebar({
     <>
       <div className="sidebar-logo">
         <span className="sidebar-logo-icon" aria-hidden="true">
-          🏪
+          <Store size={22} strokeWidth={2.2} />
         </span>
         <div className="sidebar-logo-text-group">
           <span className="sidebar-logo-text">BStore</span>
@@ -50,21 +61,21 @@ export default function Sidebar({
         </div>
         {mobile && (
           <button className="icon-btn sidebar-close" aria-label="Fechar menu" onClick={onClose}>
-            ✕
+            <X size={18} strokeWidth={2} aria-hidden="true" />
           </button>
         )}
       </div>
 
       <nav className="sidebar-nav" aria-label="Navegação principal">
-        {navItems.map(({ id, label, emoji }) => (
+        {navItems.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             className={`sidebar-item${currentPage === id ? ' active' : ''}`}
             aria-current={currentPage === id ? 'page' : undefined}
             onClick={() => setCurrentPage(id)}
           >
-            <span className="sidebar-emoji" aria-hidden="true">
-              {emoji}
+            <span className="sidebar-emoji sidebar-icon" aria-hidden="true">
+              <Icon size={19} strokeWidth={currentPage === id ? 2.4 : 2} />
             </span>
             <span>{label}</span>
           </button>
@@ -78,8 +89,8 @@ export default function Sidebar({
               aria-current={currentPage === 'usuarios' ? 'page' : undefined}
               onClick={() => setCurrentPage('usuarios')}
             >
-              <span className="sidebar-emoji" aria-hidden="true">
-                👤
+              <span className="sidebar-emoji sidebar-icon" aria-hidden="true">
+                <UserCog size={19} strokeWidth={currentPage === 'usuarios' ? 2.4 : 2} />
               </span>
               <span>Utilizadores</span>
             </button>
@@ -93,8 +104,8 @@ export default function Sidebar({
           aria-current={currentPage === 'perfil' ? 'page' : undefined}
           onClick={() => setCurrentPage('perfil')}
         >
-          <span className="sidebar-emoji" aria-hidden="true">
-            🔒
+          <span className="sidebar-emoji sidebar-icon" aria-hidden="true">
+            <ShieldCheck size={19} strokeWidth={currentPage === 'perfil' ? 2.4 : 2} />
           </span>
           <span>Perfil & Segurança</span>
         </button>

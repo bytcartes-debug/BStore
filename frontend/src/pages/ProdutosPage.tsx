@@ -6,6 +6,23 @@ import { abrirScanner } from '../utils/scanner';
 import { buscarNaOpenFoodFacts } from '../utils/openFoodFacts';
 import { decimal, formatMoney, formatQuantity, parseDecimalInput } from '../utils/decimal';
 import {
+  AlertTriangle,
+  ArrowDownLeft,
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
+  History,
+  Package,
+  Pencil,
+  Plus,
+  RefreshCw,
+  ScanLine,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+  X,
+} from 'lucide-react';
+import {
   PageHeading,
   SearchField,
   Loading,
@@ -441,28 +458,28 @@ export default function ProdutosPage() {
       >
         <div className="btn-group">
           <button className="btn-primary" onClick={openNew} disabled={!data}>
-            <span aria-hidden="true">➕</span> Adicionar produto
+            <Plus size={16} strokeWidth={2.2} aria-hidden="true" /> Adicionar produto
           </button>
           <button
             className="btn-secondary"
             onClick={() => openEntradaPara()}
             disabled={!data || produtos.length === 0}
           >
-            <span aria-hidden="true">📥</span> Entrada
+            <ArrowDownLeft size={16} strokeWidth={2} aria-hidden="true" /> Entrada
           </button>
           <button
             className="btn-secondary"
             onClick={() => openAjustePara()}
             disabled={!data || produtos.length === 0}
           >
-            <span aria-hidden="true">⚖️</span> Ajuste
+            <SlidersHorizontal size={16} strokeWidth={2} aria-hidden="true" /> Ajuste
           </button>
           <button
             className="btn-secondary"
             onClick={openInventario}
             disabled={!data || produtos.length === 0}
           >
-            <span aria-hidden="true">📋</span> Inventário
+            <ClipboardList size={16} strokeWidth={2} aria-hidden="true" /> Inventário
           </button>
         </div>
       </PageHeading>
@@ -523,20 +540,20 @@ export default function ProdutosPage() {
               <EmptyState
                 title="O seu catálogo começa aqui"
                 description="Adicione produtos para acompanhar o stock e começar a vender."
-                icon="📦"
+                icon={<Package size={36} strokeWidth={1.8} aria-hidden="true" />}
               >
                 <button className="btn-secondary" onClick={openNew}>
-                  ➕ Adicionar primeiro produto
+                  <Plus size={16} strokeWidth={2} aria-hidden="true" /> Adicionar primeiro produto
                 </button>
               </EmptyState>
             ) : filtered.length === 0 ? (
               <EmptyState
                 title="Nenhum produto corresponde à pesquisa"
                 description="Altere o nome, o código ou os filtros para encontrar o que procura."
-                icon="🔍"
+                icon={<Search size={36} strokeWidth={1.8} aria-hidden="true" />}
               >
                 <button className="btn-secondary" onClick={clearFilters}>
-                  🔄 Limpar filtros
+                  <RefreshCw size={14} strokeWidth={2} aria-hidden="true" /> Limpar filtros
                 </button>
               </EmptyState>
             ) : (
@@ -599,7 +616,7 @@ export default function ProdutosPage() {
                               <span>{formatQuantity(p.stock, p.unidade)}</span>
                               {decimal(p.stock).lte(p.stockMinimo) && (
                                 <span className="badge badge-warning">
-                                  ⚠️ Stock baixo
+                                  <AlertTriangle size={12} strokeWidth={2} aria-hidden="true" /> Stock baixo
                                 </span>
                               )}
                             </div>
@@ -618,7 +635,7 @@ export default function ProdutosPage() {
                                 aria-label={`Editar ${p.nome}`}
                                 title="Editar produto"
                               >
-                                ✏️
+                                <Pencil size={15} strokeWidth={2} aria-hidden="true" />
                               </button>
                               <button
                                 className="icon-btn"
@@ -626,7 +643,7 @@ export default function ProdutosPage() {
                                 aria-label={`Histórico de ${p.nome}`}
                                 title="Histórico de movimentos"
                               >
-                                📜
+                                <History size={15} strokeWidth={2} aria-hidden="true" />
                               </button>
                               <button
                                 className="icon-btn delete"
@@ -637,7 +654,7 @@ export default function ProdutosPage() {
                                 aria-label={`Remover ${p.nome}`}
                                 title="Arquivar ou remover produto"
                               >
-                                🗑️
+                                <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
                               </button>
                             </div>
                           </td>
@@ -707,7 +724,7 @@ export default function ProdutosPage() {
                         openEntradaPara(editing);
                       }}
                     >
-                      📥 Entrada
+                      <ArrowDownLeft size={15} strokeWidth={2} aria-hidden="true" /> Entrada
                     </button>
                     <button
                       type="button"
@@ -717,7 +734,7 @@ export default function ProdutosPage() {
                         openAjustePara(editing);
                       }}
                     >
-                      ⚖️ Ajuste
+                      <SlidersHorizontal size={15} strokeWidth={2} aria-hidden="true" /> Ajuste
                     </button>
                   </div>
                 </div>
@@ -728,9 +745,12 @@ export default function ProdutosPage() {
                   type="button"
                   className="btn-secondary"
                   onClick={() => setShowDetails(!showDetails)}
-                  style={{ width: '100%', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
+                  style={{ width: '100%', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
-                  <span>{showDetails ? '▲ Ocultar detalhes' : '▼ Mais detalhes (Custo, unidade, categoria...)'}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    {showDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    {showDetails ? 'Ocultar detalhes' : 'Mais detalhes (Custo, unidade, categoria...)'}
+                  </span>
                 </button>
               </div>
 
@@ -815,7 +835,7 @@ export default function ProdutosPage() {
                         placeholder="Opcional"
                       />
                       <button type="button" className="btn-secondary" onClick={handleScan}>
-                        {scan.pending ? <Spinner size="small" /> : <span aria-hidden="true">📷</span>} Ler código
+                        {scan.pending ? <Spinner size="small" /> : <ScanLine size={16} strokeWidth={2} aria-hidden="true" />} Ler código
                       </button>
                     </div>
                   </Field>
@@ -894,7 +914,7 @@ export default function ProdutosPage() {
               </div>
               <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
                 <button type="button" className="btn-secondary" onClick={adicionarLinhaEntrada}>
-                  ➕ Adicionar à lista
+                  <Plus size={15} strokeWidth={2} aria-hidden="true" /> Adicionar à lista
                 </button>
               </div>
             </div>
@@ -927,9 +947,10 @@ export default function ProdutosPage() {
                           <button
                             type="button"
                             className="icon-btn delete"
+                            aria-label={`Remover ${item.produtoNome} da lista`}
                             onClick={() => setEntradaItens((prev) => prev.filter((_, i) => i !== idx))}
                           >
-                            ✕
+                            <X size={15} strokeWidth={2} aria-hidden="true" />
                           </button>
                         </td>
                       </tr>

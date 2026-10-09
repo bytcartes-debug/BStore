@@ -1,106 +1,153 @@
+import type { LucideIcon } from 'lucide-react';
+import {
+  Tag,
+  ShoppingBag,
+  Apple,
+  CupSoda,
+  Sparkles,
+  Package,
+  UtensilsCrossed,
+  Beef,
+  Milk,
+  Carrot,
+  Coffee,
+  SprayCan,
+  Pill,
+  Shirt,
+  Footprints,
+  Smartphone,
+  Wrench,
+  Lightbulb,
+  Egg,
+  Candy,
+  Wheat,
+  Droplet,
+} from 'lucide-react';
+
 export interface CategoryIconItem {
   key: string;
   label: string;
-  emoji: string;
+  icon: LucideIcon;
 }
 
 export const categoryIcons: CategoryIconItem[] = [
-  { key: 'tag', label: 'Geral', emoji: '🏷️' },
-  { key: 'bag', label: 'Compras', emoji: '🛍️' },
-  { key: 'fruit', label: 'Frutas', emoji: '🍎' },
-  { key: 'drink', label: 'Bebidas', emoji: '🥤' },
-  { key: 'care', label: 'Higiene', emoji: '🧴' },
-  { key: 'box', label: 'Embalagens', emoji: '📦' },
-  { key: 'bread', label: 'Padaria / Pão', emoji: '🍞' },
-  { key: 'meat', label: 'Carnes', emoji: '🥩' },
-  { key: 'milk', label: 'Laticínios', emoji: '🧀' },
-  { key: 'vegetable', label: 'Legumes', emoji: '🥦' },
-  { key: 'coffee', label: 'Café', emoji: '☕' },
-  { key: 'cleaning', label: 'Limpeza', emoji: '🧹' },
-  { key: 'health', label: 'Saúde', emoji: '💊' },
-  { key: 'clothes', label: 'Vestuário', emoji: '👕' },
-  { key: 'shoes', label: 'Calçado', emoji: '👟' },
-  { key: 'phone', label: 'Eletrónica', emoji: '📱' },
-  { key: 'tools', label: 'Ferramentas', emoji: '🔧' },
-  { key: 'light', label: 'Iluminação', emoji: '💡' },
-  { key: 'egg', label: 'Ovos', emoji: '🥚' },
-  { key: 'sweets', label: 'Doces & Snacks', emoji: '🍬' },
-  { key: 'cereal', label: 'Cereais', emoji: '🌾' },
-  { key: 'oil', label: 'Óleos & Condimentos', emoji: '🫒' },
+  { key: 'tag', label: 'Geral', icon: Tag },
+  { key: 'bag', label: 'Compras', icon: ShoppingBag },
+  { key: 'fruit', label: 'Frutas', icon: Apple },
+  { key: 'drink', label: 'Bebidas', icon: CupSoda },
+  { key: 'care', label: 'Higiene', icon: Sparkles },
+  { key: 'box', label: 'Embalagens', icon: Package },
+  { key: 'bread', label: 'Padaria / Pão', icon: UtensilsCrossed },
+  { key: 'meat', label: 'Carnes', icon: Beef },
+  { key: 'milk', label: 'Laticínios', icon: Milk },
+  { key: 'vegetable', label: 'Legumes', icon: Carrot },
+  { key: 'coffee', label: 'Café', icon: Coffee },
+  { key: 'cleaning', label: 'Limpeza', icon: SprayCan },
+  { key: 'health', label: 'Saúde', icon: Pill },
+  { key: 'clothes', label: 'Vestuário', icon: Shirt },
+  { key: 'shoes', label: 'Calçado', icon: Footprints },
+  { key: 'phone', label: 'Eletrónica', icon: Smartphone },
+  { key: 'tools', label: 'Ferramentas', icon: Wrench },
+  { key: 'light', label: 'Iluminação', icon: Lightbulb },
+  { key: 'egg', label: 'Ovos', icon: Egg },
+  { key: 'sweets', label: 'Doces & Snacks', icon: Candy },
+  { key: 'cereal', label: 'Cereais', icon: Wheat },
+  { key: 'oil', label: 'Óleos & Condimentos', icon: Droplet },
 ];
 
-const emojiMap: Record<string, string> = {
-  tag: '🏷️',
-  bag: '🛍️',
-  fruit: '🍎',
-  drink: '🥤',
-  care: '🧴',
-  box: '📦',
-  bread: '🍞',
-  meat: '🥩',
-  milk: '🧀',
-  vegetable: '🥦',
-  coffee: '☕',
-  cleaning: '🧹',
-  health: '💊',
-  clothes: '👕',
-  shoes: '👟',
-  phone: '📱',
-  tools: '🔧',
-  light: '💡',
-  egg: '🥚',
-  sweets: '🍬',
-  cereal: '🌾',
-  oil: '🫒',
-  // Caso o utilizador já tenha guardado o emoji diretamente
-  '🛍️': '🛍️',
-  '🏷️': '🏷️',
-  '🍎': '🍎',
-  '🥤': '🥤',
-  '🧴': '🧴',
-  '📦': '📦',
-  '🍞': '🍞',
-  '🥩': '🥩',
-  '🧀': '🧀',
-  '🥦': '🥦',
-  '🍺': '🥤',
-  '☕': '☕',
-  '🧹': '🧹',
-  '🪣': '🧹',
-  '💊': '💊',
-  '👕': '👕',
-  '👟': '👟',
-  '📱': '📱',
-  '🔧': '🔧',
-  '💡': '💡',
-  '🐔': '🥩',
-  '🥚': '🥚',
-  '🌽': '🥦',
-  '🍫': '🍬',
-  '🍬': '🍬',
+const iconMap: Record<string, LucideIcon> = {
+  tag: Tag,
+  bag: ShoppingBag,
+  fruit: Apple,
+  drink: CupSoda,
+  care: Sparkles,
+  box: Package,
+  bread: UtensilsCrossed,
+  meat: Beef,
+  milk: Milk,
+  vegetable: Carrot,
+  coffee: Coffee,
+  cleaning: SprayCan,
+  health: Pill,
+  clothes: Shirt,
+  shoes: Footprints,
+  phone: Smartphone,
+  tools: Wrench,
+  light: Lightbulb,
+  egg: Egg,
+  sweets: Candy,
+  cereal: Wheat,
+  oil: Droplet,
+  // Compatibilidade com valores salvos anteriormente como emojis
+  '🛍️': ShoppingBag,
+  '🏷️': Tag,
+  '🍎': Apple,
+  '🥤': CupSoda,
+  '🧴': Sparkles,
+  '📦': Package,
+  '🍞': UtensilsCrossed,
+  '🥩': Beef,
+  '🧀': Milk,
+  '🥦': Carrot,
+  '🍺': CupSoda,
+  '☕': Coffee,
+  '🧹': SprayCan,
+  '🪣': SprayCan,
+  '💊': Pill,
+  '👕': Shirt,
+  '👟': Footprints,
+  '📱': Smartphone,
+  '🔧': Wrench,
+  '💡': Lightbulb,
+  '🐔': Beef,
+  '🥚': Egg,
+  '🌽': Carrot,
+  '🍫': Candy,
+  '🍬': Candy,
+  '🌾': Wheat,
+  '🫒': Droplet,
 };
 
-const keyByEmoji: Record<string, string> = {};
-categoryIcons.forEach(({ key, emoji }) => {
-  keyByEmoji[emoji] = key;
-  keyByEmoji[emoji.replace(/\ufe0f/g, '').trim()] = key;
-});
+const emojiToKeyMap: Record<string, string> = {
+  '🛍️': 'bag',
+  '🏷️': 'tag',
+  '🍎': 'fruit',
+  '🥤': 'drink',
+  '🧴': 'care',
+  '📦': 'box',
+  '🍞': 'bread',
+  '🥩': 'meat',
+  '🧀': 'milk',
+  '🥦': 'vegetable',
+  '☕': 'coffee',
+  '🧹': 'cleaning',
+  '🪣': 'cleaning',
+  '💊': 'health',
+  '👕': 'clothes',
+  '👟': 'shoes',
+  '📱': 'phone',
+  '🔧': 'tools',
+  '💡': 'light',
+  '🥚': 'egg',
+  '🍬': 'sweets',
+  '🍫': 'sweets',
+  '🌾': 'cereal',
+  '🫒': 'oil',
+};
 
 export function categoryIconKey(value: string): string {
   if (!value) return 'tag';
   if (categoryIcons.some((c) => c.key === value)) return value;
   const clean = value.replace(/\ufe0f/g, '').trim();
-  if (keyByEmoji[value]) return keyByEmoji[value];
-  if (keyByEmoji[clean]) return keyByEmoji[clean];
+  if (emojiToKeyMap[value]) return emojiToKeyMap[value];
+  if (emojiToKeyMap[clean]) return emojiToKeyMap[clean];
   return clean || 'tag';
 }
 
-export function getCategoryEmoji(value: string): string {
-  if (!value) return '🏷️';
-  if (emojiMap[value]) return emojiMap[value];
+export function getCategoryIconComponent(value: string): LucideIcon {
+  if (!value) return Tag;
+  if (iconMap[value]) return iconMap[value];
   const clean = value.replace(/\ufe0f/g, '').trim();
-  if (emojiMap[clean]) return emojiMap[clean];
-  // Se for qualquer outro emoji de 1 ou 2 caracteres, usa-o diretamente
-  if (value.length <= 4) return value;
-  return '🏷️';
+  if (iconMap[clean]) return iconMap[clean];
+  return Tag;
 }

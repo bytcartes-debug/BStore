@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import './index.css';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -10,13 +11,23 @@ import VendasPage from './pages/VendasPage';
 import DevedoresPage from './pages/DevedoresPage';
 import UsuariosPage from './pages/UsuariosPage';
 import PerfilSegurancaPage from './pages/PerfilSegurancaPage';
+import FaltaReporPage from './pages/FaltaReporPage';
+import ClienteDisplayPage from './pages/ClienteDisplayPage';
 import { pedirPermissaoNotificacoes, verificarStockBaixo } from './utils/notificacoes';
 import { apiFetch, apiRequest } from './utils/api';
+import { limparDadosLocais } from './utils/offlineQueue';
 import { Loading, LoadError, ToastProvider, Notice } from './components/UI';
 import PageErrorBoundary from './components/PageErrorBoundary';
 
 export type PageId =
-  'dashboard' | 'categorias' | 'produtos' | 'vendas' | 'devedores' | 'usuarios' | 'perfil';
+  | 'dashboard'
+  | 'categorias'
+  | 'produtos'
+  | 'vendas'
+  | 'devedores'
+  | 'usuarios'
+  | 'perfil'
+  | 'reposicao';
 export interface UserSession {
   userId: number;
   email: string;
@@ -69,6 +80,7 @@ function AppContent() {
       setCurrentPage('dashboard');
       setSidebarOpen(false);
       localStorage.removeItem('currentUser');
+      void limparDadosLocais();
     };
     window.addEventListener('bstore:unauthenticated', clearSession);
     void checkSession(controller.signal);
@@ -103,6 +115,7 @@ function AppContent() {
     try {
       await apiRequest('/api/auth/logout', { method: 'POST' });
       localStorage.removeItem('currentUser');
+      void limparDadosLocais();
       setUser(null);
       setCurrentPage('dashboard');
     } catch {
@@ -130,6 +143,8 @@ function AppContent() {
         );
       case 'perfil':
         return <PerfilSegurancaPage user={user} />;
+      case 'reposicao':
+        return <FaltaReporPage navigate={navigate} />;
       default:
         return <DashboardPage navigate={navigate} />;
     }
@@ -160,7 +175,7 @@ function AppContent() {
       <div className="main-content">
         {user.role !== 'superuser' && user.diasRestantes !== -1 && user.diasRestantes <= 7 && (
           <div className="expiration-banner" role="status">
-            <span aria-hidden="true">⚠️</span>
+            <AlertTriangle size={18} aria-hidden="true" style={{ flexShrink: 0 }} />
             <p>
               {user.diasRestantes <= 0
                 ? 'A sua conta expirou. Contacte o administrador.'
@@ -191,6 +206,9 @@ function AppContent() {
 }
 
 export default function App() {
+  if (typeof window !== 'undefined' && window.location.pathname === '/cliente') {
+    return <ClienteDisplayPage />;
+  }
   return (
     <ToastProvider>
       <AppContent />

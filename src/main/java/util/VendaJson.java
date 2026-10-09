@@ -26,6 +26,11 @@ public final class VendaJson {
         json.put("produtoId", item.getProduto() != null ? item.getProduto().getId() : null);
         json.put("quantidade", item.getQuantidade().setScale(3).toPlainString());
         json.put("precoUnitario", item.getPrecoUnitario().setScale(2).toPlainString());
+        json.put("descontoPercentual", item.getDescontoPercentual() != null ? item.getDescontoPercentual().setScale(2).toPlainString() : "0.00");
+        json.put("descontoValor", item.getDescontoValor() != null ? item.getDescontoValor().setScale(2).toPlainString() : "0.00");
+        BigDecimal precoFinal = item.getPrecoFinal() != null ? item.getPrecoFinal() : item.getPrecoUnitario();
+        json.put("precoFinal", precoFinal != null ? precoFinal.setScale(2).toPlainString() : "0.00");
+        json.put("nota", item.getNota() != null ? item.getNota() : "");
         json.put("custoUnitario", item.getCustoUnitario().setScale(2).toPlainString());
         json.put("total", item.getTotal().setScale(2).toPlainString());
         json.put("data", item.getDataVenda() != null ? item.getDataVenda().format(DATA) : "");
@@ -36,6 +41,9 @@ public final class VendaJson {
         Map<String, Object> json = new LinkedHashMap<>();
         json.put("id", p.getId());
         json.put("metodo", p.getMetodo());
+        json.put("metodoId", p.getMetodoPagamento() != null ? p.getMetodoPagamento().getId() : null);
+        json.put("metodoNome", p.getMetodoPagamento() != null ? p.getMetodoPagamento().getNome() : p.getMetodo());
+        json.put("referencia", p.getReferencia() != null ? p.getReferencia() : "");
         json.put("valor", p.getValor().setScale(2).toPlainString());
         json.put("troco", p.getTroco().setScale(2).toPlainString());
         return json;
@@ -45,6 +53,7 @@ public final class VendaJson {
         Map<String, Object> json = new LinkedHashMap<>();
         json.put("id", venda.getId());
         json.put("numero", venda.getNumero());
+        json.put("uuidCliente", venda.getUuidCliente());
         json.put("total", venda.getTotal().setScale(2).toPlainString());
         json.put("totalCusto", venda.getTotalCusto().setScale(2).toPlainString());
         BigDecimal lucro = venda.getTotal().subtract(venda.getTotalCusto());
@@ -57,6 +66,7 @@ public final class VendaJson {
         json.put("observacao", venda.getObservacao() != null ? venda.getObservacao() : "");
         json.put("anuladaEm", venda.getAnuladaEm() != null ? venda.getAnuladaEm().format(TIMESTAMP_ISO) : null);
         json.put("motivoAnulacao", venda.getMotivoAnulacao());
+        json.put("sessaoId", venda.getSessaoCaixa() != null ? venda.getSessaoCaixa().getId() : null);
 
         List<Map<String, Object>> itensJson = new ArrayList<>();
         if (venda.getItens() != null && org.hibernate.Hibernate.isInitialized(venda.getItens())) {

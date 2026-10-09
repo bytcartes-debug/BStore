@@ -11,9 +11,11 @@ import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import io.javalin.json.JavalinJackson;
 import model.Categoria;
+import model.DefinicaoLoja;
 import model.Devedor;
 import model.Produto;
 import model.Sessao;
+import model.SessaoCaixa;
 import model.Usuario;
 import model.Venda;
 import service.BarracaService;
@@ -24,6 +26,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -195,7 +198,24 @@ public class ApiServer {
         app.post("/api/vendas/lote", this::registarVendaLote);
         app.post("/api/vendas/{id}/anular", this::anularVenda);
 
+        app.get("/api/metodos-pagamento", this::listarMetodosPagamento);
+        app.post("/api/metodos-pagamento", this::criarMetodoPagamento);
+        app.put("/api/metodos-pagamento/{id}/toggle", this::alternarMetodoPagamento);
+        app.put("/api/metodos-pagamento/{id}", this::actualizarMetodoPagamento);
+        app.delete("/api/metodos-pagamento/{id}", this::eliminarMetodoPagamento);
+
+        app.get("/api/definicoes", this::obterDefinicoesLoja);
+        app.put("/api/definicoes", this::atualizarDefinicoesLoja);
+
         app.get("/api/caixa/fecho", this::fechoCaixa);
+        app.get("/api/caixa/atual", this::obterSessaoCaixaAtual);
+        app.post("/api/caixa/abrir", this::abrirSessaoCaixa);
+        app.post("/api/caixa/fechar", this::fecharSessaoCaixa);
+        app.get("/api/caixa/historico", this::listarHistoricoCaixa);
+
+        app.post("/api/vendas/{id}/devolver", this::devolverVenda);
+        app.get("/api/vendas/{id}/devolucoes", this::listarDevolucoesVenda);
+        app.get("/api/stock/falta-repor", this::obterProdutosFaltaRepor);
 
         app.get("/api/devedores", this::listarDevedores);
         app.post("/api/devedores", this::criarDevedor);
@@ -273,10 +293,13 @@ public class ApiServer {
         java.time.LocalDateTime inicio7Dias = hoje.minusDays(6).atStartOfDay();
 
         BigDecimal custoVendasHoje = stockService.calcularCustoVendasPeriodo(uid, inicioHoje, fimHoje);
+        if (custoVendasHoje == null) custoVendasHoje = BigDecimal.ZERO;
         BigDecimal custoVendas7Dias = stockService.calcularCustoVendasPeriodo(uid, inicio7Dias, fimHoje);
+        if (custoVendas7Dias == null) custoVendas7Dias = BigDecimal.ZERO;
         BigDecimal lucroHoje = totalVendasHoje.subtract(custoVendasHoje);
         BigDecimal lucro7Dias = totalVendas7Dias.subtract(custoVendas7Dias);
         BigDecimal valorTotalStockCusto = stockService.calcularValorTotalStockCusto(uid);
+        if (valorTotalStockCusto == null) valorTotalStockCusto = BigDecimal.ZERO;
 
         dashboard.put("totalVendasHoje", decimalJson(totalVendasHoje, 2));
         dashboard.put("lucroHoje", decimalJson(lucroHoje, 2));
@@ -285,28 +308,37 @@ public class ApiServer {
         dashboard.put("totalProdutos", service.totalProdutos(uid));
         dashboard.put("totalCategorias", categoriaDAO.contarTodos(uid));
         dashboard.put("totalDevedores", devedorDAO.contarTodos(uid));
-        dashboard.put("alertasStock", alertas);
+        dashboard.put("alertasStock", alertas != null ? alertas : Collections.emptyList());
         Map<String, BigDecimal> totaisMetodo = new dao.PagamentoVendaDAO().totaisPorMetodo(uid, hoje);
         Map<String, String> metodoFormatado = new LinkedHashMap<>();
-        totaisMetodo.forEach((k, v) -> metodoFormatado.put(k, decimalJson(v, 2)));
+        if (totaisMetodo != null) {
+            totaisMetodo.forEach((k, v) -> metodoFormatado.put(k, decimalJson(v != null ? v : BigDecimal.ZERO, 2)));
+        }
         dashboard.put("vendasPorMetodo", metodoFormatado);
 
         List<Object[]> maisVendidosRaw = new dao.ItemVendaDAO().produtosMaisVendidos(uid, hoje.minusDays(6), hoje, 5);
         List<Map<String, Object>> maisVendidos = new ArrayList<>();
-        for (Object[] r : maisVendidosRaw) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("produtoId", r[0]);
-            item.put("nome", r[1]);
-            item.put("quantidade", decimalJson((BigDecimal) r[2], 3));
-            item.put("quantidadeTotal", decimalJson((BigDecimal) r[2], 3));
-            item.put("total", decimalJson((BigDecimal) r[3], 2));
-            item.put("valorTotal", decimalJson((BigDecimal) r[3], 2));
-            maisVendidos.add(item);
+        if (maisVendidosRaw != null) {
+            for (Object[] r : maisVendidosRaw) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("produtoId", r[0]);
+                item.put("nome", r[1]);
+                item.put("quantidade", decimalJson((BigDecimal) r[2], 3));
+                item.put("quantidadeTotal", decimalJson((BigDecimal) r[2], 3));
+                item.put("total", decimalJson((BigDecimal) r[3], 2));
+                item.put("valorTotal", decimalJson((BigDecimal) r[3], 2));
+                maisVendidos.add(item);
+            }
         }
         dashboard.put("produtosMaisVendidos", maisVendidos);
 
-        dashboard.put("vendasRecentes", recentes);
-        dashboard.put("vendasPorDia", vendasPorDia);
+        dashboard.put("vendasRecentes", recentes != null ? recentes : Collections.emptyList());
+        dashboard.put("vendasPorDia", vendasPorDia != null ? vendasPorDia : Collections.emptyList());
+
+        dashboard.put("faltaReporCount", alertas != null ? alertas.size() : 0);
+        BigDecimal perdasMes = service.calcularPerdasMesACusto(uid);
+        dashboard.put("perdasMes", decimalJson(perdasMes != null ? perdasMes : BigDecimal.ZERO, 2));
+
         ctx.json(dashboard);
     }
 
@@ -375,6 +407,8 @@ public class ApiServer {
         Long uid = utilizadorId(ctx);
         Map<String, Object> body = corpo(ctx);
         BigDecimal custo = body.containsKey("custo") ? decimalObrigatorio(body, "custo") : BigDecimal.ZERO;
+        BigDecimal stockMaximo = (body.containsKey("stockMaximo") && body.get("stockMaximo") != null && !body.get("stockMaximo").toString().isBlank())
+            ? decimalObrigatorio(body, "stockMaximo") : null;
         Produto produto = service.criarProduto(
             textoObrigatorio(body, "nome"),
             decimalObrigatorio(body, "preco"),
@@ -382,6 +416,7 @@ public class ApiServer {
             decimalComPadrao(body, "stock", "0"),
             textoComPadrao(body, "unidade", "un"),
             decimalComPadrao(body, "stockMinimo", "5"),
+            stockMaximo,
             longObrigatorio(body, "categoriaId"),
             texto(body, "codigoBarras"),
             uid
@@ -394,6 +429,8 @@ public class ApiServer {
         Map<String, Object> body = corpo(ctx);
         BigDecimal custo = body.containsKey("custo") ? decimalObrigatorio(body, "custo") : null;
         BigDecimal stock = body.containsKey("stock") ? decimalObrigatorio(body, "stock") : null;
+        BigDecimal stockMaximo = (body.containsKey("stockMaximo") && body.get("stockMaximo") != null && !body.get("stockMaximo").toString().isBlank())
+            ? decimalObrigatorio(body, "stockMaximo") : null;
         Produto produto = service.actualizarProduto(
             idPath(ctx),
             textoObrigatorio(body, "nome"),
@@ -402,6 +439,7 @@ public class ApiServer {
             stock,
             textoComPadrao(body, "unidade", "un"),
             decimalComPadrao(body, "stockMinimo", "5"),
+            stockMaximo,
             longObrigatorio(body, "categoriaId"),
             texto(body, "codigoBarras"),
             uid
@@ -462,6 +500,7 @@ public class ApiServer {
         List<Map<String, Object>> pagamentos = null;
         Long clienteId = null;
         String observacao = null;
+        String uuidCliente = null;
 
         if (rawBody instanceof List) {
             for (Object o : (List<?>) rawBody) {
@@ -486,6 +525,11 @@ public class ApiServer {
             if (map.containsKey("observacao") && map.get("observacao") != null) {
                 observacao = map.get("observacao").toString();
             }
+            if (map.containsKey("uuidCliente") && map.get("uuidCliente") != null && !map.get("uuidCliente").toString().isBlank()) {
+                uuidCliente = map.get("uuidCliente").toString().trim();
+            } else if (map.containsKey("uuid") && map.get("uuid") != null && !map.get("uuid").toString().isBlank()) {
+                uuidCliente = map.get("uuid").toString().trim();
+            }
         }
 
         if (itens.isEmpty()) {
@@ -494,7 +538,7 @@ public class ApiServer {
 
         if (chave != null) {
             service.VendaIdempotenteService.Resultado resultado =
-                vendaIdempotente.registar(itens, pagamentos, clienteId, observacao, uid, chave);
+                vendaIdempotente.registar(itens, pagamentos, clienteId, observacao, uuidCliente, uid, chave);
             ctx.header("Idempotency-Replayed", Boolean.toString(resultado.repetido));
             ctx.status(resultado.repetido ? HttpStatus.OK : HttpStatus.CREATED)
                 .contentType("application/json")
@@ -502,8 +546,61 @@ public class ApiServer {
             return;
         }
 
-        Map<String, Object> resultado = service.registarVendaLote(itens, pagamentos, clienteId, observacao, uid);
+        Map<String, Object> resultado = service.registarVendaLote(itens, pagamentos, clienteId, observacao, uuidCliente, uid);
         ctx.status(HttpStatus.CREATED).json(util.VendaJson.lote(resultado));
+    }
+
+    private Map<String, Object> metodoPagamentoJson(model.MetodoPagamento m) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", m.getId());
+        map.put("nome", m.getNome());
+        map.put("tipo", m.getTipo());
+        map.put("ativo", m.getAtivo());
+        map.put("ordem", m.getOrdem());
+        return map;
+    }
+
+    private void listarMetodosPagamento(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        boolean apenasAtivos = Boolean.parseBoolean(ctx.queryParam("apenasAtivos"));
+        List<model.MetodoPagamento> metodos = apenasAtivos
+                ? service.listarMetodosPagamentoAtivos(uid)
+                : service.listarMetodosPagamento(uid);
+        ctx.json(metodos.stream().map(this::metodoPagamentoJson).collect(Collectors.toList()));
+    }
+
+    private void criarMetodoPagamento(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Map<String, Object> body = corpo(ctx);
+        String nome = textoObrigatorio(body, "nome");
+        String tipo = body.get("tipo") != null ? body.get("tipo").toString() : "DIGITAL";
+        model.MetodoPagamento m = service.criarMetodoPagamento(nome, tipo, uid);
+        ctx.status(HttpStatus.CREATED).json(metodoPagamentoJson(m));
+    }
+
+    private void alternarMetodoPagamento(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long id = idPath(ctx);
+        model.MetodoPagamento m = service.alternarMetodoPagamento(id, uid);
+        ctx.json(metodoPagamentoJson(m));
+    }
+
+    private void actualizarMetodoPagamento(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long id = idPath(ctx);
+        Map<String, Object> body = corpo(ctx);
+        String nome = body.get("nome") != null ? body.get("nome").toString() : null;
+        Boolean ativo = body.get("ativo") != null ? Boolean.valueOf(body.get("ativo").toString()) : null;
+        Integer ordem = body.get("ordem") != null ? Integer.valueOf(body.get("ordem").toString()) : null;
+        model.MetodoPagamento m = service.actualizarMetodoPagamento(id, nome, ativo, ordem, uid);
+        ctx.json(metodoPagamentoJson(m));
+    }
+
+    private void eliminarMetodoPagamento(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long id = idPath(ctx);
+        service.eliminarMetodoPagamento(id, uid);
+        ctx.status(HttpStatus.NO_CONTENT);
     }
 
     private void anularVenda(Context ctx) {
@@ -520,6 +617,135 @@ public class ApiServer {
         LocalDate data = dataQuery(ctx, "data");
         if (data == null) data = LocalDate.now();
         ctx.json(service.fechoCaixa(data, uid));
+    }
+
+    private void obterDefinicoesLoja(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        DefinicaoLoja def = service.obterDefinicoesLoja(uid);
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("controloCaixa", def.getControloCaixa());
+        res.put("nomeLoja", def.getNomeLoja() != null ? def.getNomeLoja() : "");
+        ctx.json(res);
+    }
+
+    private void atualizarDefinicoesLoja(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Map<String, Object> body = corpo(ctx);
+        boolean controlo = Boolean.TRUE.equals(body.get("controloCaixa"));
+        String nome = texto(body, "nomeLoja");
+        DefinicaoLoja def = service.atualizarDefinicoesLoja(controlo, nome, uid);
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("controloCaixa", def.getControloCaixa());
+        res.put("nomeLoja", def.getNomeLoja() != null ? def.getNomeLoja() : "");
+        ctx.json(res);
+    }
+
+    private void obterSessaoCaixaAtual(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        ctx.json(service.obterResumoSessaoAtual(uid));
+    }
+
+    private void abrirSessaoCaixa(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long opId = utilizador(ctx).usuario.getId();
+        Map<String, Object> body = corpo(ctx);
+        BigDecimal inicial = decimalComPadrao(body, "valorInicial", "0");
+        String nota = texto(body, "notaAbertura");
+        SessaoCaixa sessao = service.abrirSessaoCaixa(inicial, nota, opId, uid);
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("id", sessao.getId());
+        res.put("abertaEm", sessao.getAbertaEm().toString());
+        res.put("valorInicial", decimalJson(sessao.getValorInicial(), 2));
+        res.put("estado", sessao.getEstado());
+        ctx.status(HttpStatus.CREATED).json(res);
+    }
+
+    private void fecharSessaoCaixa(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long opId = utilizador(ctx).usuario.getId();
+        Map<String, Object> body = corpo(ctx);
+        Long sessaoId = body.containsKey("sessaoId") && body.get("sessaoId") != null ? longObrigatorio(body, "sessaoId") : null;
+        if (sessaoId == null) {
+            SessaoCaixa aberta = service.buscarSessaoAberta(uid);
+            if (aberta == null) throw new BarracaService.RecursoNaoEncontradoException("Não há sessão de caixa aberta.");
+            sessaoId = aberta.getId();
+        }
+        BigDecimal contado = decimalComPadrao(body, "valorContado", "0");
+        String nota = texto(body, "notaFecho");
+        SessaoCaixa sessao = service.fecharSessaoCaixa(sessaoId, contado, nota, opId, uid);
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("id", sessao.getId());
+        res.put("abertaEm", sessao.getAbertaEm().toString());
+        res.put("fechadaEm", sessao.getFechadaEm() != null ? sessao.getFechadaEm().toString() : "");
+        res.put("valorInicial", decimalJson(sessao.getValorInicial(), 2));
+        res.put("valorEsperado", decimalJson(sessao.getValorEsperado(), 2));
+        res.put("valorContado", decimalJson(sessao.getValorContado(), 2));
+        res.put("diferenca", decimalJson(sessao.getDiferenca(), 2));
+        res.put("notaFecho", sessao.getNotaFecho() != null ? sessao.getNotaFecho() : "");
+        res.put("estado", sessao.getEstado());
+        ctx.json(res);
+    }
+
+    private void listarHistoricoCaixa(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        int limite = 50;
+        String limStr = ctx.queryParam("limite");
+        if (limStr != null && !limStr.isBlank()) {
+            try { limite = Integer.parseInt(limStr); } catch (NumberFormatException ignored) {}
+        }
+        List<SessaoCaixa> sessoes = service.listarHistoricoSessoes(uid, limite);
+        List<Map<String, Object>> res = new ArrayList<>();
+        for (SessaoCaixa s : sessoes) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", s.getId());
+            m.put("abertaEm", s.getAbertaEm().toString());
+            m.put("fechadaEm", s.getFechadaEm() != null ? s.getFechadaEm().toString() : null);
+            m.put("valorInicial", decimalJson(s.getValorInicial(), 2));
+            m.put("valorEsperado", s.getValorEsperado() != null ? decimalJson(s.getValorEsperado(), 2) : null);
+            m.put("valorContado", s.getValorContado() != null ? decimalJson(s.getValorContado(), 2) : null);
+            m.put("diferenca", s.getDiferenca() != null ? decimalJson(s.getDiferenca(), 2) : null);
+            m.put("notaAbertura", s.getNotaAbertura() != null ? s.getNotaAbertura() : "");
+            m.put("notaFecho", s.getNotaFecho() != null ? s.getNotaFecho() : "");
+            m.put("estado", s.getEstado());
+            res.add(m);
+        }
+        ctx.json(res);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void devolverVenda(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long opId = utilizador(ctx).usuario.getId();
+        Long vendaId = idPath(ctx);
+        Map<String, Object> body = corpo(ctx);
+        String motivo = texto(body, "motivo");
+        String uuidCliente = texto(body, "uuidCliente");
+        if (uuidCliente == null || uuidCliente.isBlank()) {
+            uuidCliente = ctx.header("Idempotency-Key");
+        }
+        List<Map<String, Object>> itensRaw = (List<Map<String, Object>>) body.get("itens");
+        if (itensRaw == null || itensRaw.isEmpty()) {
+            throw new IllegalArgumentException("Lista de itens a devolver está vazia.");
+        }
+        List<BarracaService.DevolucaoItemParam> params = new ArrayList<>();
+        for (Map<String, Object> item : itensRaw) {
+            Long itemVendaId = longObrigatorio(item, "itemVendaId");
+            BigDecimal qtd = decimalObrigatorio(item, "quantidade");
+            params.add(new BarracaService.DevolucaoItemParam(itemVendaId, qtd));
+        }
+        Map<String, Object> devolucao = service.processarDevolucao(vendaId, params, motivo, uuidCliente, opId, uid);
+        ctx.status(HttpStatus.CREATED).json(devolucao);
+    }
+
+    private void listarDevolucoesVenda(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long vendaId = idPath(ctx);
+        ctx.json(service.listarDevolucoesVenda(vendaId, uid));
+    }
+
+    private void obterProdutosFaltaRepor(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        ctx.json(service.obterProdutosFaltaRepor(uid));
     }
 
     @SuppressWarnings("unchecked")
@@ -849,6 +1075,7 @@ public class ApiServer {
         resultado.put("ativo", produto.isAtivo());
         resultado.put("stock", decimalJson(produto.getQuantidadeStock(), 3));
         resultado.put("stockMinimo", decimalJson(produto.getStockMinimo(), 3));
+        resultado.put("stockMaximo", produto.getStockMaximo() != null ? decimalJson(produto.getStockMaximo(), 3) : null);
         resultado.put("unidade", produto.getUnidade());
         resultado.put("codigoBarras", produto.getCodigoBarras());
         resultado.put("categoriaId", produto.getCategoria() == null ? null : produto.getCategoria().getId());
@@ -862,6 +1089,7 @@ public class ApiServer {
         resultado.put("nome", produto.getNome());
         resultado.put("stock", decimalJson(produto.getQuantidadeStock(), 3));
         resultado.put("stockMinimo", decimalJson(produto.getStockMinimo(), 3));
+        resultado.put("stockMaximo", produto.getStockMaximo() != null ? decimalJson(produto.getStockMaximo(), 3) : null);
         return resultado;
     }
 

@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function Pagination({
   page,
@@ -45,7 +46,7 @@ export default function Pagination({
           disabled={loading || page <= 1}
           onClick={() => onPage(page - 1)}
         >
-          ◀️
+          <ChevronLeft size={16} aria-hidden="true" />
         </button>
         <span className="pagination-current">
           Página {page} de {pages}
@@ -56,7 +57,7 @@ export default function Pagination({
           disabled={loading || page >= pages}
           onClick={() => onPage(page + 1)}
         >
-          ▶️
+          <ChevronRight size={16} aria-hidden="true" />
         </button>
       </div>
     </nav>

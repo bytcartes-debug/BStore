@@ -30,6 +30,16 @@ public final class VendaIdempotenteService {
                              String observacao,
                              Long usuarioId,
                              String chave) {
+        return registar(itens, pagamentos, clienteId, observacao, null, usuarioId, chave);
+    }
+
+    public Resultado registar(List<Map<String, Object>> itens,
+                             List<Map<String, Object>> pagamentos,
+                             Long clienteId,
+                             String observacao,
+                             String uuidCliente,
+                             Long usuarioId,
+                             String chave) {
         if (chave == null || !chave.matches("[A-Za-z0-9_-]{8,80}")) {
             throw new IllegalArgumentException("Idempotency-Key deve ter entre 8 e 80 letras, números, hífen ou underscore.");
         }
@@ -44,7 +54,7 @@ public final class VendaIdempotenteService {
                 em.persist(pedido);
                 // A chave única é reservada antes de bloquear ou descontar qualquer produto.
                 em.flush();
-                Map<String, Object> venda = service.executarVendaLote(em, quantidades, pagamentos, clienteId, observacao, usuarioId);
+                Map<String, Object> venda = service.executarVendaLote(em, itens, pagamentos, clienteId, observacao, uuidCliente != null ? uuidCliente : chave, usuarioId);
                 String json = serializar(VendaJson.lote(venda));
                 pedido.setResposta(json);
                 return new Resultado(json, false);

@@ -1,20 +1,29 @@
 package service;
 
 import dao.CategoriaDAO;
+import dao.DefinicaoLojaDAO;
 import dao.DevedorDAO;
+import dao.DevolucaoDAO;
 import dao.ItemVendaDAO;
 import dao.MovimentoStockDAO;
+import dao.MetodoPagamentoDAO;
 import dao.PagamentoDividaDAO;
 import dao.PagamentoVendaDAO;
 import dao.ProdutoDAO;
+import dao.SessaoCaixaDAO;
 import dao.VendaDAO;
 import model.Categoria;
+import model.DefinicaoLoja;
 import model.Devedor;
+import model.Devolucao;
+import model.ItemDevolucao;
 import model.ItemVenda;
+import model.MetodoPagamento;
 import model.MovimentoStock;
 import model.PagamentoDivida;
 import model.PagamentoVenda;
 import model.Produto;
+import model.SessaoCaixa;
 import model.Venda;
 import util.JPAUtil;
 
@@ -35,6 +44,10 @@ public class BarracaService {
     private final DevedorDAO devedorDAO = new DevedorDAO();
     private final PagamentoVendaDAO pagamentoVendaDAO = new PagamentoVendaDAO();
     private final PagamentoDividaDAO pagamentoDividaDAO = new PagamentoDividaDAO();
+    private final MetodoPagamentoDAO metodoPagamentoDAO = new MetodoPagamentoDAO();
+    private final DefinicaoLojaDAO definicaoLojaDAO = new DefinicaoLojaDAO();
+    private final SessaoCaixaDAO sessaoCaixaDAO = new SessaoCaixaDAO();
+    private final DevolucaoDAO devolucaoDAO = new DevolucaoDAO();
 
     public Categoria criarCategoria(String nome, String descricao, Long usuarioId) {
         if (nome == null || nome.trim().isEmpty()) {
@@ -85,6 +98,11 @@ public class BarracaService {
 
     public Produto criarProduto(String nome, BigDecimal preco, BigDecimal custo, BigDecimal stock, String unidade,
                                 BigDecimal stockMinimo, Long categoriaId, String codigoBarras, Long usuarioId) {
+        return criarProduto(nome, preco, custo, stock, unidade, stockMinimo, null, categoriaId, codigoBarras, usuarioId);
+    }
+
+    public Produto criarProduto(String nome, BigDecimal preco, BigDecimal custo, BigDecimal stock, String unidade,
+                                BigDecimal stockMinimo, BigDecimal stockMaximo, Long categoriaId, String codigoBarras, Long usuarioId) {
         validarProduto(nome, preco, stock);
         BigDecimal custoNorm = moeda(custo != null ? custo : BigDecimal.ZERO);
         Categoria categoria = categoriaDAO.buscarPorId(categoriaId, usuarioId);
@@ -96,11 +114,13 @@ public class BarracaService {
             throw new ConflitoException("Já existe um produto com este código de barras.");
         }
         BigDecimal stockNorm = quantidade(stock);
+        BigDecimal stockMaxNorm = stockMaximo != null ? quantidade(stockMaximo) : null;
         return JPAUtil.emTransacao(usuarioId, em -> {
             Produto produto = new Produto(nome.trim(), moeda(preco), stockNorm, unidade, categoria);
             produto.setCusto(custoNorm);
             produto.setAtivo(true);
             produto.setStockMinimo(stockMinimo(stockMinimo));
+            produto.setStockMaximo(stockMaxNorm);
             produto.setCodigoBarras(codigoNormalizado);
             produto.setUsuarioId(usuarioId);
             em.persist(produto);
@@ -117,11 +137,16 @@ public class BarracaService {
 
     public Produto actualizarProduto(Long id, String nome, BigDecimal preco, BigDecimal stock, String unidade,
                                      BigDecimal stockMinimo, Long categoriaId, String codigoBarras, Long usuarioId) {
-        return actualizarProduto(id, nome, preco, null, stock, unidade, stockMinimo, categoriaId, codigoBarras, usuarioId);
+        return actualizarProduto(id, nome, preco, null, stock, unidade, stockMinimo, null, categoriaId, codigoBarras, usuarioId);
     }
 
     public Produto actualizarProduto(Long id, String nome, BigDecimal preco, BigDecimal custo, BigDecimal stock, String unidade,
                                      BigDecimal stockMinimo, Long categoriaId, String codigoBarras, Long usuarioId) {
+        return actualizarProduto(id, nome, preco, custo, stock, unidade, stockMinimo, null, categoriaId, codigoBarras, usuarioId);
+    }
+
+    public Produto actualizarProduto(Long id, String nome, BigDecimal preco, BigDecimal custo, BigDecimal stock, String unidade,
+                                     BigDecimal stockMinimo, BigDecimal stockMaximo, Long categoriaId, String codigoBarras, Long usuarioId) {
         Produto produto = produtoDAO.buscarPorId(id, usuarioId);
         if (produto == null) {
             throw new RecursoNaoEncontradoException("Produto não encontrado.");
@@ -144,6 +169,7 @@ public class BarracaService {
             produto.setCusto(moeda(custo));
         }
         produto.setStockMinimo(stockMinimo(stockMinimo));
+        produto.setStockMaximo(stockMaximo != null ? quantidade(stockMaximo) : null);
         produto.setUnidade(unidade);
         produto.setCategoria(categoria);
         produto.setCodigoBarras(codigoNormalizado);
@@ -198,7 +224,7 @@ public class BarracaService {
     }
 
     public Map<String, Object> registarVendaLote(List<Map<String, Object>> itens, Long usuarioId) {
-        return registarVendaLote(itens, null, null, null, usuarioId);
+        return registarVendaLote(itens, null, null, null, null, usuarioId);
     }
 
     public Map<String, Object> registarVendaLote(List<Map<String, Object>> itens,
@@ -206,9 +232,17 @@ public class BarracaService {
                                                 Long clienteId,
                                                 String observacao,
                                                 Long usuarioId) {
-        Map<Long, BigDecimal> quantidades = normalizarCarrinho(itens);
+        return registarVendaLote(itens, pagamentos, clienteId, observacao, null, usuarioId);
+    }
+
+    public Map<String, Object> registarVendaLote(List<Map<String, Object>> itens,
+                                                List<Map<String, Object>> pagamentos,
+                                                Long clienteId,
+                                                String observacao,
+                                                String uuidCliente,
+                                                Long usuarioId) {
         try {
-            return JPAUtil.emTransacao(usuarioId, em -> executarVendaLote(em, quantidades, pagamentos, clienteId, observacao, usuarioId));
+            return JPAUtil.emTransacao(usuarioId, em -> executarVendaLote(em, itens, pagamentos, clienteId, observacao, uuidCliente, usuarioId));
         } catch (PessimisticLockException e) {
             throw new ConflitoException("O stock está a ser actualizado por outra venda. Tente novamente.");
         }
@@ -239,63 +273,248 @@ public class BarracaService {
                                                 Long clienteId,
                                                 String observacao,
                                                 Long usuarioId) {
+        List<Map<String, Object>> itens = new ArrayList<>();
+        if (quantidades != null) {
+            for (Map.Entry<Long, BigDecimal> entry : quantidades.entrySet()) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("produtoId", entry.getKey());
+                item.put("quantidade", entry.getValue());
+                itens.add(item);
+            }
+        }
+        return executarVendaLote(em, itens, pagamentosRaw, clienteId, observacao, null, usuarioId);
+    }
+
+    public Map<String, Object> executarVendaLote(EntityManager em,
+                                                List<Map<String, Object>> itensRaw,
+                                                List<Map<String, Object>> pagamentosRaw,
+                                                Long clienteId,
+                                                String observacao,
+                                                String uuidCliente,
+                                                Long usuarioId) {
+        // 1. Idempotência por identificador gerado no cliente (uuid_cliente)
+        if (uuidCliente != null && !uuidCliente.trim().isEmpty()) {
+            Venda existente = vendaDAO.buscarPorUuidCliente(em, uuidCliente.trim(), usuarioId);
+            if (existente != null) {
+                Map<String, Object> resultado = new LinkedHashMap<>();
+                resultado.put("id", existente.getId());
+                resultado.put("numero", existente.getNumero());
+                resultado.put("uuidCliente", existente.getUuidCliente());
+                resultado.put("itens", existente.getItens() != null ? existente.getItens().size() : 0);
+                resultado.put("total", moeda(existente.getTotal()));
+                resultado.put("totalCusto", moeda(existente.getTotalCusto()));
+                BigDecimal trocoExistente = BigDecimal.ZERO;
+                if (existente.getPagamentos() != null) {
+                    for (PagamentoVenda pv : existente.getPagamentos()) {
+                        if (pv.getTroco() != null && pv.getTroco().compareTo(BigDecimal.ZERO) > 0) {
+                            trocoExistente = pv.getTroco();
+                            break;
+                        }
+                    }
+                }
+                resultado.put("troco", moeda(trocoExistente));
+                resultado.put("estado", existente.getEstado());
+                resultado.put("venda", existente);
+
+                List<Map<String, Object>> itensLegados = new ArrayList<>();
+                if (existente.getItens() != null) {
+                    for (ItemVenda iv : existente.getItens()) {
+                        itensLegados.add(util.VendaJson.itemVenda(iv));
+                    }
+                }
+                resultado.put("vendas", itensLegados);
+                return resultado;
+            }
+        }
+
+        if (itensRaw == null || itensRaw.isEmpty()) {
+            throw new IllegalArgumentException("Carrinho está vazio.");
+        }
+
+        // 2. Agrupar quantidades para validação e bloqueio pessimista de stock
+        Map<Long, BigDecimal> quantidadesPorProduto = new TreeMap<>();
+        for (Map<String, Object> item : itensRaw) {
+            if (item == null) throw new IllegalArgumentException("Item de venda inválido.");
+            Long produtoId = longValue(item.get("produtoId"), "produtoId");
+            BigDecimal qtd = quantidade(decimal(item.get("quantidade"), "quantidade"));
+            if (produtoId <= 0 || qtd.signum() <= 0) {
+                throw new IllegalArgumentException("Produto e quantidade devem ser positivos.");
+            }
+            quantidadesPorProduto.merge(produtoId, qtd, BigDecimal::add);
+        }
+
         Map<Long, Produto> produtos = new LinkedHashMap<>();
-        for (Map.Entry<Long, BigDecimal> item : quantidades.entrySet()) {
-            Produto produto = produtoDAO.buscarPorIdParaBloqueio(em, item.getKey(), usuarioId);
+        for (Map.Entry<Long, BigDecimal> entry : quantidadesPorProduto.entrySet()) {
+            Produto produto = produtoDAO.buscarPorIdParaBloqueio(em, entry.getKey(), usuarioId);
             if (produto == null) throw new RecursoNaoEncontradoException("Produto não encontrado.");
             if (!produto.isAtivo()) {
                 throw new ConflitoException("O produto " + produto.getNome() + " está arquivado e não pode ser vendido.");
             }
-            if (produto.getQuantidadeStock().compareTo(item.getValue()) < 0) {
+            if (produto.getQuantidadeStock().compareTo(entry.getValue()) < 0) {
                 throw new ConflitoException("Stock insuficiente para " + produto.getNome() + ".");
             }
-            produtos.put(item.getKey(), produto);
+            produtos.put(entry.getKey(), produto);
         }
 
         BigDecimal total = BigDecimal.ZERO;
         BigDecimal totalCusto = BigDecimal.ZERO;
 
-        for (Map.Entry<Long, BigDecimal> item : quantidades.entrySet()) {
-            Produto produto = produtos.get(item.getKey());
-            BigDecimal itemTotal = item.getValue().multiply(produto.getPreco()).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal custoUnit = produto.getCusto() != null ? produto.getCusto() : BigDecimal.ZERO;
-            BigDecimal itemCusto = item.getValue().multiply(custoUnit).setScale(2, RoundingMode.HALF_UP);
-            total = total.add(itemTotal);
-            totalCusto = totalCusto.add(itemCusto);
+        class LinhaCalculada {
+            Produto produto;
+            BigDecimal quantidade;
+            BigDecimal precoUnitario;
+            BigDecimal descontoPercentual;
+            BigDecimal descontoValor;
+            BigDecimal precoFinal;
+            BigDecimal subtotal;
+            BigDecimal subtotalCusto;
+            String nota;
         }
 
-        // Validação de pagamentos
-        List<Map<String, Object>> pagamentosProcessados = new ArrayList<>();
+        List<LinhaCalculada> linhas = new ArrayList<>();
+        for (Map<String, Object> item : itensRaw) {
+            Long produtoId = longValue(item.get("produtoId"), "produtoId");
+            BigDecimal qtd = quantidade(decimal(item.get("quantidade"), "quantidade"));
+            Produto produto = produtos.get(produtoId);
+            BigDecimal precoUnit = produto.getPreco();
+
+            BigDecimal descPerc = BigDecimal.ZERO;
+            BigDecimal descVal = BigDecimal.ZERO;
+            if (item.get("descontoPercentual") != null) {
+                descPerc = moeda(decimal(item.get("descontoPercentual"), "descontoPercentual"));
+            }
+            if (item.get("descontoValor") != null) {
+                descVal = moeda(decimal(item.get("descontoValor"), "descontoValor"));
+            }
+
+            BigDecimal precoFinal = precoUnit;
+            if (descPerc.compareTo(BigDecimal.ZERO) > 0) {
+                descVal = precoUnit.multiply(descPerc).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                precoFinal = precoUnit.subtract(descVal);
+            } else if (descVal.compareTo(BigDecimal.ZERO) > 0) {
+                precoFinal = precoUnit.subtract(descVal);
+                if (precoUnit.compareTo(BigDecimal.ZERO) > 0) {
+                    descPerc = descVal.multiply(BigDecimal.valueOf(100)).divide(precoUnit, 2, RoundingMode.HALF_UP);
+                }
+            } else if (item.get("precoFinal") != null) {
+                precoFinal = moeda(decimal(item.get("precoFinal"), "precoFinal"));
+                if (precoUnit.compareTo(precoFinal) > 0) {
+                    descVal = precoUnit.subtract(precoFinal);
+                    if (precoUnit.compareTo(BigDecimal.ZERO) > 0) {
+                        descPerc = descVal.multiply(BigDecimal.valueOf(100)).divide(precoUnit, 2, RoundingMode.HALF_UP);
+                    }
+                }
+            }
+
+            if (precoFinal.compareTo(BigDecimal.ZERO) < 0) {
+                throw new IllegalArgumentException("O preço final após desconto não pode ser inferior a zero.");
+            }
+
+            BigDecimal subtotal = qtd.multiply(precoFinal).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal custoUnit = produto.getCusto() != null ? produto.getCusto() : BigDecimal.ZERO;
+            BigDecimal subtotalCusto = qtd.multiply(custoUnit).setScale(2, RoundingMode.HALF_UP);
+
+            total = total.add(subtotal);
+            totalCusto = totalCusto.add(subtotalCusto);
+
+            LinhaCalculada lc = new LinhaCalculada();
+            lc.produto = produto;
+            lc.quantidade = qtd;
+            lc.precoUnitario = precoUnit;
+            lc.descontoPercentual = descPerc;
+            lc.descontoValor = descVal;
+            lc.precoFinal = precoFinal;
+            lc.subtotal = subtotal;
+            lc.subtotalCusto = subtotalCusto;
+            lc.nota = item.get("nota") != null ? item.get("nota").toString().trim() : null;
+            linhas.add(lc);
+        }
+
+        // 3. Validação de pagamentos e métodos configuráveis
+        metodoPagamentoDAO.garantirMetodosPadrao(em, usuarioId);
+
+        class PagamentoCalc {
+            MetodoPagamento metodoPagamento;
+            String metodoNome;
+            String metodoTipo;
+            BigDecimal valor;
+            String referencia;
+        }
+
+        List<PagamentoCalc> pagamentosProcessados = new ArrayList<>();
         boolean temFiado = false;
         BigDecimal totalFiado = BigDecimal.ZERO;
         BigDecimal somaPagamentos = BigDecimal.ZERO;
 
         if (pagamentosRaw == null || pagamentosRaw.isEmpty()) {
-            Map<String, Object> p = new LinkedHashMap<>();
-            p.put("metodo", "DINHEIRO");
-            p.put("valor", total);
-            pagamentosProcessados.add(p);
+            List<MetodoPagamento> ativos = metodoPagamentoDAO.listarAtivos(em, usuarioId);
+            MetodoPagamento mpDinheiro = ativos.stream()
+                    .filter(m -> "DINHEIRO".equalsIgnoreCase(m.getTipo()) || "Dinheiro".equalsIgnoreCase(m.getNome()))
+                    .findFirst().orElse(null);
+            PagamentoCalc pc = new PagamentoCalc();
+            pc.metodoPagamento = mpDinheiro;
+            pc.metodoNome = mpDinheiro != null ? mpDinheiro.getNome() : "DINHEIRO";
+            pc.metodoTipo = "DINHEIRO";
+            pc.valor = total;
+            pagamentosProcessados.add(pc);
             somaPagamentos = total;
         } else {
             for (Map<String, Object> p : pagamentosRaw) {
                 if (p == null) continue;
-                String metodo = p.get("metodo") != null ? p.get("metodo").toString().trim().toUpperCase() : "DINHEIRO";
-                if (!List.of("DINHEIRO", "MPESA", "EMOLA", "MKESH", "CARTAO", "FIADO").contains(metodo)) {
-                    throw new IllegalArgumentException("Método de pagamento inválido: " + metodo);
+                MetodoPagamento mp = null;
+                if (p.get("metodoId") != null) {
+                    Long mid = longValue(p.get("metodoId"), "metodoId");
+                    mp = metodoPagamentoDAO.buscarPorId(em, mid, usuarioId);
+                    if (mp == null) {
+                        throw new RecursoNaoEncontradoException("Método de pagamento não encontrado.");
+                    }
+                } else if (p.get("metodo") != null) {
+                    String mStr = p.get("metodo").toString().trim();
+                    mp = metodoPagamentoDAO.buscarPorNome(em, mStr, usuarioId);
+                    String mUpper = mStr.toUpperCase();
+                    String fallbackNome = mStr;
+                    switch (mUpper) {
+                        case "MPESA": fallbackNome = "M-Pesa"; break;
+                        case "EMOLA": fallbackNome = "e-Mola"; break;
+                        case "MKESH": fallbackNome = "mKesh"; break;
+                        case "CARTAO": fallbackNome = "Cartão"; break;
+                        case "FIADO": fallbackNome = "A fiado"; break;
+                        case "DINHEIRO": fallbackNome = "Dinheiro"; break;
+                        default: fallbackNome = mStr; break;
+                    }
+                    mp = metodoPagamentoDAO.buscarPorNome(em, fallbackNome, usuarioId);
                 }
+
+                if (mp != null) {
+                    if (!Boolean.TRUE.equals(mp.getAtivo())) {
+                        throw new IllegalArgumentException("O método de pagamento " + mp.getNome() + " está inactivo e não pode receber novas vendas.");
+                    }
+                }
+
+                String metodoNome = mp != null ? mp.getNome() : (p.get("metodo") != null ? p.get("metodo").toString().trim() : "DINHEIRO");
+                String metodoTipo = mp != null ? mp.getTipo() : (
+                    metodoNome.equalsIgnoreCase("A fiado") || metodoNome.equalsIgnoreCase("FIADO") ? "FIADO" :
+                    metodoNome.equalsIgnoreCase("Dinheiro") || metodoNome.equalsIgnoreCase("DINHEIRO") ? "DINHEIRO" : "DIGITAL"
+                );
+
                 BigDecimal valor = moeda(decimal(p.get("valor"), "valor"));
                 if (valor.compareTo(BigDecimal.ZERO) <= 0) {
                     throw new IllegalArgumentException("O valor do pagamento deve ser maior que zero.");
                 }
-                if ("FIADO".equals(metodo)) {
+
+                if ("FIADO".equalsIgnoreCase(metodoTipo) || "FIADO".equalsIgnoreCase(metodoNome) || "A fiado".equalsIgnoreCase(metodoNome)) {
                     temFiado = true;
                     totalFiado = totalFiado.add(valor);
                 }
                 somaPagamentos = somaPagamentos.add(valor);
-                Map<String, Object> itemP = new LinkedHashMap<>();
-                itemP.put("metodo", metodo);
-                itemP.put("valor", valor);
-                pagamentosProcessados.add(itemP);
+
+                PagamentoCalc pc = new PagamentoCalc();
+                pc.metodoPagamento = mp;
+                pc.metodoNome = metodoNome;
+                pc.metodoTipo = metodoTipo;
+                pc.valor = valor;
+                pc.referencia = p.get("referencia") != null ? p.get("referencia").toString().trim() : null;
+                pagamentosProcessados.add(pc);
             }
         }
 
@@ -318,15 +537,23 @@ public class BarracaService {
 
         BigDecimal troco = BigDecimal.ZERO;
         if (somaPagamentos.compareTo(total) > 0) {
-            boolean temDinheiro = pagamentosProcessados.stream().anyMatch(p -> "DINHEIRO".equals(p.get("metodo")));
+            boolean temDinheiro = pagamentosProcessados.stream().anyMatch(p -> "DINHEIRO".equalsIgnoreCase(p.metodoTipo));
             if (!temDinheiro) {
                 throw new IllegalArgumentException("Troco só é permitido para pagamentos em dinheiro.");
             }
             troco = somaPagamentos.subtract(total);
         }
 
+        // 4. Criação e persistência do cabeçalho da venda
         Long numero = vendaDAO.proximoNumero(em, usuarioId);
         Venda venda = new Venda(usuarioId, numero, LocalDateTime.now(), total, totalCusto, "CONCLUIDA", clienteId, observacao, usuarioId);
+        if (uuidCliente != null && !uuidCliente.trim().isEmpty()) {
+            venda.setUuidCliente(uuidCliente.trim());
+        }
+        SessaoCaixa sessaoAberta = sessaoCaixaDAO.buscarAberta(em, usuarioId);
+        if (sessaoAberta != null) {
+            venda.setSessaoCaixa(sessaoAberta);
+        }
         em.persist(venda);
         em.flush();
 
@@ -340,31 +567,52 @@ public class BarracaService {
             }
         }
 
+        // 5. Criação das linhas da venda
         List<ItemVenda> itensCriados = new ArrayList<>();
         StockService stockService = new StockService();
-        for (Map.Entry<Long, BigDecimal> item : quantidades.entrySet()) {
-            Produto produto = produtos.get(item.getKey());
-            ItemVenda iv = new ItemVenda(venda, produto, item.getValue(), produto.getPreco(),
-                produto.getCusto() != null ? produto.getCusto() : BigDecimal.ZERO, null, usuarioId);
+        for (LinhaCalculada lc : linhas) {
+            ItemVenda iv = new ItemVenda(venda, lc.produto, lc.quantidade, lc.precoUnitario,
+                lc.descontoPercentual, lc.descontoValor, lc.precoFinal,
+                lc.produto.getCusto() != null ? lc.produto.getCusto() : BigDecimal.ZERO,
+                observacao, lc.nota, usuarioId);
             em.persist(iv);
             itensCriados.add(iv);
             venda.addItem(iv);
+        }
 
+        // 6. Desconto de stock
+        for (Map.Entry<Long, BigDecimal> entry : quantidadesPorProduto.entrySet()) {
+            Produto produto = produtos.get(entry.getKey());
             stockService.registarMovimento(em, usuarioId, produto.getId(), "VENDA",
-                item.getValue().negate(), produto.getCusto(), "Venda #" + numero,
+                entry.getValue().negate(), produto.getCusto(), "Venda #" + numero,
                 "VENDA", venda.getId(), usuarioId);
         }
 
+        // 7. Registo dos pagamentos
         BigDecimal trocoRestante = troco;
-        for (Map<String, Object> p : pagamentosProcessados) {
-            String metodo = (String) p.get("metodo");
-            BigDecimal valor = (BigDecimal) p.get("valor");
+        for (PagamentoCalc pc : pagamentosProcessados) {
             BigDecimal trocoDoItem = BigDecimal.ZERO;
-            if ("DINHEIRO".equals(metodo) && trocoRestante.compareTo(BigDecimal.ZERO) > 0) {
+            if ("DINHEIRO".equalsIgnoreCase(pc.metodoTipo) && trocoRestante.compareTo(BigDecimal.ZERO) > 0) {
                 trocoDoItem = trocoRestante;
                 trocoRestante = BigDecimal.ZERO;
             }
-            PagamentoVenda pv = new PagamentoVenda(usuarioId, venda, metodo, valor, trocoDoItem);
+            String metodoCodigo = "DINHEIRO";
+            if ("Dinheiro".equalsIgnoreCase(pc.metodoNome) || "DINHEIRO".equalsIgnoreCase(pc.metodoNome)) {
+                metodoCodigo = "DINHEIRO";
+            } else if ("M-Pesa".equalsIgnoreCase(pc.metodoNome) || "MPESA".equalsIgnoreCase(pc.metodoNome)) {
+                metodoCodigo = "MPESA";
+            } else if ("e-Mola".equalsIgnoreCase(pc.metodoNome) || "EMOLA".equalsIgnoreCase(pc.metodoNome)) {
+                metodoCodigo = "EMOLA";
+            } else if ("mKesh".equalsIgnoreCase(pc.metodoNome) || "MKESH".equalsIgnoreCase(pc.metodoNome)) {
+                metodoCodigo = "MKESH";
+            } else if ("Cartão".equalsIgnoreCase(pc.metodoNome) || "Cartao".equalsIgnoreCase(pc.metodoNome) || "CARTAO".equalsIgnoreCase(pc.metodoNome)) {
+                metodoCodigo = "CARTAO";
+            } else if ("A fiado".equalsIgnoreCase(pc.metodoNome) || "FIADO".equalsIgnoreCase(pc.metodoNome)) {
+                metodoCodigo = "FIADO";
+            } else {
+                metodoCodigo = pc.metodoTipo != null ? pc.metodoTipo.toUpperCase() : "DIGITAL";
+            }
+            PagamentoVenda pv = new PagamentoVenda(usuarioId, venda, metodoCodigo, pc.metodoPagamento, pc.referencia, pc.valor, trocoDoItem);
             em.persist(pv);
             venda.addPagamento(pv);
         }
@@ -373,6 +621,7 @@ public class BarracaService {
         Map<String, Object> resultado = new LinkedHashMap<>();
         resultado.put("id", venda.getId());
         resultado.put("numero", venda.getNumero());
+        resultado.put("uuidCliente", venda.getUuidCliente());
         resultado.put("itens", itensCriados.size());
         resultado.put("total", moeda(total));
         resultado.put("totalCusto", moeda(totalCusto));
@@ -559,6 +808,401 @@ public class BarracaService {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("O campo " + campo + " deve ser numérico.");
         }
+    }
+
+    public List<model.MetodoPagamento> listarMetodosPagamento(Long usuarioId) {
+        return metodoPagamentoDAO.listarTodos(usuarioId);
+    }
+
+    public List<model.MetodoPagamento> listarMetodosPagamentoAtivos(Long usuarioId) {
+        return metodoPagamentoDAO.listarAtivos(usuarioId);
+    }
+
+    public model.MetodoPagamento criarMetodoPagamento(String nome, String tipo, Long usuarioId) {
+        if (nome == null || nome.trim().isEmpty()) {
+            throw new IllegalArgumentException("O nome do método de pagamento é obrigatório.");
+        }
+        String tipoNorm = tipo != null ? tipo.trim().toUpperCase() : "DIGITAL";
+        if (!List.of("DINHEIRO", "DIGITAL", "FIADO").contains(tipoNorm)) {
+            throw new IllegalArgumentException("Tipo de método de pagamento inválido: " + tipoNorm);
+        }
+        return JPAUtil.emTransacao(usuarioId, em -> {
+            model.MetodoPagamento existente = metodoPagamentoDAO.buscarPorNome(em, nome.trim(), usuarioId);
+            if (existente != null) {
+                throw new ConflitoException("Já existe um método de pagamento com o nome " + nome.trim() + ".");
+            }
+            Long count = em.createQuery("SELECT COUNT(m) FROM MetodoPagamento m WHERE m.usuarioId = :uid", Long.class)
+                    .setParameter("uid", usuarioId).getSingleResult();
+            model.MetodoPagamento novo = new model.MetodoPagamento(usuarioId, nome.trim(), tipoNorm, true, count.intValue() + 1);
+            em.persist(novo);
+            return novo;
+        });
+    }
+
+    public model.MetodoPagamento alternarMetodoPagamento(Long id, Long usuarioId) {
+        return JPAUtil.emTransacao(usuarioId, em -> {
+            model.MetodoPagamento metodo = metodoPagamentoDAO.buscarPorId(em, id, usuarioId);
+            if (metodo == null) {
+                throw new RecursoNaoEncontradoException("Método de pagamento não encontrado.");
+            }
+            metodo.setAtivo(!metodo.getAtivo());
+            em.merge(metodo);
+            return metodo;
+        });
+    }
+
+    public model.MetodoPagamento actualizarMetodoPagamento(Long id, String nome, Boolean ativo, Integer ordem, Long usuarioId) {
+        return JPAUtil.emTransacao(usuarioId, em -> {
+            model.MetodoPagamento metodo = metodoPagamentoDAO.buscarPorId(em, id, usuarioId);
+            if (metodo == null) {
+                throw new RecursoNaoEncontradoException("Método de pagamento não encontrado.");
+            }
+            if (nome != null && !nome.trim().isEmpty()) {
+                model.MetodoPagamento comMesmoNome = metodoPagamentoDAO.buscarPorNome(em, nome.trim(), usuarioId);
+                if (comMesmoNome != null && !comMesmoNome.getId().equals(id)) {
+                    throw new ConflitoException("Já existe um método de pagamento com o nome " + nome.trim() + ".");
+                }
+                metodo.setNome(nome.trim());
+            }
+            if (ativo != null) metodo.setAtivo(ativo);
+            if (ordem != null) metodo.setOrdem(ordem);
+            em.merge(metodo);
+            return metodo;
+        });
+    }
+
+    public void eliminarMetodoPagamento(Long id, Long usuarioId) {
+        JPAUtil.emTransacao(usuarioId, em -> {
+            model.MetodoPagamento metodo = metodoPagamentoDAO.buscarPorId(em, id, usuarioId);
+            if (metodo == null) {
+                throw new RecursoNaoEncontradoException("Método de pagamento não encontrado.");
+            }
+            Long vendasComMetodo = em.createQuery(
+                "SELECT COUNT(pv) FROM PagamentoVenda pv WHERE pv.metodoPagamento.id = :mid AND pv.usuarioId = :uid", Long.class)
+                .setParameter("mid", id)
+                .setParameter("uid", usuarioId)
+                .getSingleResult();
+            if (vendasComMetodo > 0) {
+                throw new IllegalStateException("Não é possível apagar um método de pagamento com vendas associadas. Desactive-o em vez de apagar.");
+            }
+            em.remove(metodo);
+            return null;
+        });
+    }
+
+    public DefinicaoLoja obterDefinicoesLoja(Long usuarioId) {
+        return definicaoLojaDAO.obter(usuarioId);
+    }
+
+    public DefinicaoLoja atualizarDefinicoesLoja(boolean controloCaixa, String nomeLoja, Long usuarioId) {
+        return definicaoLojaDAO.atualizar(usuarioId, controloCaixa, nomeLoja);
+    }
+
+    public SessaoCaixa abrirSessaoCaixa(BigDecimal valorInicial, String notaAbertura, Long operadorId, Long usuarioId) {
+        return JPAUtil.emTransacao(usuarioId, em -> {
+            SessaoCaixa aberta = sessaoCaixaDAO.buscarAberta(em, usuarioId);
+            if (aberta != null) {
+                throw new ConflitoException("Já existe uma sessão de caixa aberta.");
+            }
+            BigDecimal inicial = valorInicial != null ? moeda(valorInicial) : BigDecimal.ZERO;
+            if (inicial.compareTo(BigDecimal.ZERO) < 0) {
+                throw new IllegalArgumentException("O valor inicial não pode ser negativo.");
+            }
+            SessaoCaixa sessao = new SessaoCaixa(usuarioId, inicial, notaAbertura != null ? notaAbertura.trim() : null, operadorId);
+            em.persist(sessao);
+            return sessao;
+        });
+    }
+
+    public SessaoCaixa buscarSessaoAberta(Long usuarioId) {
+        return sessaoCaixaDAO.buscarAberta(usuarioId);
+    }
+
+    public Map<String, Object> obterResumoSessaoAtual(Long usuarioId) {
+        return JPAUtil.emTransacao(usuarioId, em -> {
+            SessaoCaixa aberta = sessaoCaixaDAO.buscarAberta(em, usuarioId);
+            Map<String, Object> res = new LinkedHashMap<>();
+            if (aberta == null) {
+                res.put("aberta", false);
+                return res;
+            }
+            BigDecimal vendasDinheiro = sessaoCaixaDAO.calcularVendasDinheiro(em, aberta.getId(), usuarioId);
+            BigDecimal devolucoesDinheiro = sessaoCaixaDAO.calcularDevolucoesDinheiro(em, aberta.getId(), usuarioId);
+            BigDecimal esperado = aberta.getValorInicial().add(vendasDinheiro).subtract(devolucoesDinheiro);
+
+            Long totalVendas = em.createQuery(
+                "SELECT COUNT(v) FROM Venda v WHERE v.sessaoCaixa.id = :sid AND v.usuarioId = :uid AND v.estado != 'ANULADA'", Long.class)
+                .setParameter("sid", aberta.getId())
+                .setParameter("uid", usuarioId)
+                .getSingleResult();
+
+            res.put("aberta", true);
+            res.put("id", aberta.getId());
+            res.put("abertaEm", aberta.getAbertaEm().toString());
+            res.put("valorInicial", decimalJson(aberta.getValorInicial(), 2));
+            res.put("vendasDinheiro", decimalJson(vendasDinheiro, 2));
+            res.put("devolucoesDinheiro", decimalJson(devolucoesDinheiro, 2));
+            res.put("valorEsperado", decimalJson(esperado, 2));
+            res.put("totalVendas", totalVendas);
+            res.put("notaAbertura", aberta.getNotaAbertura() != null ? aberta.getNotaAbertura() : "");
+            return res;
+        });
+    }
+
+    public SessaoCaixa fecharSessaoCaixa(Long sessaoId, BigDecimal valorContado, String notaFecho, Long operadorId, Long usuarioId) {
+        return JPAUtil.emTransacao(usuarioId, em -> {
+            SessaoCaixa sessao = sessaoCaixaDAO.buscarPorId(em, sessaoId, usuarioId);
+            if (sessao == null) {
+                throw new RecursoNaoEncontradoException("Sessão de caixa não encontrada.");
+            }
+            if (!"ABERTA".equals(sessao.getEstado())) {
+                throw new IllegalStateException("Esta sessão de caixa já está fechada.");
+            }
+
+            Long rascunhos = em.createQuery(
+                "SELECT COUNT(v) FROM Venda v WHERE v.usuarioId = :uid AND v.estado IN ('RASCUNHO', 'PENDENTE')", Long.class)
+                .setParameter("uid", usuarioId)
+                .getSingleResult();
+            if (rascunhos > 0) {
+                throw new IllegalStateException("Não é possível fechar o caixa com vendas em rascunho ou pendentes.");
+            }
+
+            BigDecimal vendasDinheiro = sessaoCaixaDAO.calcularVendasDinheiro(em, sessao.getId(), usuarioId);
+            BigDecimal devolucoesDinheiro = sessaoCaixaDAO.calcularDevolucoesDinheiro(em, sessao.getId(), usuarioId);
+            BigDecimal esperado = sessao.getValorInicial().add(vendasDinheiro).subtract(devolucoesDinheiro);
+
+            BigDecimal contado = valorContado != null ? moeda(valorContado) : BigDecimal.ZERO;
+            BigDecimal diferenca = contado.subtract(esperado);
+
+            sessao.setValorContado(contado);
+            sessao.setValorEsperado(esperado);
+            sessao.setDiferenca(diferenca);
+            sessao.setNotaFecho(notaFecho != null ? notaFecho.trim() : null);
+            sessao.setFechadaEm(LocalDateTime.now());
+            sessao.setFechadaPor(operadorId);
+            sessao.setEstado("FECHADA");
+
+            return em.merge(sessao);
+        });
+    }
+
+    public List<SessaoCaixa> listarHistoricoSessoes(Long usuarioId, int limite) {
+        return sessaoCaixaDAO.listarHistorico(usuarioId, limite);
+    }
+
+    public static class DevolucaoItemParam {
+        public Long itemVendaId;
+        public BigDecimal quantidade;
+
+        public DevolucaoItemParam() {}
+        public DevolucaoItemParam(Long itemVendaId, BigDecimal quantidade) {
+            this.itemVendaId = itemVendaId;
+            this.quantidade = quantidade;
+        }
+    }
+
+    public Map<String, Object> processarDevolucao(Long vendaId, List<DevolucaoItemParam> itensParam, String motivo, String uuidCliente, Long operadorId, Long usuarioId) {
+        if (itensParam == null || itensParam.isEmpty()) {
+            throw new IllegalArgumentException("Nenhum item informado para devolução.");
+        }
+        String motivoNorm = (motivo != null && !motivo.trim().isEmpty()) ? motivo.trim() : "Devolução de produtos";
+
+        return JPAUtil.emTransacao(usuarioId, em -> {
+            if (uuidCliente != null && !uuidCliente.trim().isEmpty()) {
+                Devolucao existente = devolucaoDAO.buscarPorUuidCliente(em, uuidCliente.trim(), usuarioId);
+                if (existente != null) {
+                    return formatarDevolucao(existente);
+                }
+            }
+
+            Venda venda = em.find(Venda.class, vendaId);
+            if (venda == null || !usuarioId.equals(venda.getUsuarioId())) {
+                throw new RecursoNaoEncontradoException("Venda não encontrada.");
+            }
+            if ("ANULADA".equals(venda.getEstado())) {
+                throw new IllegalStateException("Esta venda está anulada e não pode receber devoluções.");
+            }
+
+            List<ItemVenda> itensVenda = em.createQuery(
+                "SELECT iv FROM ItemVenda iv WHERE iv.venda.id = :vid AND iv.usuarioId = :uid", ItemVenda.class)
+                .setParameter("vid", vendaId)
+                .setParameter("uid", usuarioId)
+                .getResultList();
+
+            Map<Long, ItemVenda> itensMap = new HashMap<>();
+            BigDecimal totalQtdVendida = BigDecimal.ZERO;
+            for (ItemVenda iv : itensVenda) {
+                itensMap.put(iv.getId(), iv);
+                totalQtdVendida = totalQtdVendida.add(iv.getQuantidade());
+            }
+
+            BigDecimal totalQtdAnteriorDevolvida = BigDecimal.ZERO;
+            for (ItemVenda iv : itensVenda) {
+                BigDecimal devAnterior = devolucaoDAO.obterTotalDevolvidoPorItem(em, iv.getId());
+                totalQtdAnteriorDevolvida = totalQtdAnteriorDevolvida.add(devAnterior);
+            }
+
+            BigDecimal totalDevolver = BigDecimal.ZERO;
+            BigDecimal totalQtdDevolvidaAgora = BigDecimal.ZERO;
+            List<ItemDevolucao> itensDevolucao = new ArrayList<>();
+            StockService stockService = new StockService();
+
+            for (DevolucaoItemParam param : itensParam) {
+                if (param == null || param.itemVendaId == null) continue;
+                ItemVenda iv = itensMap.get(param.itemVendaId);
+                if (iv == null) {
+                    throw new RecursoNaoEncontradoException("Item de venda " + param.itemVendaId + " não encontrado na venda #" + venda.getNumero() + ".");
+                }
+                BigDecimal qtdDevolver = quantidade(param.quantidade);
+                if (qtdDevolver.compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new IllegalArgumentException("A quantidade a devolver deve ser maior que zero.");
+                }
+                BigDecimal jaDevolvido = devolucaoDAO.obterTotalDevolvidoPorItem(em, iv.getId());
+                BigDecimal disponivel = iv.getQuantidade().subtract(jaDevolvido);
+                if (qtdDevolver.compareTo(disponivel) > 0) {
+                    throw new IllegalArgumentException("Não é possível devolver mais do que o vendido. Disponível: " + disponivel.toPlainString());
+                }
+
+                BigDecimal precoUnit = iv.getPrecoFinal() != null ? iv.getPrecoFinal() : iv.getPrecoUnitario();
+                BigDecimal valorItem = qtdDevolver.multiply(precoUnit).setScale(2, RoundingMode.HALF_UP);
+                totalDevolver = totalDevolver.add(valorItem);
+                totalQtdDevolvidaAgora = totalQtdDevolvidaAgora.add(qtdDevolver);
+
+                stockService.registarMovimento(em, usuarioId, iv.getProduto().getId(), "DEVOLUCAO",
+                    qtdDevolver, iv.getCustoUnitario(),
+                    "Devolução da venda #" + venda.getNumero() + ": " + motivoNorm,
+                    "DEVOLUCAO", venda.getId(), operadorId);
+
+                ItemDevolucao idv = new ItemDevolucao(null, iv, qtdDevolver, valorItem);
+                itensDevolucao.add(idv);
+            }
+
+            if (itensDevolucao.isEmpty()) {
+                throw new IllegalArgumentException("Nenhum item válido para devolução.");
+            }
+
+            PagamentoVenda fiado = em.createQuery(
+                "SELECT p FROM PagamentoVenda p WHERE p.venda.id = :vid AND p.usuarioId = :uid AND UPPER(p.metodo) = 'FIADO'", PagamentoVenda.class)
+                .setParameter("vid", vendaId)
+                .setParameter("uid", usuarioId)
+                .getResultStream().findFirst().orElse(null);
+
+            if (fiado != null && venda.getClienteId() != null) {
+                Devedor devedor = devedorDAO.buscarPorIdParaBloqueio(em, venda.getClienteId(), usuarioId);
+                if (devedor != null) {
+                    BigDecimal abatimento = totalDevolver.min(devedor.getDivida());
+                    devedor.setDivida(devedor.getDivida().subtract(abatimento));
+                }
+            }
+
+            BigDecimal totalQtdFinalDevolvida = totalQtdAnteriorDevolvida.add(totalQtdDevolvidaAgora);
+            if (totalQtdFinalDevolvida.compareTo(totalQtdVendida) >= 0) {
+                venda.setEstado("DEVOLVIDA");
+            } else {
+                venda.setEstado("PARCIALMENTE_DEVOLVIDA");
+            }
+            em.merge(venda);
+
+            Devolucao devolucao = new Devolucao(usuarioId, venda, totalDevolver, motivoNorm, operadorId, uuidCliente);
+            em.persist(devolucao);
+            for (ItemDevolucao itemDev : itensDevolucao) {
+                itemDev.setDevolucao(devolucao);
+                em.persist(itemDev);
+                devolucao.addItem(itemDev);
+            }
+            em.flush();
+
+            return formatarDevolucao(devolucao);
+        });
+    }
+
+    public List<Map<String, Object>> listarDevolucoesVenda(Long vendaId, Long usuarioId) {
+        return JPAUtil.emTransacao(usuarioId, em -> {
+            List<Devolucao> devs = devolucaoDAO.listarPorVenda(em, vendaId, usuarioId);
+            List<Map<String, Object>> list = new ArrayList<>();
+            for (Devolucao d : devs) {
+                list.add(formatarDevolucao(d));
+            }
+            return list;
+        });
+    }
+
+    private Map<String, Object> formatarDevolucao(Devolucao dev) {
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("id", dev.getId());
+        res.put("vendaId", dev.getVenda().getId());
+        res.put("vendaNumero", dev.getVenda().getNumero());
+        res.put("total", decimalJson(dev.getTotal(), 2));
+        res.put("motivo", dev.getMotivo());
+        res.put("criadaEm", dev.getCriadaEm() != null ? dev.getCriadaEm().toString() : "");
+        res.put("estadoVenda", dev.getVenda().getEstado());
+        List<Map<String, Object>> itens = new ArrayList<>();
+        if (dev.getItens() != null) {
+            for (ItemDevolucao idv : dev.getItens()) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", idv.getId());
+                m.put("itemVendaId", idv.getItemVenda().getId());
+                m.put("produtoNome", idv.getItemVenda().getProduto().getNome());
+                m.put("quantidade", decimalJson(idv.getQuantidade(), 3));
+                m.put("valor", decimalJson(idv.getValor(), 2));
+                itens.add(m);
+            }
+        }
+        res.put("itens", itens);
+        return res;
+    }
+
+    public List<Map<String, Object>> obterProdutosFaltaRepor(Long usuarioId) {
+        return JPAUtil.emTransacao(usuarioId, em -> {
+            List<Produto> lista = em.createQuery(
+                "SELECT p FROM Produto p WHERE p.usuarioId = :uid AND p.ativo = true AND p.quantidadeStock <= p.stockMinimo " +
+                "ORDER BY (p.quantidadeStock - p.stockMinimo) ASC, p.nome ASC", Produto.class)
+                .setParameter("uid", usuarioId)
+                .getResultList();
+
+            List<Map<String, Object>> res = new ArrayList<>();
+            for (Produto p : lista) {
+                BigDecimal atual = p.getQuantidadeStock();
+                BigDecimal min = p.getStockMinimo() != null ? p.getStockMinimo() : BigDecimal.ZERO;
+                BigDecimal max = p.getStockMaximo();
+                BigDecimal sugerido;
+                if (max != null && max.compareTo(atual) > 0) {
+                    sugerido = max.subtract(atual);
+                } else {
+                    sugerido = min.multiply(new BigDecimal("2")).subtract(atual);
+                }
+                if (sugerido.compareTo(BigDecimal.ONE) < 0) {
+                    sugerido = BigDecimal.ONE;
+                }
+
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("id", p.getId());
+                item.put("nome", p.getNome());
+                item.put("stockAtual", decimalJson(atual, 3));
+                item.put("stockMinimo", decimalJson(min, 3));
+                item.put("stockMaximo", max != null ? decimalJson(max, 3) : null);
+                item.put("quantidadeSugerida", decimalJson(sugerido, 3));
+                item.put("unidade", p.getUnidade());
+                item.put("preco", decimalJson(p.getPreco(), 2));
+                item.put("custo", decimalJson(p.getCusto(), 2));
+                res.add(item);
+            }
+            return res;
+        });
+    }
+
+    public BigDecimal calcularPerdasMesACusto(Long usuarioId) {
+        return JPAUtil.emTransacao(usuarioId, em -> {
+            LocalDateTime inicioMes = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+            BigDecimal perdas = em.createQuery(
+                "SELECT COALESCE(SUM(ABS(m.quantidade) * COALESCE(m.custoUnitario, 0)), 0) FROM MovimentoStock m " +
+                "WHERE m.usuarioId = :uid AND (m.tipo = 'PERDA' OR (m.tipo = 'AJUSTE' AND m.quantidade < 0)) " +
+                "AND m.criadoEm >= :inicioMes", BigDecimal.class)
+                .setParameter("uid", usuarioId)
+                .setParameter("inicioMes", inicioMes)
+                .getSingleResult();
+            return perdas != null ? perdas.setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+        });
     }
 
     private static Long longValue(Object value, String campo) {

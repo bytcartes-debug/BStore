@@ -28,6 +28,9 @@ public class Produto {
     @Column(name = "stock_minimo", precision = 19, scale = 3)
     private BigDecimal stockMinimo = new BigDecimal("5.000");
 
+    @Column(name = "stock_maximo", precision = 19, scale = 3)
+    private BigDecimal stockMaximo;
+
     @Column(name = "ativo", nullable = false)
     private boolean ativo = true;
 
@@ -82,6 +85,9 @@ public class Produto {
 
     public BigDecimal getStockMinimo() { return stockMinimo; }
     public void setStockMinimo(BigDecimal stockMinimo) { this.stockMinimo = stockMinimo; }
+
+    public BigDecimal getStockMaximo() { return stockMaximo; }
+    public void setStockMaximo(BigDecimal stockMaximo) { this.stockMaximo = stockMaximo; }
 
     public String getUnidade() { return unidade; }
     public void setUnidade(String u) { this.unidade = (u != null && !u.isBlank()) ? u : "un"; }

@@ -37,6 +37,23 @@ public class VendaDAO extends GenericDAO<Venda> {
         });
     }
 
+    public Venda buscarPorUuidCliente(EntityManager em, String uuidCliente, Long usuarioId) {
+        if (uuidCliente == null || uuidCliente.trim().isEmpty()) return null;
+        List<Venda> list = em.createQuery(
+            "SELECT v FROM Venda v WHERE v.uuidCliente = :uuid AND v.usuarioId = :uid", Venda.class)
+            .setParameter("uuid", uuidCliente.trim())
+            .setParameter("uid", usuarioId)
+            .getResultList();
+        if (list.isEmpty()) return null;
+        Venda v = list.get(0);
+        org.hibernate.Hibernate.initialize(v.getItens());
+        for (model.ItemVenda iv : v.getItens()) {
+            org.hibernate.Hibernate.initialize(iv.getProduto());
+        }
+        org.hibernate.Hibernate.initialize(v.getPagamentos());
+        return v;
+    }
+
     public Venda buscarPorIdComDetalhes(Long id, Long usuarioId) {
         return JPAUtil.emTransacao(usuarioId, em -> {
             Venda v = em.find(Venda.class, id);

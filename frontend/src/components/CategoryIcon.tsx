@@ -1,14 +1,27 @@
-import { getCategoryEmoji } from '../utils/categoryIcons';
+import { getCategoryIconComponent } from '../utils/categoryIcons';
 
-export default function CategoryIcon({ value, size = 20 }: { value: string; size?: number }) {
-  const emoji = getCategoryEmoji(value);
+export default function CategoryIcon({
+  value,
+  size = 20,
+  className = '',
+}: {
+  value: string;
+  size?: number;
+  className?: string;
+}) {
+  const IconComponent = getCategoryIconComponent(value);
   return (
     <span
-      className="category-emoji"
-      style={{ fontSize: `${size}px`, lineHeight: 1, display: 'inline-block' }}
+      className={`category-emoji category-symbol ${className}`.trim()}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        lineHeight: 1,
+      }}
       aria-hidden="true"
     >
-      {emoji}
+      <IconComponent size={size} strokeWidth={2} />
     </span>
   );
 }

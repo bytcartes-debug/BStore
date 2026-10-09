@@ -1,0 +1,215 @@
+.cliente-display-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--bg-primary, #0f172a);
+  color: var(--text-primary, #f8fafc);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.cliente-display-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2.5rem;
+  background-color: rgba(30, 41, 59, 0.7);
+  backdrop-filter: blur(8px);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.loja-nome {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: #38bdf8;
+}
+
+.relogio-display {
+  font-size: 1.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #94a3b8;
+}
+
+.cliente-display-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 2rem 2.5rem;
+  overflow: hidden;
+}
+
+.cliente-tabela-scroll {
+  flex: 1;
+  overflow-y: auto;
+  border-radius: 1rem;
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 1rem;
+}
+
+.cliente-itens-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 1.4rem;
+}
+
+.cliente-itens-tabela th {
+  text-align: left;
+  padding: 1rem;
+  color: #94a3b8;
+  font-weight: 600;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.cliente-itens-tabela td {
+  padding: 1.25rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cliente-itens-tabela .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.item-nome {
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.item-total {
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+.cliente-display-footer {
+  margin-top: 1.5rem;
+  padding: 1.5rem 2rem;
+  background: #0284c7;
+  border-radius: 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 10px 25px -5px rgba(2, 132, 199, 0.4);
+}
+
+.total-label {
+  font-size: 2rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #ffffff;
+}
+
+.total-valor {
+  font-size: 3.5rem;
+  font-weight: 900;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+}
+
+.total-valor .moeda {
+  font-size: 2rem;
+  font-weight: 600;
+  margin-left: 0.5rem;
+}
+
+.cliente-display-idle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.idle-conteudo h2 {
+  font-size: 3rem;
+  font-weight: 800;
+  color: #f8fafc;
+  margin-bottom: 1rem;
+}
+
+.idle-conteudo p {
+  font-size: 1.75rem;
+  color: #94a3b8;
+  margin-bottom: 2rem;
+}
+
+.idle-hora {
+  font-size: 4rem;
+  font-weight: 900;
+  color: #38bdf8;
+  font-variant-numeric: tabular-nums;
+}
+
+.sucesso-mode {
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #064e3b 0%, #022c22 100%);
+}
+
+.cliente-display-card {
+  background: rgba(15, 23, 42, 0.85);
+  border: 2px solid #10b981;
+  border-radius: 2rem;
+  padding: 3.5rem 4.5rem;
+  text-align: center;
+  max-width: 650px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  animation: scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sucesso-icone {
+  width: 90px;
+  height: 90px;
+  line-height: 90px;
+  font-size: 3.5rem;
+  background: #10b981;
+  color: white;
+  border-radius: 50%;
+  margin: 0 auto 1.5rem;
+  box-shadow: 0 10px 20px rgba(16, 185, 129, 0.3);
+}
+
+.sucesso-titulo {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: #ecfdf5;
+  margin-bottom: 2rem;
+}
+
+.sucesso-dados {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  font-size: 1.8rem;
+}
+
+.sucesso-linha {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0.75rem;
+}
+
+.troco-destaque {
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid #10b981;
+  color: #a7f3d0;
+  font-size: 2.2rem;
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

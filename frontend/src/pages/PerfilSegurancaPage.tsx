@@ -1,5 +1,6 @@
 import { useToast } from '../utils/toast';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { User, Camera, Save, KeyRound, Eye, EyeOff, Store, Plus, Power, CreditCard } from 'lucide-react';
 import type { UserSession } from '../App';
 import { apiRequest } from '../utils/api';
 import { useMutation } from '../utils/useResource';
@@ -13,9 +14,84 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
   const [confirmation, setConfirmation] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [metodos, setMetodos] = useState<any[]>([]);
+  const [controloCaixa, setControloCaixa] = useState(false);
+  const [nomeLoja, setNomeLoja] = useState('');
+  const [novoMetodoNome, setNovoMetodoNome] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const password = useMutation();
   const toast = useToast();
+
+  const carregarDefinicoes = async () => {
+    try {
+      const [listaMetodos, def] = await Promise.all([
+        apiRequest<any[]>('/api/metodos-pagamento').catch(() => []),
+        apiRequest<any>('/api/definicoes').catch(() => ({ controloCaixa: false, nomeLoja: '' })),
+      ]);
+      setMetodos(listaMetodos || []);
+      setControloCaixa(Boolean(def?.controloCaixa));
+      setNomeLoja(def?.nomeLoja || '');
+    } catch {}
+  };
+
+  useEffect(() => {
+    carregarDefinicoes();
+  }, []);
+
+  const salvarNomeLoja = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await apiRequest('/api/definicoes', {
+        method: 'PUT',
+        body: JSON.stringify({ nomeLoja: nomeLoja.trim(), controloCaixa }),
+      });
+      toast('Nome da loja atualizado.');
+    } catch {
+      toast('Erro ao atualizar nome da loja.');
+    }
+  };
+
+  const toggleControloCaixa = async () => {
+    const novoValor = !controloCaixa;
+    try {
+      await apiRequest('/api/definicoes', {
+        method: 'PUT',
+        body: JSON.stringify({ nomeLoja: nomeLoja.trim(), controloCaixa: novoValor }),
+      });
+      setControloCaixa(novoValor);
+      toast(novoValor ? 'Controlo de caixa ativado.' : 'Controlo de caixa desativado.');
+    } catch {
+      toast('Erro ao atualizar controlo de caixa.');
+    }
+  };
+
+  const toggleMetodo = async (id: number) => {
+    try {
+      const res = await apiRequest<any>(`/api/metodos-pagamento/${id}/alternar`, {
+        method: 'PATCH',
+      });
+      setMetodos((prev) => prev.map((m) => (m.id === id ? { ...m, ativo: res.ativo } : m)));
+      toast(`Método ${res.ativo ? 'ativado' : 'desativado'}.`);
+    } catch {
+      toast('Erro ao alterar método de pagamento.');
+    }
+  };
+
+  const adicionarMetodo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!novoMetodoNome.trim()) return;
+    try {
+      const novo = await apiRequest<any>('/api/metodos-pagamento', {
+        method: 'POST',
+        body: JSON.stringify({ nome: novoMetodoNome.trim(), tipo: 'DIGITAL' }),
+      });
+      setMetodos((prev) => [...prev, novo]);
+      setNovoMetodoNome('');
+      toast(`Método ${novo.nome} adicionado.`);
+    } catch (err: any) {
+      toast(err?.message || 'Erro ao adicionar método de pagamento.');
+    }
+  };
   const updateProfile = () => window.dispatchEvent(new Event('bstore:profile'));
   const handlePhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -87,7 +163,7 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
       />
       <section className="card panel">
         <h3 className="section-title">
-          <span aria-hidden="true">👤</span> O seu perfil
+          <User size={18} aria-hidden="true" /> O seu perfil
         </h3>
         <p className="profile-note">
           O nome de apresentação e a foto são guardados apenas neste navegador. Não alteram os dados
@@ -99,7 +175,7 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
             <img src={pic} className="profile-photo" alt="Foto do perfil" />
           ) : (
             <div className="profile-photo" aria-hidden="true">
-              {name.charAt(0).toUpperCase() || '👤'}
+              {name.charAt(0).toUpperCase() || <User size={24} />}
             </div>
           )}
           <div>
@@ -108,7 +184,7 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
               className="btn-secondary"
               onClick={() => fileRef.current?.click()}
             >
-              <span aria-hidden="true">📷</span> Alterar foto
+              <Camera size={16} aria-hidden="true" /> Alterar foto
             </button>
             <p className="field-hint">JPG ou PNG. Até 2 MB.</p>
             <input
@@ -136,13 +212,13 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
             <input id="profile-email" value={user?.email || ''} disabled />
           </Field>
           <button className="btn-primary" type="submit">
-            <span aria-hidden="true">💾</span> Guardar perfil
+            <Save size={16} aria-hidden="true" /> Guardar perfil
           </button>
         </form>
       </section>
       <section className="card panel">
         <h3 className="section-title">
-          <span aria-hidden="true">🔑</span> Alterar senha
+          <KeyRound size={18} aria-hidden="true" /> Alterar senha
         </h3>
         <p className="profile-note">Depois de alterar a senha, terá de entrar novamente.</p>
         <form onSubmit={changePassword}>
@@ -208,15 +284,135 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
                 onClick={() => setShowPassword((value) => !value)}
                 aria-pressed={showPassword}
               >
-                <span aria-hidden="true">{showPassword ? '🙈' : '👁️'}</span>
+                <span aria-hidden="true">{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</span>
                 {showPassword ? 'Ocultar senhas' : 'Mostrar senhas'}
               </button>
               <button type="submit" className="btn-primary">
-                {password.pending ? <Spinner size="small" /> : <span aria-hidden="true">🔑</span>}
+                {password.pending ? <Spinner size="small" /> : <KeyRound size={16} aria-hidden="true" />}
                 {password.pending ? 'A alterar…' : 'Alterar senha'}
               </button>
             </div>
           </fieldset>
+        </form>
+      </section>
+
+      <section className="card panel">
+        <h3 className="section-title">
+          <Store size={18} aria-hidden="true" /> Definições da loja
+        </h3>
+        <p className="profile-note">
+          Configure as opções de funcionamento do seu ponto de venda e os métodos de pagamento.
+        </p>
+
+        <form onSubmit={salvarNomeLoja} className="store-settings-form" style={{ marginBottom: '2rem' }}>
+          <Field id="nome-loja" label="Nome da loja" hint="Aparece no ecrã de venda e na tela do cliente.">
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <input
+                id="nome-loja"
+                type="text"
+                value={nomeLoja}
+                onChange={(e) => setNomeLoja(e.target.value)}
+                placeholder="Ex: Mercearia Central"
+                style={{ flex: 1 }}
+              />
+              <button type="submit" className="btn-primary" style={{ minHeight: '44px' }}>
+                <Save size={16} /> Guardar
+              </button>
+            </div>
+          </Field>
+        </form>
+
+        <div className="setting-toggle-card" style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '1.25rem',
+          background: 'var(--bg-surface, rgba(255,255,255,0.03))',
+          borderRadius: '0.75rem',
+          border: '1px solid var(--border-color, rgba(255,255,255,0.1))',
+          marginBottom: '2rem'
+        }}>
+          <div>
+            <strong style={{ display: 'block', fontSize: '1.05rem', marginBottom: '0.25rem' }}>
+              Controlo de caixa
+            </strong>
+            <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary, #94a3b8)' }}>
+              Abre e fecha caixa com contagem do dinheiro na gaveta no início e fim do dia.
+            </span>
+          </div>
+          <button
+            type="button"
+            className={`btn-secondary ${controloCaixa ? 'active-toggle' : ''}`}
+            onClick={toggleControloCaixa}
+            style={{
+              minHeight: '44px',
+              minWidth: '100px',
+              background: controloCaixa ? '#10b981' : undefined,
+              color: controloCaixa ? '#ffffff' : undefined,
+              borderColor: controloCaixa ? '#10b981' : undefined,
+            }}
+          >
+            <Power size={16} />
+            {controloCaixa ? 'Ativo' : 'Desativado'}
+          </button>
+        </div>
+
+        <h4 style={{ fontSize: '1.1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <CreditCard size={18} /> Métodos de pagamento
+        </h4>
+        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '1rem' }}>
+          Ative ou desative os métodos disponíveis no momento da venda.
+        </p>
+
+        <div className="payment-methods-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+          {metodos.map((m) => (
+            <div
+              key={m.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '0.85rem 1.25rem',
+                background: 'var(--bg-surface, rgba(255,255,255,0.03))',
+                borderRadius: '0.75rem',
+                border: '1px solid var(--border-color, rgba(255,255,255,0.08))',
+              }}
+            >
+              <div>
+                <strong style={{ fontSize: '1rem' }}>{m.nome}</strong>
+                <span style={{ marginLeft: '0.75rem', fontSize: '0.8rem', opacity: 0.7, textTransform: 'uppercase' }}>
+                  ({m.tipo})
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => toggleMetodo(m.id)}
+                style={{
+                  minHeight: '40px',
+                  padding: '0.4rem 0.9rem',
+                  background: m.ativo ? '#10b981' : 'transparent',
+                  color: m.ativo ? '#ffffff' : 'inherit',
+                  borderColor: m.ativo ? '#10b981' : undefined,
+                }}
+              >
+                {m.ativo ? 'Ativo' : 'Desligado'}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <form onSubmit={adicionarMetodo} style={{ display: 'flex', gap: '0.75rem' }}>
+          <input
+            type="text"
+            placeholder="Nome do método digital (ex: Moza, Carteira)"
+            value={novoMetodoNome}
+            onChange={(e) => setNovoMetodoNome(e.target.value)}
+            style={{ flex: 1, minHeight: '44px' }}
+          />
+          <button type="submit" className="btn-secondary" disabled={!novoMetodoNome.trim()} style={{ minHeight: '44px' }}>
+            <Plus size={16} /> Adicionar
+          </button>
         </form>
       </section>
     </div>

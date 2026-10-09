@@ -4,6 +4,17 @@ import { apiRequest } from '../utils/api';
 import { useMutation, useResource } from '../utils/useResource';
 import { decimal, formatMoney } from '../utils/decimal';
 import {
+  Banknote,
+  Check,
+  CheckCircle2,
+  History,
+  Plus,
+  RefreshCw,
+  Save,
+  Search,
+  Users,
+} from 'lucide-react';
+import {
   PageHeading,
   SearchField,
   Loading,
@@ -166,7 +177,7 @@ export default function DevedoresPage() {
         description="Controle saldos em aberto, amortizações parciais e histórico de pagamentos."
       >
         <button className="btn-primary" onClick={openNew}>
-          <span aria-hidden="true">➕</span> Registar dívida
+          <Plus size={16} strokeWidth={2.2} aria-hidden="true" /> Registar dívida
         </button>
       </PageHeading>
 
@@ -179,8 +190,8 @@ export default function DevedoresPage() {
           <span>Total Original Registado</span>
           <strong style={{ color: 'var(--text-muted, #666)' }}>{data ? formatMoney(totalOriginal) : '—'}</strong>
         </div>
-        <p className="debt-summary-count" style={{ alignSelf: 'center', margin: 0 }}>
-          👥 {devedores.length} cliente{devedores.length === 1 ? '' : 's'} com conta corrente
+        <p className="debt-summary-count" style={{ alignSelf: 'center', margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <Users size={16} strokeWidth={2} aria-hidden="true" /> {devedores.length} cliente{devedores.length === 1 ? '' : 's'} com conta corrente
         </p>
       </div>
 
@@ -200,20 +211,20 @@ export default function DevedoresPage() {
               <EmptyState
                 title="Nenhuma dívida registada"
                 description="Quando um cliente levar produtos a fiado, o registo aparecerá aqui."
-                icon="👥"
+                icon={<Users size={36} strokeWidth={1.8} aria-hidden="true" />}
               >
                 <button className="btn-secondary" onClick={openNew}>
-                  ➕ Registar dívida
+                  <Plus size={16} strokeWidth={2} aria-hidden="true" /> Registar dívida
                 </button>
               </EmptyState>
             ) : filtered.length === 0 ? (
               <EmptyState
                 title="Nenhum devedor encontrado"
                 description="Experimente outro nome ou limpe a pesquisa."
-                icon="🔍"
+                icon={<Search size={36} strokeWidth={1.8} aria-hidden="true" />}
               >
                 <button className="btn-secondary" onClick={() => setSearch('')}>
-                  🔄 Limpar pesquisa
+                  <RefreshCw size={14} strokeWidth={2} aria-hidden="true" /> Limpar pesquisa
                 </button>
               </EmptyState>
             ) : (
@@ -254,7 +265,20 @@ export default function DevedoresPage() {
                             <strong style={{ color: isQuitado ? 'var(--color-brand)' : 'var(--color-danger)' }}>
                               {formatMoney(saldo)}
                             </strong>
-                            {isQuitado && <span style={{ marginLeft: 6, fontSize: 12, color: 'var(--color-brand)' }}>✓ Pago</span>}
+                            {isQuitado && (
+                              <span
+                                style={{
+                                  marginLeft: 6,
+                                  fontSize: 12,
+                                  color: 'var(--color-brand)',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                }}
+                              >
+                                <CheckCircle2 size={12} strokeWidth={2} aria-hidden="true" /> Pago
+                              </span>
+                            )}
                           </td>
                           <td data-label="Total Pago" className="numeric font-mono cell-secondary">
                             {formatMoney(item.totalPago ?? '0.00')}
@@ -275,7 +299,7 @@ export default function DevedoresPage() {
                                   setDevedorParaExcluir(item);
                                 }}
                               >
-                                <span aria-hidden="true">✅</span> Confirmar pagamento
+                                <Check size={15} strokeWidth={2.2} aria-hidden="true" /> Confirmar pagamento
                               </button>
                               {!isQuitado && (
                                 <button
@@ -284,7 +308,7 @@ export default function DevedoresPage() {
                                   style={{ padding: '4px 8px', fontSize: 13 }}
                                   onClick={() => abrirAmortizacao(item)}
                                 >
-                                  💳 Amortizar
+                                  <Banknote size={14} strokeWidth={2} aria-hidden="true" /> Amortizar
                                 </button>
                               )}
                               <button
@@ -293,7 +317,7 @@ export default function DevedoresPage() {
                                 style={{ padding: '4px 8px', fontSize: 13 }}
                                 onClick={() => void abrirHistorico(item)}
                               >
-                                📋 Histórico
+                                <History size={14} strokeWidth={2} aria-hidden="true" /> Histórico
                               </button>
                             </div>
                           </td>
@@ -351,7 +375,13 @@ export default function DevedoresPage() {
                 </button>
                 <button type="submit" className="btn-primary">
                   {save.pending && <Spinner size="small" />}
-                  {save.pending ? ' A guardar…' : '💾 Registar dívida'}
+                  {save.pending ? (
+                    ' A guardar…'
+                  ) : (
+                    <>
+                      <Save size={15} strokeWidth={2} aria-hidden="true" /> Registar dívida
+                    </>
+                  )}
                 </button>
               </div>
             </fieldset>
@@ -424,7 +454,13 @@ export default function DevedoresPage() {
                   Cancelar
                 </button>
                 <button type="submit" className="btn-primary">
-                  {payment.pending ? <Spinner size="small" /> : '✅ Confirmar Pagamento'}
+                  {payment.pending ? (
+                    <Spinner size="small" />
+                  ) : (
+                    <>
+                      <Check size={16} strokeWidth={2.2} aria-hidden="true" /> Confirmar Pagamento
+                    </>
+                  )}
                 </button>
               </div>
             </fieldset>

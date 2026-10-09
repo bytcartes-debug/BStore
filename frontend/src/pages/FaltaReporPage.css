@@ -1,0 +1,149 @@
+.falta-repor-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.falta-repor-header-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.btn-voltar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-surface, #1e293b);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  color: var(--text-primary, #f8fafc);
+  padding: 0.6rem 1.2rem;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 44px;
+}
+
+.falta-repor-acoes {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.btn-acao-repor {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  background: var(--bg-surface, #1e293b);
+  color: var(--text-primary, #f8fafc);
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px;
+  transition: all 0.2s ease;
+}
+
+.btn-acao-repor:hover:not(:disabled) {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.btn-whatsapp {
+  background: #10b981;
+  color: #ffffff;
+  border-color: #10b981;
+}
+
+.btn-whatsapp:hover:not(:disabled) {
+  background: #059669;
+  border-color: #059669;
+  color: #ffffff;
+}
+
+.falta-repor-filtro {
+  margin-top: 0.5rem;
+}
+
+.repor-busca-input {
+  width: 100%;
+  max-width: 450px;
+  padding: 0.75rem 1.2rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  background: var(--bg-surface, #1e293b);
+  color: var(--text-primary, #f8fafc);
+  font-size: 1rem;
+  min-height: 44px;
+}
+
+.repor-tabela-container {
+  overflow-x: auto;
+  border-radius: 1rem;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  background: var(--bg-surface, #1e293b);
+}
+
+.repor-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.repor-tabela th {
+  text-align: left;
+  padding: 1rem 1.25rem;
+  color: var(--text-secondary, #94a3b8);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+}
+
+.repor-tabela td {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.05));
+}
+
+.repor-tabela .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.prod-nome {
+  font-weight: 600;
+  color: var(--text-primary, #f8fafc);
+}
+
+.badge-atual {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border-radius: 0.5rem;
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  font-weight: 600;
+}
+
+.badge-sugestao {
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.5rem;
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.repor-tabela th.destaque {
+  color: #34d399;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

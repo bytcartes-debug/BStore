@@ -21,6 +21,13 @@ public class PagamentoVenda {
     @Column(name = "metodo", nullable = false, length = 15)
     private String metodo;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "metodo_id")
+    private MetodoPagamento metodoPagamento;
+
+    @Column(name = "referencia", length = 100)
+    private String referencia;
+
     @Column(name = "valor", nullable = false, precision = 19, scale = 2)
     private BigDecimal valor;
 
@@ -30,9 +37,15 @@ public class PagamentoVenda {
     public PagamentoVenda() {}
 
     public PagamentoVenda(Long usuarioId, Venda venda, String metodo, BigDecimal valor, BigDecimal troco) {
+        this(usuarioId, venda, metodo, null, null, valor, troco);
+    }
+
+    public PagamentoVenda(Long usuarioId, Venda venda, String metodo, MetodoPagamento metodoPagamento, String referencia, BigDecimal valor, BigDecimal troco) {
         this.usuarioId = usuarioId;
         this.venda = venda;
         this.metodo = metodo;
+        this.metodoPagamento = metodoPagamento;
+        this.referencia = referencia;
         this.valor = valor;
         this.troco = troco != null ? troco : BigDecimal.ZERO;
     }
@@ -48,6 +61,12 @@ public class PagamentoVenda {
 
     public String getMetodo() { return metodo; }
     public void setMetodo(String metodo) { this.metodo = metodo; }
+
+    public MetodoPagamento getMetodoPagamento() { return metodoPagamento; }
+    public void setMetodoPagamento(MetodoPagamento metodoPagamento) { this.metodoPagamento = metodoPagamento; }
+
+    public String getReferencia() { return referencia; }
+    public void setReferencia(String referencia) { this.referencia = referencia; }
 
     public BigDecimal getValor() { return valor; }
     public void setValor(BigDecimal valor) { this.valor = valor; }

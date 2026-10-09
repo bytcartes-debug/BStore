@@ -37,13 +37,26 @@
   align-items: center;
   gap: 24px;
 }
+.section-title-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .store-metric {
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-primary);
   text-align: left;
-  padding: 10px 0;
+  padding: 10px;
+  transition: transform 0.18s ease, background-color 0.18s ease;
+}
+.store-metric:hover {
+  background: var(--bg-subtle);
+  transform: translateY(-2px);
+}
+.store-metric:active {
+  transform: scale(0.98);
 }
 .store-metric:hover .metric-label {
   color: var(--color-brand);
