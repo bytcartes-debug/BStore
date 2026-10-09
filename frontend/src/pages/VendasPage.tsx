@@ -846,7 +846,7 @@ export default function VendasPage() {
         setShowModal(false);
         resetCart();
         setReciboSucesso(dadosRecibo);
-        toast(`Venda #${result.numero} registada: ${formatMoney(result.total)}.`);
+        toast(`Venda registada: ${formatMoney(result.total)}.`);
         void reload();
         void notificarVendaRegistada(`${result.itens} produtos`, result.total).catch(() => {});
       } catch (err: unknown) {

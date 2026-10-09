@@ -126,6 +126,27 @@ export async function mockApi(page: Page, role = 'superuser') {
           expirado: false,
         },
       ],
+      '/api/definicoes': { controloCaixa: false, nomeLoja: 'BStore' },
+      '/api/caixa/atual': { aberta: false },
+      '/api/metodos-pagamento': [
+        { id: 1, nome: 'Dinheiro', tipo: 'DINHEIRO', ativo: true, ordem: 1 },
+        { id: 2, nome: 'M-Pesa', tipo: 'DIGITAL', ativo: true, ordem: 2 },
+        { id: 3, nome: 'e-Mola', tipo: 'DIGITAL', ativo: true, ordem: 3 },
+        { id: 4, nome: 'A fiado', tipo: 'FIADO', ativo: true, ordem: 4 },
+      ],
+      '/api/stock/falta-repor': [
+        {
+          id: 2,
+          nome: 'Açúcar branco',
+          stockAtual: '2.000',
+          stockMinimo: '5.000',
+          stockMaximo: '10.000',
+          quantidadeSugerida: '8.000',
+          unidade: 'kg',
+          preco: '95.50',
+          custo: '70.00',
+        },
+      ],
     };
     await route.fulfill({
       status: path in responses ? 200 : 404,

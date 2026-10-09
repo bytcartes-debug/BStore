@@ -173,3 +173,65 @@ test('pesquisa e senha mantêm espaço para os ícones e modais prendem o foco',
   await expect(first).toBeFocused();
   await noOverflow(page);
 });
+
+test('venda guardada offline é enviada uma única vez ao restabelecer ligação', async ({ page, context }) => {
+  await mockApi(page);
+  const vendasEnviadas: { idempotencyKey: string; body: any }[] = [];
+
+  await page.route('**/api/vendas/lote', async (route) => {
+    const postData = route.request().postDataJSON();
+    vendasEnviadas.push({
+      idempotencyKey: (route.request().headers()['idempotency-key'] as string) || '',
+      body: postData,
+    });
+    return route.fulfill({
+      status: 201,
+      json: { id: 201, numero: 5, itens: 1, total: '35.00', troco: '0.00' },
+    });
+  });
+
+  await page.goto('/');
+  await navigate(page, 'Vendas');
+  await page.getByRole('button', { name: 'Registar venda', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Pesquisar produto' }).fill('Água');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Adicionar', exact: true }).click();
+
+  // Simula modo offline do browser
+  await context.setOffline(true);
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+
+  // Submete a venda enquanto offline
+  await page.getByRole('button', { name: /Confirmar venda/i }).click();
+
+  // Venda abre recibo local e o diálogo é fechado
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: 'Fechar', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  // Nenhuma venda deve ter sido enviada por rede enquanto offline
+  expect(vendasEnviadas.length).toBe(0);
+
+  // Barra de aviso offline deve estar visível
+  await expect(page.locator('.offline-warning-bar')).toBeVisible();
+
+  // Restabelece a ligação à internet
+  await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+
+  // Clica no botão para sincronizar se estiver presente
+  const syncBtn = page.getByRole('button', { name: 'Sincronizar agora' });
+  if (await syncBtn.isVisible()) {
+    await syncBtn.click();
+  }
+
+  // Aguarda que a barra de aviso offline desapareça após envio com sucesso
+  await expect(page.locator('.offline-warning-bar')).toHaveCount(0);
+
+  // A venda deve ter chegado ao servidor exatamente uma só vez
+  expect(vendasEnviadas.length).toBe(1);
+  expect(vendasEnviadas[0].body.uuidCliente).toBeDefined();
+  expect(vendasEnviadas[0].idempotencyKey).toBe(vendasEnviadas[0].body.uuidCliente);
+});
+
