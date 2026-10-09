@@ -1,0 +1,33 @@
+ALTER TABLE produtos ADD COLUMN custo NUMERIC(19,2) DEFAULT 0 NOT NULL;
+ALTER TABLE produtos ADD COLUMN ativo BOOLEAN DEFAULT TRUE NOT NULL;
+
+CREATE TABLE movimentos_stock (
+    id BIGSERIAL PRIMARY KEY,
+    usuario_id BIGINT NOT NULL,
+    produto_id BIGINT NOT NULL,
+    tipo VARCHAR(20) NOT NULL,
+    quantidade NUMERIC(19,3) NOT NULL,
+    custo_unitario NUMERIC(19,2),
+    motivo VARCHAR(255),
+    referencia_tipo VARCHAR(20),
+    referencia_id BIGINT,
+    criado_em TIMESTAMP NOT NULL,
+    criado_por BIGINT,
+    CONSTRAINT chk_movimento_tipo CHECK (tipo IN ('ENTRADA', 'VENDA', 'AJUSTE', 'PERDA', 'DEVOLUCAO', 'STOCK_INICIAL')),
+    CONSTRAINT fk_movimentos_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+    CONSTRAINT fk_movimentos_produto FOREIGN KEY (produto_id) REFERENCES produtos(id) ON DELETE CASCADE
+);
+
+ALTER TABLE movimentos_stock ENABLE ROW LEVEL SECURITY;
+CREATE POLICY movimentos_stock_policy ON movimentos_stock
+    FOR ALL
+    USING (usuario_id = bstore_current_user_id())
+    WITH CHECK (usuario_id = bstore_current_user_id());
+
+CREATE INDEX idx_movimentos_usuario_produto_data ON movimentos_stock(usuario_id, produto_id, criado_em DESC);
+CREATE INDEX idx_movimentos_usuario_data ON movimentos_stock(usuario_id, criado_em DESC);
+
+INSERT INTO movimentos_stock (usuario_id, produto_id, tipo, quantidade, custo_unitario, motivo, criado_em, criado_por)
+SELECT usuario_id, id, 'STOCK_INICIAL', quantidade_stock, custo, 'Stock inicial do produto', CURRENT_TIMESTAMP, usuario_id
+FROM produtos
+WHERE quantidade_stock > 0;

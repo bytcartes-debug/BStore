@@ -9,6 +9,9 @@ import './DashboardPage.css';
 
 interface DashboardData {
   totalVendasHoje: string;
+  lucroHoje?: string;
+  lucroUltimos7Dias?: string;
+  valorTotalStockCusto?: string;
   totalProdutos: number;
   totalCategorias: number;
   totalDevedores: number;
@@ -27,6 +30,15 @@ interface DashboardData {
     data: string;
   }[];
   vendasPorDia: { dia: string; total: string }[];
+  vendasPorMetodo?: Record<string, string>;
+  produtosMaisVendidos?: {
+    produtoId: number;
+    nome: string;
+    quantidadeTotal?: string;
+    valorTotal?: string;
+    quantidade?: string;
+    total?: string;
+  }[];
 }
 
 const loadDashboard = (signal: AbortSignal) =>
@@ -92,6 +104,28 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
           <p className="today-value">{formatMoney(data.totalVendasHoje)}</p>
           <span className="today-description">Total registado no dia</span>
         </div>
+
+        {data.lucroHoje !== undefined && (
+          <div className="today-sales">
+            <span className="today-label">
+              <span aria-hidden="true">✨</span> Lucro Estimado de Hoje
+            </span>
+            <p className="today-value">{formatMoney(data.lucroHoje)}</p>
+            <span className="today-description">
+              {data.lucroUltimos7Dias ? `7 dias: ${formatMoney(data.lucroUltimos7Dias)}` : 'Vendas menos custo'}
+            </span>
+          </div>
+        )}
+
+        {data.valorTotalStockCusto !== undefined && (
+          <div className="today-sales">
+            <span className="today-label">
+              <span aria-hidden="true">📦</span> Valor do Stock a Custo
+            </span>
+            <p className="today-value">{formatMoney(data.valorTotalStockCusto)}</p>
+            <span className="today-description">Capital retido no inventário</span>
+          </div>
+        )}
 
         <div className="store-metrics">
           {metrics.map(({ label, value, emoji, page }) => (
@@ -257,7 +291,65 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
         </section>
       </div>
 
-      <section className="card recent-sales" aria-labelledby="recent-title">
+      {data.vendasPorMetodo && Object.keys(data.vendasPorMetodo).length > 0 && (
+        <section className="card" style={{ marginTop: 24 }} aria-labelledby="payments-title">
+          <div className="section-header">
+            <div>
+              <h3 id="payments-title">💳 Vendas por Forma de Pagamento (Hoje)</h3>
+              <p>Valores recebidos por canal</p>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
+            {Object.entries(data.vendasPorMetodo).map(([metodo, valor]) => (
+              <div key={metodo} className="card" style={{ padding: 12, textAlign: 'center', background: 'var(--bg-muted, #f8fafc)' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted, #666)', textTransform: 'uppercase' }}>
+                  {metodo}
+                </span>
+                <strong style={{ display: 'block', fontSize: 16, marginTop: 4 }}>
+                  {formatMoney(valor)}
+                </strong>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {data.produtosMaisVendidos && data.produtosMaisVendidos.length > 0 && (
+        <section className="card" style={{ marginTop: 24 }} aria-labelledby="top-products-title">
+          <div className="section-header">
+            <div>
+              <h3 id="top-products-title">🏆 Produtos Mais Vendidos</h3>
+              <p>Top produtos com maior saída</p>
+            </div>
+          </div>
+          <div className="table-wrapper">
+            <table className="responsive-table">
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th className="numeric">Quantidade Vendida</th>
+                  <th className="numeric">Total Faturado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.produtosMaisVendidos.map((p) => (
+                  <tr key={p.produtoId}>
+                    <td className="cell-name">
+                      <strong>{p.nome}</strong>
+                    </td>
+                    <td className="numeric font-mono">{formatQuantity(p.quantidadeTotal || p.quantidade || '0', '')}</td>
+                    <td className="numeric font-mono" style={{ fontWeight: 600 }}>
+                      {formatMoney(p.valorTotal || p.total || '0')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <section className="card recent-sales" aria-labelledby="recent-title" style={{ marginTop: 24 }}>
         <div className="section-header">
           <div>
             <h3 id="recent-title">🧾 Vendas recentes</h3>

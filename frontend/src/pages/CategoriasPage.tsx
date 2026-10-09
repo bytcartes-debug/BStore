@@ -104,7 +104,7 @@ export default function CategoriasPage() {
         description="Um lugar para cada produto. Organize o seu catálogo."
       >
         <button className="btn-primary" onClick={openNew}>
-          <span aria-hidden="true">➕</span> Nova Categoria
+          <span aria-hidden="true">➕</span> Nova categoria
         </button>
       </PageHeading>
 

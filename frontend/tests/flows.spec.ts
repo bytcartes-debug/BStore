@@ -12,12 +12,12 @@ test('edição de categoria preserva ícone antigo até haver escolha explícita
   await navigate(page, 'Categorias');
   await page.getByRole('button', { name: 'Editar categoria Mercearia' }).click();
   await page.getByLabel('Nome *', { exact: true }).fill('Mercearia atualizada');
-  await page.getByRole('button', { name: 'Guardar alterações', exact: true }).click();
+  await page.getByRole('button', { name: /Guardar alterações/i }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(sent[0].icone).toBe(categories[0].icone);
   await page.getByRole('button', { name: 'Editar categoria Mercearia' }).click();
-  await page.getByRole('button', { name: 'Fruta', exact: true }).click();
-  await page.getByRole('button', { name: 'Guardar alterações', exact: true }).click();
+  await page.getByRole('button', { name: 'Frutas', exact: true }).click();
+  await page.getByRole('button', { name: /Guardar alterações/i }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(sent[1].icone).toBe('fruit');
 });
@@ -44,7 +44,7 @@ test('venda concluída fecha carrinho mesmo sem notificações do dispositivo', 
   let count = 0;
   await page.route('**/api/vendas/lote', (route) => {
     count++;
-    return route.fulfill({ json: { itens: 1, total: '35.00' } });
+    return route.fulfill({ json: { id: 101, numero: 1, itens: 1, total: '35.00', troco: '0.00' } });
   });
   await page.goto('/');
   await navigate(page, 'Vendas');
@@ -53,7 +53,10 @@ test('venda concluída fecha carrinho mesmo sem notificações do dispositivo', 
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await page.getByRole('button', { name: 'Adicionar', exact: true }).click();
-  await page.getByRole('button', { name: 'Confirmar venda', exact: true }).click();
+  await page.getByRole('button', { name: /Confirmar venda/i }).click();
+  // Venda abre recibo pós-venda
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: 'Fechar', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.locator('.toast')).toContainText('Venda registada: MT 35.00');
   await page.getByRole('button', { name: 'Registar venda', exact: true }).click();
@@ -76,11 +79,58 @@ test('pagamento exige confirmação e mantém o diálogo quando falha', async ({
   await page.getByRole('button', { name: 'Confirmar pagamento de Cliente de teste' }).click();
   await page
     .getByRole('dialog')
-    .getByRole('button', { name: 'Confirmar pagamento', exact: true })
+    .getByRole('button', { name: /Confirmar pagamento/i })
     .click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('O servidor não conseguiu');
   expect(count).toBe(1);
+});
+
+test('cadastro rápido de produto pede apenas nome e preço', async ({ page }) => {
+  await mockApi(page);
+  let body: Record<string, unknown> | undefined;
+  await page.route('**/api/produtos', (route) => {
+    if (route.request().method() === 'POST') {
+      body = route.request().postDataJSON();
+      return route.fulfill({
+        status: 201,
+        json: { id: 99, nome: body?.nome, preco: body?.preco, stock: '0.000', categoriaId: 1 },
+      });
+    }
+    return route.fallback();
+  });
+  await page.goto('/');
+  await navigate(page, 'Produtos');
+  await page.getByRole('button', { name: /Adicionar produto/i }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByLabel('Nome *', { exact: true }).fill('Sabão em barra');
+  await page.getByLabel('Preço (MT) *', { exact: true }).fill('45.00');
+  await page.getByRole('button', { name: /Criar produto/i }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(body).toMatchObject({
+    nome: 'Sabão em barra',
+    preco: '45.00',
+  });
+});
+
+test('entrada de stock regista compra com custo e quantidade', async ({ page }) => {
+  await mockApi(page);
+  let body: Record<string, unknown> | undefined;
+  await page.route('**/api/stock/entradas', (route) => {
+    body = route.request().postDataJSON();
+    return route.fulfill({
+      status: 201,
+      json: [{ id: 1, produtoId: 1, tipo: 'ENTRADA', quantidade: '5.000', custoUnitario: '70.00' }],
+    });
+  });
+  await page.goto('/');
+  await navigate(page, 'Produtos');
+  await page.getByRole('button', { name: /Entrada/i }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: /Adicionar à lista/i }).click();
+  await page.getByRole('button', { name: /Confirmar entrada/i }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(body).toBeDefined();
 });
 
 test('admin cria utilizador sem depender da sessão antiga no localStorage', async ({ page }) => {

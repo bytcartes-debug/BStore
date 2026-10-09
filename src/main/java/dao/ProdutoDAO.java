@@ -13,10 +13,15 @@ public class ProdutoDAO extends GenericDAO<Produto> {
     }
 
     public List<Produto> listarOrdenado(Long usuarioId) {
+        return listarOrdenado(usuarioId, false);
+    }
+
+    public List<Produto> listarOrdenado(Long usuarioId, boolean incluirArquivados) {
         EntityManager em = getEM();
         try {
+            String where = " WHERE p.usuarioId = :usuarioId" + (!incluirArquivados ? " AND p.ativo = true" : "");
             return em.createQuery(
-                "SELECT p FROM Produto p LEFT JOIN FETCH p.categoria WHERE p.usuarioId = :usuarioId ORDER BY p.nome",
+                "SELECT p FROM Produto p LEFT JOIN FETCH p.categoria" + where + " ORDER BY p.nome",
                 Produto.class)
                 .setParameter("usuarioId", usuarioId)
                 .getResultList();
@@ -27,6 +32,11 @@ public class ProdutoDAO extends GenericDAO<Produto> {
 
     public Pagina<Produto> listarPagina(Long usuarioId, int page, int pageSize, String pesquisa,
                                         Long categoriaId, String stock, String ordem) {
+        return listarPagina(usuarioId, page, pageSize, pesquisa, categoriaId, stock, ordem, false);
+    }
+
+    public Pagina<Produto> listarPagina(Long usuarioId, int page, int pageSize, String pesquisa,
+                                        Long categoriaId, String stock, String ordem, boolean incluirArquivados) {
         int offset = Pagina.offset(page, pageSize);
         String termo = Pagina.pesquisa(pesquisa);
         if (!"all".equals(stock) && !"low".equals(stock)) throw new IllegalArgumentException("Filtro de stock inválido.");
@@ -38,6 +48,7 @@ public class ProdutoDAO extends GenericDAO<Produto> {
             default: throw new IllegalArgumentException("Ordenação inválida.");
         }
         String where = " WHERE p.usuarioId = :uid"
+            + (!incluirArquivados ? " AND p.ativo = true" : "")
             + (termo.isEmpty() ? "" : " AND (LOWER(p.nome) LIKE :q ESCAPE '!' OR LOWER(p.codigoBarras) LIKE :q ESCAPE '!')")
             + (categoriaId == null ? "" : " AND p.categoria.id = :categoria")
             + ("low".equals(stock) ? " AND p.quantidadeStock <= p.stockMinimo" : "");
@@ -67,6 +78,14 @@ public class ProdutoDAO extends GenericDAO<Produto> {
 
     public Produto buscarPorIdParaVenda(EntityManager em, Long id, Long usuarioId) {
         List<Produto> produtos = em.createQuery(
+            "SELECT p FROM Produto p WHERE p.id = :id AND p.usuarioId = :uid AND p.ativo = true", Produto.class)
+            .setParameter("id", id).setParameter("uid", usuarioId)
+            .setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
+        return produtos.isEmpty() ? null : produtos.get(0);
+    }
+
+    public Produto buscarPorIdParaBloqueio(EntityManager em, Long id, Long usuarioId) {
+        List<Produto> produtos = em.createQuery(
             "SELECT p FROM Produto p WHERE p.id = :id AND p.usuarioId = :uid", Produto.class)
             .setParameter("id", id).setParameter("uid", usuarioId)
             .setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
@@ -90,7 +109,7 @@ public class ProdutoDAO extends GenericDAO<Produto> {
         EntityManager em = getEM();
         try {
             return em.createQuery(
-                "SELECT p FROM Produto p WHERE LOWER(p.nome) LIKE :nome AND p.usuarioId = :usuarioId ORDER BY p.nome",
+                "SELECT p FROM Produto p WHERE LOWER(p.nome) LIKE :nome AND p.usuarioId = :usuarioId AND p.ativo = true ORDER BY p.nome",
                 Produto.class)
                 .setParameter("nome", "%" + nome.toLowerCase() + "%")
                 .setParameter("usuarioId", usuarioId)
@@ -104,7 +123,7 @@ public class ProdutoDAO extends GenericDAO<Produto> {
         EntityManager em = getEM();
         try {
             return em.createQuery(
-                "SELECT p FROM Produto p WHERE p.categoria.id = :categoriaId AND p.usuarioId = :usuarioId ORDER BY p.nome",
+                "SELECT p FROM Produto p WHERE p.categoria.id = :categoriaId AND p.usuarioId = :usuarioId AND p.ativo = true ORDER BY p.nome",
                 Produto.class)
                 .setParameter("categoriaId", categoriaId)
                 .setParameter("usuarioId", usuarioId)
@@ -116,13 +135,13 @@ public class ProdutoDAO extends GenericDAO<Produto> {
 
     public List<Produto> buscarStockBaixo(Long usuarioId) {
         return util.JPAUtil.emTransacao(usuarioId, em -> em.createQuery(
-            "SELECT p FROM Produto p LEFT JOIN FETCH p.categoria WHERE p.quantidadeStock <= p.stockMinimo AND p.usuarioId = :uid ORDER BY p.quantidadeStock", Produto.class)
+            "SELECT p FROM Produto p LEFT JOIN FETCH p.categoria WHERE p.quantidadeStock <= p.stockMinimo AND p.usuarioId = :uid AND p.ativo = true ORDER BY p.quantidadeStock", Produto.class)
             .setParameter("uid", usuarioId).getResultList());
     }
 
     public long contarTodos(Long usuarioId) {
         return util.JPAUtil.emTransacao(usuarioId, em -> em.createQuery(
-            "SELECT COUNT(p) FROM Produto p WHERE p.usuarioId = :uid", Long.class)
+            "SELECT COUNT(p) FROM Produto p WHERE p.usuarioId = :uid AND p.ativo = true", Long.class)
             .setParameter("uid", usuarioId).getSingleResult());
     }
 
@@ -130,7 +149,7 @@ public class ProdutoDAO extends GenericDAO<Produto> {
         EntityManager em = getEM();
         try {
             List<Produto> result = em.createQuery(
-                "SELECT p FROM Produto p LEFT JOIN FETCH p.categoria WHERE p.codigoBarras = :codigo AND p.usuarioId = :usuarioId",
+                "SELECT p FROM Produto p LEFT JOIN FETCH p.categoria WHERE p.codigoBarras = :codigo AND p.usuarioId = :usuarioId AND p.ativo = true",
                 Produto.class)
                 .setParameter("codigo", codigo)
                 .setParameter("usuarioId", usuarioId)

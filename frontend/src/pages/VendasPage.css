@@ -198,4 +198,21 @@
   .sale-payment {
     grid-template-columns: minmax(0, 1fr);
   }
+  .sale-payment-split-row {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 8px !important;
+  }
+  .sale-payment-split-row > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+.sale-payment-split-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(110px, 1fr) 40px;
+  gap: 12px;
+  align-items: end;
+  background: var(--bg-subtle);
+  padding: 10px;
+  border-radius: 8px;
 }

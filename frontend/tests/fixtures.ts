@@ -28,32 +28,41 @@ export const products = [
     id: 1,
     nome: 'Arroz agulha de qualidade superior',
     preco: '80.00',
+    custo: '50.00',
+    margem: '37.50',
     stock: '25.500',
     stockMinimo: '5.000',
     unidade: 'kg',
     categoriaId: 1,
     categoriaNome: 'Mercearia',
     codigoBarras: '5601234567890',
+    ativo: true,
   },
   {
     id: 2,
     nome: 'Açúcar branco',
     preco: '95.50',
+    custo: '70.00',
+    margem: '26.70',
     stock: '2.000',
     stockMinimo: '5.000',
     unidade: 'kg',
     categoriaId: 1,
     categoriaNome: 'Mercearia',
+    ativo: true,
   },
   {
     id: 3,
     nome: 'Água mineral 1,5 L',
     preco: '35.00',
+    custo: '20.00',
+    margem: '42.86',
     stock: '40.000',
     stockMinimo: '10.000',
     unidade: 'un',
     categoriaId: 2,
     categoriaNome: 'Bebidas',
+    ativo: true,
   },
 ];
 const sales = [
@@ -62,6 +71,9 @@ const sales = [
 ];
 export const dashboard = {
   totalVendasHoje: '190.00',
+  lucroHoje: '65.00',
+  lucroUltimos7Dias: '450.00',
+  valorTotalStockCusto: '2215.00',
   totalProdutos: 3,
   totalCategorias: 2,
   totalDevedores: 1,
@@ -127,7 +139,7 @@ export async function navigate(page: Page, name: string) {
   if (mobile) await page.getByRole('button', { name: 'Abrir menu', exact: true }).click();
   await page
     .getByRole('navigation', { name: 'Navegação principal' })
-    .getByRole('button', { name, exact: true })
+    .getByRole('button', { name: new RegExp(`^${name}`, 'i') })
     .click();
   if (mobile) await expect(page.getByRole('dialog')).toHaveCount(0);
 }

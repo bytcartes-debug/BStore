@@ -44,6 +44,7 @@ public class ApiServer {
     private final SessaoDAO sessaoDAO = new SessaoDAO();
     private final dao.ProdutoDAO produtoDAO = new dao.ProdutoDAO();
     private final dao.VendaDAO vendaDAO = new dao.VendaDAO();
+    private final service.StockService stockService = new service.StockService();
     private final Javalin app;
 
     public ApiServer() {
@@ -84,7 +85,10 @@ public class ApiServer {
         app.exception(IllegalStateException.class,
             (e, ctx) -> responderErro(ctx, HttpStatus.CONFLICT, e.getMessage()));
         app.exception(Exception.class,
-            (e, ctx) -> responderErro(ctx, HttpStatus.INTERNAL_SERVER_ERROR, "Ocorreu um erro interno."));
+            (e, ctx) -> {
+                e.printStackTrace();
+                responderErro(ctx, HttpStatus.INTERNAL_SERVER_ERROR, "Ocorreu um erro interno: " + e.getMessage());
+            });
     }
 
     private void configurarSeguranca() {
@@ -175,14 +179,29 @@ public class ApiServer {
         app.post("/api/produtos", this::criarProduto);
         app.put("/api/produtos/{id}", this::atualizarProduto);
         app.delete("/api/produtos/{id}", this::deletarProduto);
+        app.get("/api/produtos/{id}/movimentos", this::listarMovimentosProduto);
+
+        app.post("/api/stock/entradas", this::registarEntradaStock);
+        app.post("/api/stock/ajustes", this::registarAjusteStock);
+        app.get("/api/stock/contagem/previa", this::previaContagem);
+        app.post("/api/stock/contagem/previa", this::previaContagem);
+        app.post("/api/stock/contagem", this::confirmarContagem);
+        app.get("/api/stock/movimentos", this::listarMovimentosStock);
+        app.get("/api/stock/integridade/{id}", this::verificarIntegridadeStock);
 
         app.get("/api/vendas", this::listarVendas);
+        app.get("/api/vendas/{id}", this::obterVenda);
         app.post("/api/vendas", this::registarVenda);
         app.post("/api/vendas/lote", this::registarVendaLote);
+        app.post("/api/vendas/{id}/anular", this::anularVenda);
+
+        app.get("/api/caixa/fecho", this::fechoCaixa);
 
         app.get("/api/devedores", this::listarDevedores);
         app.post("/api/devedores", this::criarDevedor);
         app.delete("/api/devedores/{id}", this::deletarDevedor);
+        app.post("/api/devedores/{id}/pagamentos", this::registarPagamentoDivida);
+        app.get("/api/devedores/{id}/pagamentos", this::listarPagamentosDivida);
 
         app.get("/api/usuarios", this::listarUsuarios);
         app.post("/api/usuarios", this::criarUsuario);
@@ -246,11 +265,46 @@ public class ApiServer {
             .map(this::vendaJson).collect(Collectors.toList());
 
         Map<String, Object> dashboard = new LinkedHashMap<>();
-        dashboard.put("totalVendasHoje", decimalJson(totais.getOrDefault(hoje, BigDecimal.ZERO), 2));
+        BigDecimal totalVendasHoje = totais.getOrDefault(hoje, BigDecimal.ZERO);
+        BigDecimal totalVendas7Dias = totais.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        java.time.LocalDateTime inicioHoje = hoje.atStartOfDay();
+        java.time.LocalDateTime fimHoje = hoje.atTime(23, 59, 59, 999999999);
+        java.time.LocalDateTime inicio7Dias = hoje.minusDays(6).atStartOfDay();
+
+        BigDecimal custoVendasHoje = stockService.calcularCustoVendasPeriodo(uid, inicioHoje, fimHoje);
+        BigDecimal custoVendas7Dias = stockService.calcularCustoVendasPeriodo(uid, inicio7Dias, fimHoje);
+        BigDecimal lucroHoje = totalVendasHoje.subtract(custoVendasHoje);
+        BigDecimal lucro7Dias = totalVendas7Dias.subtract(custoVendas7Dias);
+        BigDecimal valorTotalStockCusto = stockService.calcularValorTotalStockCusto(uid);
+
+        dashboard.put("totalVendasHoje", decimalJson(totalVendasHoje, 2));
+        dashboard.put("lucroHoje", decimalJson(lucroHoje, 2));
+        dashboard.put("lucroUltimos7Dias", decimalJson(lucro7Dias, 2));
+        dashboard.put("valorTotalStockCusto", decimalJson(valorTotalStockCusto, 2));
         dashboard.put("totalProdutos", service.totalProdutos(uid));
         dashboard.put("totalCategorias", categoriaDAO.contarTodos(uid));
         dashboard.put("totalDevedores", devedorDAO.contarTodos(uid));
         dashboard.put("alertasStock", alertas);
+        Map<String, BigDecimal> totaisMetodo = new dao.PagamentoVendaDAO().totaisPorMetodo(uid, hoje);
+        Map<String, String> metodoFormatado = new LinkedHashMap<>();
+        totaisMetodo.forEach((k, v) -> metodoFormatado.put(k, decimalJson(v, 2)));
+        dashboard.put("vendasPorMetodo", metodoFormatado);
+
+        List<Object[]> maisVendidosRaw = new dao.ItemVendaDAO().produtosMaisVendidos(uid, hoje.minusDays(6), hoje, 5);
+        List<Map<String, Object>> maisVendidos = new ArrayList<>();
+        for (Object[] r : maisVendidosRaw) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("produtoId", r[0]);
+            item.put("nome", r[1]);
+            item.put("quantidade", decimalJson((BigDecimal) r[2], 3));
+            item.put("quantidadeTotal", decimalJson((BigDecimal) r[2], 3));
+            item.put("total", decimalJson((BigDecimal) r[3], 2));
+            item.put("valorTotal", decimalJson((BigDecimal) r[3], 2));
+            maisVendidos.add(item);
+        }
+        dashboard.put("produtosMaisVendidos", maisVendidos);
+
         dashboard.put("vendasRecentes", recentes);
         dashboard.put("vendasPorDia", vendasPorDia);
         ctx.json(dashboard);
@@ -306,22 +360,25 @@ public class ApiServer {
     }
 
     private void listarProdutos(Context ctx) {
+        boolean incluirArquivados = "true".equalsIgnoreCase(ctx.queryParam("incluirArquivados"));
         if (ctx.queryParam("page") != null) {
             ctx.json(produtoDAO.listarPagina(utilizadorId(ctx), inteiroQuery(ctx, "page", 1), inteiroQuery(ctx, "pageSize", 25),
-                ctx.queryParam("q"), longQuery(ctx, "categoriaId"), queryPadrao(ctx, "stock", "all"), queryPadrao(ctx, "sort", "name"))
+                ctx.queryParam("q"), longQuery(ctx, "categoriaId"), queryPadrao(ctx, "stock", "all"), queryPadrao(ctx, "sort", "name"), incluirArquivados)
                 .map(this::produtoJson));
             return;
         }
-        ctx.json(service.listarProdutos(utilizadorId(ctx)).stream()
+        ctx.json(service.listarProdutos(utilizadorId(ctx), incluirArquivados).stream()
             .map(this::produtoJson).collect(Collectors.toList()));
     }
 
     private void criarProduto(Context ctx) {
         Long uid = utilizadorId(ctx);
         Map<String, Object> body = corpo(ctx);
+        BigDecimal custo = body.containsKey("custo") ? decimalObrigatorio(body, "custo") : BigDecimal.ZERO;
         Produto produto = service.criarProduto(
             textoObrigatorio(body, "nome"),
             decimalObrigatorio(body, "preco"),
+            custo,
             decimalComPadrao(body, "stock", "0"),
             textoComPadrao(body, "unidade", "un"),
             decimalComPadrao(body, "stockMinimo", "5"),
@@ -335,11 +392,14 @@ public class ApiServer {
     private void atualizarProduto(Context ctx) {
         Long uid = utilizadorId(ctx);
         Map<String, Object> body = corpo(ctx);
+        BigDecimal custo = body.containsKey("custo") ? decimalObrigatorio(body, "custo") : null;
+        BigDecimal stock = body.containsKey("stock") ? decimalObrigatorio(body, "stock") : null;
         Produto produto = service.actualizarProduto(
             idPath(ctx),
             textoObrigatorio(body, "nome"),
             decimalObrigatorio(body, "preco"),
-            decimalComPadrao(body, "stock", "0"),
+            custo,
+            stock,
             textoComPadrao(body, "unidade", "un"),
             decimalComPadrao(body, "stockMinimo", "5"),
             longObrigatorio(body, "categoriaId"),
@@ -363,12 +423,26 @@ public class ApiServer {
     }
 
     private void listarVendas(Context ctx) {
+        Long uid = utilizadorId(ctx);
         if (ctx.queryParam("page") != null) {
-            ctx.json(vendaDAO.listarPagina(utilizadorId(ctx), inteiroQuery(ctx, "page", 1), inteiroQuery(ctx, "pageSize", 25),
-                ctx.queryParam("q"), dataQuery(ctx, "inicio"), dataQuery(ctx, "fim")).map(this::vendaJson));
+            int page = inteiroQuery(ctx, "page", 1);
+            int pageSize = inteiroQuery(ctx, "pageSize", 25);
+            String q = ctx.queryParam("q");
+            LocalDate inicio = dataQuery(ctx, "inicio");
+            LocalDate fim = dataQuery(ctx, "fim");
+            String metodo = ctx.queryParam("metodo");
+            String estado = ctx.queryParam("estado");
+            ctx.json(vendaDAO.listarPagina(uid, page, pageSize, q, inicio, fim, metodo, estado).map(this::vendaJson));
             return;
         }
-        ctx.json(service.listarVendas(utilizadorId(ctx)).stream().map(this::vendaJson).collect(Collectors.toList()));
+        ctx.json(service.listarVendas(uid).stream().map(this::vendaJson).collect(Collectors.toList()));
+    }
+
+    private void obterVenda(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long id = idPath(ctx);
+        Venda venda = service.buscarVendaPorId(id, uid);
+        ctx.json(vendaJson(venda));
     }
 
     private void registarVenda(Context ctx) {
@@ -378,26 +452,221 @@ public class ApiServer {
         ctx.status(HttpStatus.CREATED).json(vendaJson(venda));
     }
 
+    @SuppressWarnings("unchecked")
     private void registarVendaLote(Context ctx) {
-        List<Map<String, Object>> itens = itensVenda(ctx);
+        Long uid = utilizadorId(ctx);
         String chave = ctx.header("Idempotency-Key");
+
+        Object rawBody = ctx.bodyAsClass(Object.class);
+        List<Map<String, Object>> itens = new ArrayList<>();
+        List<Map<String, Object>> pagamentos = null;
+        Long clienteId = null;
+        String observacao = null;
+
+        if (rawBody instanceof List) {
+            for (Object o : (List<?>) rawBody) {
+                if (o instanceof Map) itens.add((Map<String, Object>) o);
+            }
+        } else if (rawBody instanceof Map) {
+            Map<String, Object> map = (Map<String, Object>) rawBody;
+            if (map.containsKey("itens") && map.get("itens") instanceof List) {
+                for (Object o : (List<?>) map.get("itens")) {
+                    if (o instanceof Map) itens.add((Map<String, Object>) o);
+                }
+            }
+            if (map.containsKey("pagamentos") && map.get("pagamentos") instanceof List) {
+                pagamentos = new ArrayList<>();
+                for (Object o : (List<?>) map.get("pagamentos")) {
+                    if (o instanceof Map) pagamentos.add((Map<String, Object>) o);
+                }
+            }
+            if (map.containsKey("clienteId") && map.get("clienteId") != null && !map.get("clienteId").toString().isBlank()) {
+                clienteId = Long.valueOf(map.get("clienteId").toString());
+            }
+            if (map.containsKey("observacao") && map.get("observacao") != null) {
+                observacao = map.get("observacao").toString();
+            }
+        }
+
+        if (itens.isEmpty()) {
+            throw new IllegalArgumentException("Carrinho está vazio.");
+        }
+
         if (chave != null) {
-            service.VendaIdempotenteService.Resultado resultado = vendaIdempotente.registar(itens, utilizadorId(ctx), chave);
+            service.VendaIdempotenteService.Resultado resultado =
+                vendaIdempotente.registar(itens, pagamentos, clienteId, observacao, uid, chave);
             ctx.header("Idempotency-Replayed", Boolean.toString(resultado.repetido));
-            ctx.status(resultado.repetido ? HttpStatus.OK : HttpStatus.CREATED).contentType("application/json").result(resultado.json);
+            ctx.status(resultado.repetido ? HttpStatus.OK : HttpStatus.CREATED)
+                .contentType("application/json")
+                .result(resultado.json);
             return;
         }
-        ctx.status(HttpStatus.CREATED).json(util.VendaJson.lote(service.registarVendaLote(itens, utilizadorId(ctx))));
+
+        Map<String, Object> resultado = service.registarVendaLote(itens, pagamentos, clienteId, observacao, uid);
+        ctx.status(HttpStatus.CREATED).json(util.VendaJson.lote(resultado));
+    }
+
+    private void anularVenda(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long id = idPath(ctx);
+        Map<String, Object> body = corpo(ctx);
+        String motivo = textoObrigatorio(body, "motivo");
+        Venda venda = service.anularVenda(id, motivo, uid);
+        ctx.json(vendaJson(venda));
+    }
+
+    private void fechoCaixa(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        LocalDate data = dataQuery(ctx, "data");
+        if (data == null) data = LocalDate.now();
+        ctx.json(service.fechoCaixa(data, uid));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void registarEntradaStock(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Object rawBody = ctx.bodyAsClass(Object.class);
+        List<Map<String, Object>> itens = new ArrayList<>();
+        String motivoGeral = "Entrada de stock";
+
+        if (rawBody instanceof List) {
+            for (Object obj : (List<?>) rawBody) {
+                if (obj instanceof Map) itens.add((Map<String, Object>) obj);
+            }
+        } else if (rawBody instanceof Map) {
+            Map<String, Object> map = (Map<String, Object>) rawBody;
+            if (map.containsKey("itens") && map.get("itens") instanceof List) {
+                if (map.containsKey("motivo") && map.get("motivo") != null) motivoGeral = map.get("motivo").toString();
+                for (Object obj : (List<?>) map.get("itens")) {
+                    if (obj instanceof Map) itens.add((Map<String, Object>) obj);
+                }
+            } else {
+                itens.add(map);
+            }
+        }
+
+        if (itens.isEmpty()) {
+            throw new IllegalArgumentException("Nenhum item informado para entrada de stock.");
+        }
+
+        List<model.MovimentoStock> movimentos = stockService.registarEntradaLote(uid, itens, motivoGeral, uid);
+        ctx.status(HttpStatus.CREATED).json(movimentos.stream().map(this::movimentoJson).collect(Collectors.toList()));
+    }
+
+    private void registarAjusteStock(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Map<String, Object> body = corpo(ctx);
+        Long produtoId = longObrigatorio(body, "produtoId");
+        BigDecimal novaQtd = body.containsKey("novaQuantidade") && body.get("novaQuantidade") != null
+                ? decimalObrigatorio(body, "novaQuantidade") : null;
+        BigDecimal diferenca = body.containsKey("diferenca") && body.get("diferenca") != null
+                ? decimalObrigatorio(body, "diferenca") : null;
+        String tipo = body.containsKey("tipo") && body.get("tipo") != null ? body.get("tipo").toString() : null;
+        String motivo = textoObrigatorio(body, "motivo");
+
+        model.MovimentoStock mov = stockService.registarAjuste(uid, produtoId, novaQtd, diferenca, tipo, motivo, uid);
+        if (mov == null) {
+            ctx.status(HttpStatus.OK).json(Map.of("mensagem", "Sem alteração de stock"));
+        } else {
+            ctx.status(HttpStatus.CREATED).json(movimentoJson(mov));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void previaContagem(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        List<Map<String, Object>> contagens = new ArrayList<>();
+        if ("POST".equalsIgnoreCase(ctx.method().name()) || (ctx.body() != null && !ctx.body().isBlank())) {
+            Object raw = ctx.bodyAsClass(Object.class);
+            if (raw instanceof List) {
+                for (Object o : (List<?>) raw) {
+                    if (o instanceof Map) contagens.add((Map<String, Object>) o);
+                }
+            } else if (raw instanceof Map && ((Map<?, ?>) raw).containsKey("itens")) {
+                for (Object o : (List<?>) ((Map<?, ?>) raw).get("itens")) {
+                    if (o instanceof Map) contagens.add((Map<String, Object>) o);
+                }
+            }
+        }
+        ctx.json(stockService.previaContagem(uid, contagens));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void confirmarContagem(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Object raw = ctx.bodyAsClass(Object.class);
+        List<Map<String, Object>> contagens = new ArrayList<>();
+        if (raw instanceof List) {
+            for (Object o : (List<?>) raw) {
+                if (o instanceof Map) contagens.add((Map<String, Object>) o);
+            }
+        } else if (raw instanceof Map && ((Map<?, ?>) raw).containsKey("itens")) {
+            for (Object o : (List<?>) ((Map<?, ?>) raw).get("itens")) {
+                if (o instanceof Map) contagens.add((Map<String, Object>) o);
+            }
+        }
+        List<model.MovimentoStock> movs = stockService.confirmarContagem(uid, contagens, uid);
+        ctx.status(HttpStatus.CREATED).json(movs.stream().map(this::movimentoJson).collect(Collectors.toList()));
+    }
+
+    private void listarMovimentosProduto(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long produtoId = idPath(ctx);
+        int page = inteiroQuery(ctx, "page", 1);
+        int pageSize = inteiroQuery(ctx, "pageSize", 25);
+        ctx.json(stockService.listarMovimentosPorProduto(uid, produtoId, page, pageSize).map(this::movimentoJson));
+    }
+
+    private void listarMovimentosStock(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        int page = inteiroQuery(ctx, "page", 1);
+        int pageSize = inteiroQuery(ctx, "pageSize", 25);
+        String tipo = ctx.queryParam("tipo");
+        LocalDate inicioData = dataQuery(ctx, "inicio");
+        LocalDate fimData = dataQuery(ctx, "fim");
+        java.time.LocalDateTime inicio = inicioData != null ? inicioData.atStartOfDay() : null;
+        java.time.LocalDateTime fim = fimData != null ? fimData.atTime(23, 59, 59) : null;
+        ctx.json(stockService.listarMovimentos(uid, page, pageSize, tipo, inicio, fim).map(this::movimentoJson));
+    }
+
+    private void verificarIntegridadeStock(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long produtoId = idPath(ctx);
+        boolean integro = stockService.verificarIntegridadeStock(uid, produtoId);
+        ctx.json(Map.of("produtoId", produtoId, "integro", integro));
+    }
+
+    private Map<String, Object> movimentoJson(model.MovimentoStock m) {
+        Map<String, Object> res = new LinkedHashMap<>();
+        res.put("id", m.getId());
+        res.put("produtoId", m.getProduto() != null ? m.getProduto().getId() : null);
+        res.put("produtoNome", m.getProduto() != null ? m.getProduto().getNome() : "");
+        res.put("tipo", m.getTipo());
+        res.put("quantidade", decimalJson(m.getQuantidade(), 3));
+        res.put("custoUnitario", decimalJson(m.getCustoUnitario(), 2));
+        res.put("motivo", m.getMotivo() == null ? "" : m.getMotivo());
+        res.put("referenciaTipo", m.getReferenciaTipo());
+        res.put("referenciaId", m.getReferenciaId());
+        res.put("criadoEm", m.getCriadoEm() != null ? m.getCriadoEm().toString() : null);
+        return res;
     }
 
     private void listarDevedores(Context ctx) {
-        List<Map<String, Object>> resultado = devedorDAO.listarTodos(utilizadorId(ctx)).stream().map(d -> {
+        Long uid = utilizadorId(ctx);
+        dao.PagamentoDividaDAO pagDAO = new dao.PagamentoDividaDAO();
+        List<Map<String, Object>> resultado = devedorDAO.listarTodos(uid).stream().map(d -> {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", d.getId());
             item.put("nome", d.getNome());
             item.put("divida", decimalJson(d.getDivida(), 2));
+            BigDecimal pagos = pagDAO.totalPagoPorDevedor(uid, d.getId());
+            BigDecimal saldo = d.getDivida().subtract(pagos);
+            if (saldo.compareTo(BigDecimal.ZERO) < 0) saldo = BigDecimal.ZERO;
+            item.put("saldo", decimalJson(saldo, 2));
+            item.put("totalPago", decimalJson(pagos, 2));
             item.put("descricao", d.getDescricao() == null ? "" : d.getDescricao());
-            item.put("data", d.getData().format(DATA_FORMATADA));
+            item.put("data", d.getData() != null ? d.getData().format(DATA_FORMATADA) : "");
+            item.put("vendaId", d.getVendaId());
             return item;
         }).collect(Collectors.toList());
         ctx.json(resultado);
@@ -416,14 +685,45 @@ public class ApiServer {
         devedor.setData(LocalDate.now());
         devedor.setUsuarioId(utilizadorId(ctx));
         devedor = devedorDAO.salvar(devedor);
-        ctx.status(HttpStatus.CREATED).json(Map.of("id", devedor.getId()));
+        ctx.status(HttpStatus.CREATED).json(Map.of("id", devedor.getId(), "saldo", decimalJson(divida, 2)));
+    }
+
+    private void registarPagamentoDivida(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long id = idPath(ctx);
+        Map<String, Object> body = corpo(ctx);
+        BigDecimal valor = decimalObrigatorio(body, "valor");
+        String metodo = textoObrigatorio(body, "metodo");
+        String observacao = texto(body, "observacao");
+        Map<String, Object> resultado = service.registarPagamentoDivida(id, valor, metodo, observacao, uid);
+        ctx.status(HttpStatus.CREATED).json(resultado);
+    }
+
+    private void listarPagamentosDivida(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long id = idPath(ctx);
+        List<model.PagamentoDivida> pagamentos = new dao.PagamentoDividaDAO().listarPorDevedor(uid, id);
+        List<Map<String, Object>> resultado = pagamentos.stream().map(p -> {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", p.getId());
+            item.put("valor", decimalJson(p.getValor(), 2));
+            item.put("metodo", p.getMetodo());
+            item.put("criadoEm", p.getCriadoEm() != null ? p.getCriadoEm().toString() : "");
+            item.put("observacao", p.getObservacao() == null ? "" : p.getObservacao());
+            return item;
+        }).collect(Collectors.toList());
+        ctx.json(resultado);
     }
 
     private void deletarDevedor(Context ctx) {
-        if (!devedorDAO.deletar(idPath(ctx), utilizadorId(ctx))) {
-            throw new BarracaService.RecursoNaoEncontradoException("Dívida não encontrada.");
+        try {
+            if (!devedorDAO.deletar(idPath(ctx), utilizadorId(ctx))) {
+                throw new BarracaService.RecursoNaoEncontradoException("Dívida não encontrada.");
+            }
+            ctx.status(HttpStatus.NO_CONTENT);
+        } catch (IllegalStateException e) {
+            throw new BarracaService.ConflitoException(e.getMessage());
         }
-        ctx.status(HttpStatus.NO_CONTENT);
     }
 
     private void listarUsuarios(Context ctx) {
@@ -536,7 +836,17 @@ public class ApiServer {
         resultado.put("id", produto.getId());
         resultado.put("nome", produto.getNome());
         resultado.put("preco", decimalJson(produto.getPreco(), 2));
-        resultado.put("custo", "0.00");
+        BigDecimal custo = produto.getCusto() != null ? produto.getCusto() : BigDecimal.ZERO;
+        resultado.put("custo", decimalJson(custo, 2));
+        BigDecimal margem = BigDecimal.ZERO;
+        if (produto.getPreco() != null && produto.getPreco().compareTo(BigDecimal.ZERO) > 0) {
+            margem = produto.getPreco().subtract(custo)
+                .divide(produto.getPreco(), 4, RoundingMode.HALF_UP)
+                .multiply(new BigDecimal("100"))
+                .setScale(2, RoundingMode.HALF_UP);
+        }
+        resultado.put("margem", decimalJson(margem, 2));
+        resultado.put("ativo", produto.isAtivo());
         resultado.put("stock", decimalJson(produto.getQuantidadeStock(), 3));
         resultado.put("stockMinimo", decimalJson(produto.getStockMinimo(), 3));
         resultado.put("unidade", produto.getUnidade());

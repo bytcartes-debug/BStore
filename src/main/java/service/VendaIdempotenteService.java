@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -20,11 +21,20 @@ public final class VendaIdempotenteService {
     private final ObjectMapper mapper = new ObjectMapper();
 
     public Resultado registar(List<Map<String, Object>> itens, Long usuarioId, String chave) {
+        return registar(itens, null, null, null, usuarioId, chave);
+    }
+
+    public Resultado registar(List<Map<String, Object>> itens,
+                             List<Map<String, Object>> pagamentos,
+                             Long clienteId,
+                             String observacao,
+                             Long usuarioId,
+                             String chave) {
         if (chave == null || !chave.matches("[A-Za-z0-9_-]{8,80}")) {
             throw new IllegalArgumentException("Idempotency-Key deve ter entre 8 e 80 letras, números, hífen ou underscore.");
         }
         Map<Long, BigDecimal> quantidades = BarracaService.normalizarCarrinho(itens);
-        String fingerprint = fingerprint(quantidades);
+        String fingerprint = fingerprint(quantidades, pagamentos, clienteId);
         PedidoVendaId id = new PedidoVendaId(usuarioId, chave);
         try {
             return JPAUtil.emTransacao(usuarioId, em -> {
@@ -34,7 +44,7 @@ public final class VendaIdempotenteService {
                 em.persist(pedido);
                 // A chave única é reservada antes de bloquear ou descontar qualquer produto.
                 em.flush();
-                Map<String, Object> venda = service.executarVendaLote(em, quantidades, usuarioId);
+                Map<String, Object> venda = service.executarVendaLote(em, quantidades, pagamentos, clienteId, observacao, usuarioId);
                 String json = serializar(VendaJson.lote(venda));
                 pedido.setResposta(json);
                 return new Resultado(json, false);
@@ -70,9 +80,23 @@ public final class VendaIdempotenteService {
         catch (JsonProcessingException e) { throw new IllegalStateException("Não foi possível preparar o resultado da venda.", e); }
     }
 
-    private String fingerprint(Map<Long, BigDecimal> quantidades) {
+    private String fingerprint(Map<Long, BigDecimal> quantidades, List<Map<String, Object>> pagamentos, Long clienteId) {
         StringBuilder canonical = new StringBuilder();
         quantidades.forEach((id, quantidade) -> canonical.append(id).append(':').append(quantidade.setScale(3).toPlainString()).append(';'));
+        if (pagamentos != null) {
+            List<String> list = new ArrayList<>();
+            for (Map<String, Object> p : pagamentos) {
+                if (p == null) continue;
+                String met = p.get("metodo") != null ? p.get("metodo").toString().trim().toUpperCase() : "DINHEIRO";
+                String val = p.get("valor") != null ? p.get("valor").toString() : "0";
+                list.add(met + ":" + val);
+            }
+            java.util.Collections.sort(list);
+            for (String s : list) canonical.append(s).append(';');
+        }
+        if (clienteId != null) {
+            canonical.append("c:").append(clienteId).append(';');
+        }
         try {
             byte[] hash = MessageDigest.getInstance("SHA-256").digest(canonical.toString().getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder();

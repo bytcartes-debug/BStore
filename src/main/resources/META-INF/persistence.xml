@@ -11,10 +11,14 @@
         <class>model.Categoria</class>
         <class>model.Produto</class>
         <class>model.Venda</class>
+        <class>model.ItemVenda</class>
+        <class>model.PagamentoVenda</class>
         <class>model.Devedor</class>
+        <class>model.PagamentoDivida</class>
         <class>model.Usuario</class>
         <class>model.Sessao</class>
         <class>model.PedidoVenda</class>
+        <class>model.MovimentoStock</class>
 
         <properties>
             <!-- Configuração base (será sobrescrita pelo JPAUtil via variáveis de ambiente) -->

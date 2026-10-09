@@ -19,11 +19,17 @@ public class Produto {
     @Column(name = "preco", nullable = false, precision = 19, scale = 2)
     private BigDecimal preco;
 
+    @Column(name = "custo", nullable = false, precision = 19, scale = 2)
+    private BigDecimal custo = BigDecimal.ZERO;
+
     @Column(name = "quantidade_stock", nullable = false, precision = 19, scale = 3)
     private BigDecimal quantidadeStock;
 
     @Column(name = "stock_minimo", precision = 19, scale = 3)
     private BigDecimal stockMinimo = new BigDecimal("5.000");
+
+    @Column(name = "ativo", nullable = false)
+    private boolean ativo = true;
 
     /** Unidade de medida: "un", "kg", "L", "g", "ml", etc. */
     @Column(name = "unidade", length = 50)
@@ -40,7 +46,7 @@ public class Produto {
     private Categoria categoria;
 
     @OneToMany(mappedBy = "produto", fetch = FetchType.LAZY)
-    private List<Venda> vendas = new ArrayList<>();
+    private List<ItemVenda> itensVenda = new ArrayList<>();
 
     public Produto() {}
 
@@ -65,6 +71,12 @@ public class Produto {
     public BigDecimal getPreco() { return preco; }
     public void setPreco(BigDecimal preco) { this.preco = preco; }
 
+    public BigDecimal getCusto() { return custo != null ? custo : BigDecimal.ZERO; }
+    public void setCusto(BigDecimal custo) { this.custo = (custo != null) ? custo : BigDecimal.ZERO; }
+
+    public boolean isAtivo() { return ativo; }
+    public void setAtivo(boolean ativo) { this.ativo = ativo; }
+
     public BigDecimal getQuantidadeStock() { return quantidadeStock; }
     public void setQuantidadeStock(BigDecimal quantidadeStock) { this.quantidadeStock = quantidadeStock; }
 
@@ -83,7 +95,7 @@ public class Produto {
     public Categoria getCategoria() { return categoria; }
     public void setCategoria(Categoria c) { this.categoria = c; }
 
-    public List<Venda> getVendas() { return vendas; }
+    public List<ItemVenda> getItensVenda() { return itensVenda; }
 
     @Override public String toString() { return nome; }
 }

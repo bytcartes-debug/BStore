@@ -80,8 +80,18 @@ const emojiMap: Record<string, string> = {
   '🍬': '🍬',
 };
 
+const keyByEmoji: Record<string, string> = {};
+categoryIcons.forEach(({ key, emoji }) => {
+  keyByEmoji[emoji] = key;
+  keyByEmoji[emoji.replace(/\ufe0f/g, '').trim()] = key;
+});
+
 export function categoryIconKey(value: string): string {
-  const clean = (value || '').replace(/\ufe0f/g, '').trim();
+  if (!value) return 'tag';
+  if (categoryIcons.some((c) => c.key === value)) return value;
+  const clean = value.replace(/\ufe0f/g, '').trim();
+  if (keyByEmoji[value]) return keyByEmoji[value];
+  if (keyByEmoji[clean]) return keyByEmoji[clean];
   return clean || 'tag';
 }
 

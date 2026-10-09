@@ -25,6 +25,9 @@ public class Devedor {
     @Column(name = "usuario_id")
     private Long usuarioId;
 
+    @Column(name = "venda_id")
+    private Long vendaId;
+
     public Devedor() {}
 
     public Long getId()          { return id; }
@@ -32,12 +35,14 @@ public class Devedor {
     public BigDecimal getDivida() { return divida; }
     public String getDescricao() { return descricao; }
     public LocalDate getData()   { return data; }
+    public Long getVendaId()     { return vendaId; }
 
     public void setId(Long id)             { this.id = id; }
     public void setNome(String nome)       { this.nome = nome; }
     public void setDivida(BigDecimal divida) { this.divida = divida; }
     public void setDescricao(String d)     { this.descricao = d; }
     public void setData(LocalDate data)    { this.data = data; }
+    public void setVendaId(Long vendaId)   { this.vendaId = vendaId; }
 
     public Long getUsuarioId()             { return usuarioId; }
     public void setUsuarioId(Long uid)     { this.usuarioId = uid; }
