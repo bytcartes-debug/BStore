@@ -174,7 +174,10 @@ test('pesquisa e senha mantêm espaço para os ícones e modais prendem o foco',
   await noOverflow(page);
 });
 
-test('venda guardada offline é enviada uma única vez ao restabelecer ligação', async ({ page, context }) => {
+test('venda guardada offline é enviada uma única vez ao restabelecer ligação', async ({
+  page,
+  context,
+}) => {
   await mockApi(page);
   const vendasEnviadas: { idempotencyKey: string; body: any }[] = [];
 
@@ -270,3 +273,64 @@ test('painel carrega com utilizador novo sem vendas nem produtos e sem erro', as
   await expect(page.getByText('MT 0.00').first()).toBeVisible();
 });
 
+test('leitura de código com câmara no cadastro preenche código do produto', async ({ page }) => {
+  await mockApi(page);
+  await page.route('**/api/produtos/barcode/*', (route) =>
+    route.fulfill({ status: 404, json: { erro: 'Produto não encontrado' } }),
+  );
+  await page.goto('/');
+  await navigate(page, 'Produtos');
+
+  // Abre modal de adicionar produto
+  await page.getByRole('button', { name: 'Adicionar produto', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+
+  // Botão CTA de câmara visível no topo
+  const btnScan = page.getByRole('button', { name: /Ler código com câmara/i });
+  await expect(btnScan).toBeVisible();
+  await btnScan.click();
+
+  // Modal do scanner abre
+  await expect(page.getByRole('dialog', { name: /Ler código com câmara/i })).toBeVisible();
+
+  // Utilizador usa opção de digitação manual do modal do scanner
+  const inputManual = page.locator('#scanner-manual-input');
+  if (!(await inputManual.isVisible())) {
+    await page.getByRole('button', { name: /Digitar/i }).click();
+  }
+  await expect(inputManual).toBeVisible();
+  await inputManual.fill('6001234567890');
+  await page.getByRole('button', { name: 'Confirmar' }).click();
+
+  // Scanner fecha e código fica preenchido no formulário do produto
+  await expect(page.locator('#product-barcode')).toHaveValue('6001234567890');
+});
+
+test('atalho de câmara na barra de produtos abre edição se o produto já existir', async ({
+  page,
+}) => {
+  await mockApi(page);
+  await page.goto('/');
+  await navigate(page, 'Produtos');
+
+  // Clica no botão "Ler código" da barra principal
+  const btnToolbarScan = page.getByRole('button', { name: 'Ler código', exact: true });
+  await expect(btnToolbarScan).toBeVisible();
+  await btnToolbarScan.click();
+
+  // Modal do scanner abre
+  await expect(page.getByRole('dialog', { name: /Ler código com câmara/i })).toBeVisible();
+
+  // Digita o código de barras de um produto existente
+  const inputManual = page.locator('#scanner-manual-input');
+  if (!(await inputManual.isVisible())) {
+    await page.getByRole('button', { name: /Digitar/i }).click();
+  }
+  await expect(inputManual).toBeVisible();
+  await inputManual.fill('5601234567890');
+  await page.getByRole('button', { name: 'Confirmar' }).click();
+
+  // Modal de edição do produto deve abrir diretamente
+  await expect(page.getByRole('heading', { name: 'Editar produto' })).toBeVisible();
+  await expect(page.locator('#product-name')).toHaveValue('Arroz agulha de qualidade superior');
+});

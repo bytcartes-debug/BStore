@@ -18,6 +18,7 @@ import { apiFetch, apiRequest } from './utils/api';
 import { limparDadosLocais } from './utils/offlineQueue';
 import { Loading, LoadError, ToastProvider, Notice } from './components/UI';
 import PageErrorBoundary from './components/PageErrorBoundary';
+import { CameraScannerHost } from './components/CameraScannerHost';
 
 export type PageId =
   | 'dashboard'
@@ -212,6 +213,7 @@ export default function App() {
   return (
     <ToastProvider>
       <AppContent />
+      <CameraScannerHost />
     </ToastProvider>
   );
 }

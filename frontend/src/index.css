@@ -1,7 +1,20 @@
 @import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;650;700;750&display=swap');
 
 :root {
-  font-family: 'Public Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', sans-serif;
+  font-family:
+    'Public Sans',
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    'Apple Color Emoji',
+    'Segoe UI Emoji',
+    'Segoe UI Symbol',
+    'Noto Color Emoji',
+    sans-serif;
   color-scheme: light;
   --color-brand: #17634f;
   --color-brand-hover: #104b3c;
@@ -176,7 +189,10 @@ img {
   border-radius: 12px;
   box-shadow: var(--shadow);
   min-width: 0;
-  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  transition:
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
 }
 .panel {
   padding: 24px;
@@ -239,7 +255,10 @@ img {
   border-radius: 7px;
   color: var(--text-primary);
   font-size: 14px;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease;
 }
 :where(input:not([type='file']), select, textarea):focus {
   border-color: var(--color-brand);
@@ -319,7 +338,12 @@ fieldset {
   line-height: 1.4;
   border: 1px solid transparent;
   text-align: center;
-  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.12s ease, box-shadow 0.16s ease;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    transform 0.12s ease,
+    box-shadow 0.16s ease;
   will-change: transform;
 }
 .btn-primary {
@@ -374,7 +398,11 @@ fieldset {
   border-radius: 7px;
   background: transparent;
   color: var(--text-secondary);
-  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.12s ease;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    transform 0.12s ease;
   will-change: transform;
 }
 .icon-btn:hover:not(:disabled) {
@@ -683,7 +711,8 @@ tbody tr:hover {
 }
 
 @keyframes bstore-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.7;
   }
   50% {
@@ -884,7 +913,10 @@ body.dark-theme .btn-secondary .spinner {
   grid-template-columns: 48px minmax(0, 1fr);
   gap: 16px;
   padding: 20px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
 }
 .category-card:hover {
   transform: translateY(-2px);
@@ -1202,4 +1234,327 @@ body.dark-theme .btn-secondary .spinner {
     border-color: CanvasText;
     border-right-color: transparent;
   }
+}
+
+/* ==========================================================================
+   Scanner de Câmara & QR Code (Cadastro de Produtos & Vendas)
+   ========================================================================== */
+.product-scan-cta-card {
+  margin-bottom: 16px;
+}
+.btn-product-scan-cta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  min-height: 52px;
+  background: var(--color-brand-light);
+  border: 1.5px dashed var(--color-brand);
+  border-radius: 10px;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.1s ease;
+}
+.btn-product-scan-cta:hover:not(:disabled) {
+  background: var(--bg-subtle);
+  border-color: var(--color-brand-hover);
+  transform: translateY(-1px);
+}
+.btn-product-scan-cta:active:not(:disabled) {
+  transform: translateY(0);
+}
+.btn-product-scan-cta:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.scan-cta-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--color-brand);
+  color: #ffffff;
+  flex-shrink: 0;
+}
+.scan-cta-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.scan-cta-title {
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+.scan-cta-sub {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Modal do Scanner */
+.scanner-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgb(12 29 23 / 75%);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: bstore-backdrop-appear 0.2s ease-out forwards;
+}
+.scanner-modal-dialog {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  width: min(480px, 100%);
+  max-height: calc(100dvh - 32px);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 30%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: bstore-modal-appear 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.scanner-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid var(--border-color);
+  gap: 12px;
+}
+.scanner-modal-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0 0 2px 0;
+}
+.scanner-modal-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+.scanner-modal-content {
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Janela de Visão da Câmara */
+.scanner-viewport-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-height: 320px;
+  background: #000000;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.scanner-video-feed {
+  width: 100% !important;
+  height: 100% !important;
+}
+.scanner-video-feed video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+.scanner-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.7);
+  font-size: 0.9rem;
+}
+
+/* Mira / Retículo de Leitura */
+.scanner-reticle-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.scanner-target-reticle {
+  position: relative;
+  width: 68%;
+  height: 68%;
+  max-width: 220px;
+  max-height: 220px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 14px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+.scanner-target-success {
+  border-color: #22c55e !important;
+  background: rgba(34, 197, 94, 0.25);
+}
+.scanner-corner {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-color: var(--color-brand);
+  border-style: solid;
+}
+.top-left {
+  top: -2px;
+  left: -2px;
+  border-width: 3.5px 0 0 3.5px;
+  border-top-left-radius: 8px;
+}
+.top-right {
+  top: -2px;
+  right: -2px;
+  border-width: 3.5px 3.5px 0 0;
+  border-top-right-radius: 8px;
+}
+.bottom-left {
+  bottom: -2px;
+  left: -2px;
+  border-width: 0 0 3.5px 3.5px;
+  border-bottom-left-radius: 8px;
+}
+.bottom-right {
+  bottom: -2px;
+  right: -2px;
+  border-width: 0 3.5px 3.5px 0;
+  border-bottom-right-radius: 8px;
+}
+.scanner-laser {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2.5px;
+  background: var(--color-brand);
+  box-shadow: 0 0 8px var(--color-brand);
+  border-radius: 2px;
+  animation: bstore-laser-sweep 1.8s ease-in-out infinite alternate;
+}
+@keyframes bstore-laser-sweep {
+  0% {
+    top: 10%;
+    opacity: 0.8;
+  }
+  100% {
+    top: 90%;
+    opacity: 0.8;
+  }
+}
+.scanner-success-badge {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #22c55e;
+  animation: bstore-modal-appear 0.15s ease-out;
+}
+.scanner-guide-text {
+  margin-top: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.65);
+  padding: 4px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.02em;
+}
+
+/* Barra de controlos */
+.scanner-controls-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+.scanner-control-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+}
+.scanner-control-btn.active {
+  background: var(--color-brand-light);
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+}
+
+/* Notificação e formulário manual */
+.scanner-notice-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--color-danger-light);
+  color: var(--color-danger);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+.scanner-manual-form {
+  background: var(--bg-subtle);
+  padding: 12px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.scanner-manual-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.scanner-manual-row {
+  display: flex;
+  gap: 8px;
+}
+.scanner-manual-input {
+  flex: 1;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+.scanner-manual-submit {
+  min-height: 44px;
+  padding: 8px 16px;
+  white-space: nowrap;
+}
+.scanner-modal-footer {
+  margin-top: 4px;
+}
+.btn-full-width {
+  width: 100%;
+  min-height: 44px;
 }

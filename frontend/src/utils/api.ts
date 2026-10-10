@@ -38,12 +38,16 @@ export async function apiRequest<T = void>(url: string, options?: RequestInit): 
     const body = await response.json().catch(() => ({}));
     if (response.status >= 500) {
       throw new ApiError(
-        body.erro || 'O servidor não conseguiu concluir o pedido. Tente novamente.',
+        'O servidor não conseguiu concluir o pedido. Tente novamente.',
         response.status,
         body.codigo,
       );
     }
-    throw new ApiError(body.erro || 'Não foi possível concluir o pedido. Tente novamente.', response.status, body.codigo);
+    throw new ApiError(
+      body.erro || 'Não foi possível concluir o pedido. Tente novamente.',
+      response.status,
+      body.codigo,
+    );
   }
   return response.status === 204 ? (undefined as T) : response.json();
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowDownLeft, ChevronDown, ChevronUp, ScanLine, SlidersHorizontal } from 'lucide-react';
+import { ArrowDownLeft, Camera, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
 import { Modal, Field, Notice, Spinner } from '../UI';
 import { formatQuantity } from '../../utils/decimal';
 import { UNIDADES, type Categoria, type Produto, type ProdutoFormData } from './types';
@@ -54,6 +54,29 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
         {offMsg && <Notice kind="info">{offMsg}</Notice>}
 
         <fieldset disabled={isSaving || isScanning}>
+          <div className="product-scan-cta-card">
+            <button
+              type="button"
+              className="btn-product-scan-cta"
+              onClick={onScan}
+              disabled={isSaving || isScanning}
+              title="Ler QR code ou código de barras com a câmara"
+            >
+              <span className="scan-cta-icon-wrapper" aria-hidden="true">
+                {isScanning ? <Spinner size="small" /> : <Camera size={20} strokeWidth={2.2} />}
+              </span>
+              <div className="scan-cta-text">
+                <span className="scan-cta-title">
+                  {form.codigoBarras ? 'Ler outro código com câmara' : 'Ler código com câmara'}
+                </span>
+                <span className="scan-cta-sub">
+                  {form.codigoBarras
+                    ? `Código associado: ${form.codigoBarras}`
+                    : 'Aponte a câmara para preencher os dados'}
+                </span>
+              </div>
+            </button>
+          </div>
           <Field id="product-name" label="Nome *">
             <input
               id="product-name"
@@ -203,21 +226,27 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 </select>
               </Field>
 
-              <Field id="product-barcode" label="Código de barras">
+              <Field id="product-barcode" label="Código de barras ou QR Code">
                 <div className="input-action">
                   <input
                     id="product-barcode"
                     value={form.codigoBarras}
                     onChange={(e) => onChangeForm({ codigoBarras: e.target.value })}
-                    placeholder="Opcional"
+                    placeholder="Opcional (ex: 560123456789)"
                   />
-                  <button type="button" className="btn-secondary" onClick={onScan}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={onScan}
+                    disabled={isSaving || isScanning}
+                    title="Ler com a câmara"
+                  >
                     {isScanning ? (
                       <Spinner size="small" />
                     ) : (
-                      <ScanLine size={16} strokeWidth={2} aria-hidden="true" />
+                      <Camera size={16} strokeWidth={2} aria-hidden="true" />
                     )}{' '}
-                    Ler código
+                    Ler câmara
                   </button>
                 </div>
               </Field>

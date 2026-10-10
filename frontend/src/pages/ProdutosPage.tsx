@@ -5,13 +5,7 @@ import { useMutation, useResource } from '../utils/useResource';
 import { abrirScanner } from '../utils/scanner';
 import { buscarNaOpenFoodFacts } from '../utils/openFoodFacts';
 import { decimal, formatMoney, formatQuantity, parseDecimalInput } from '../utils/decimal';
-import {
-  ArrowDownLeft,
-  ClipboardList,
-  Plus,
-  SlidersHorizontal,
-  X,
-} from 'lucide-react';
+import { ArrowDownLeft, Camera, ClipboardList, Plus, SlidersHorizontal, X } from 'lucide-react';
 import {
   PageHeading,
   Loading,
@@ -178,9 +172,11 @@ export default function ProdutosPage() {
 
   const openInventario = () => {
     const iniciais: Record<number, string> = {};
-    produtos.filter((p) => p.ativo !== false).forEach((p) => {
-      iniciais[p.id] = p.stock;
-    });
+    produtos
+      .filter((p) => p.ativo !== false)
+      .forEach((p) => {
+        iniciais[p.id] = p.stock;
+      });
     setContagens(iniciais);
     stockAction.setError(null);
     setShowInventarioModal(true);
@@ -207,13 +203,55 @@ export default function ProdutosPage() {
       const codigo = await abrirScanner();
       if (!codigo) return;
       setF({ codigoBarras: codigo });
+      setShowDetails(true);
       const response = await apiFetch(`/api/produtos/barcode/${encodeURIComponent(codigo)}`);
       if (response.ok) {
         const p = await response.json();
-        throw new Error(`Este código já está registado no produto “${p.nome}”.`);
-      }
-      if (response.status !== 404)
+        if (!editing || editing.id !== p.id) {
+          throw new Error(`Este código já está registado no produto “${p.nome}”.`);
+        }
+      } else if (response.status !== 404) {
         throw new Error('Não foi possível verificar este código. Tente novamente.');
+      }
+      setOffMsg('A procurar produto online…');
+      const result = await buscarNaOpenFoodFacts(codigo);
+      if (result) {
+        setForm((previous) => ({
+          ...previous,
+          nome: previous.nome.trim()
+            ? previous.nome
+            : result.nome +
+              (result.marca && !result.nome.toLowerCase().includes(result.marca.toLowerCase())
+                ? ` ${result.marca}`
+                : ''),
+          unidade: result.unidade || previous.unidade,
+        }));
+        setOffMsg(`Produto encontrado: ${result.nome}. Confirme os dados antes de guardar.`);
+      } else {
+        setOffMsg(`Código ${codigo} associado com sucesso. Preencha os restantes dados.`);
+      }
+    });
+
+  const handleScanFromToolbar = () =>
+    void scan.run(async () => {
+      setOffMsg(null);
+      const codigo = await abrirScanner();
+      if (!codigo) return;
+
+      // Se já existe localmente, abre para visualização/edição
+      const existing = produtos.find(
+        (p) => (p.codigoBarras || '').trim().toLowerCase() === codigo.trim().toLowerCase(),
+      );
+      if (existing) {
+        openEdit(existing);
+        setOffMsg(`Produto “${existing.nome}” encontrado.`);
+        return;
+      }
+
+      // Se não existe na loja, abre formulário de novo produto com o código já inserido
+      openNew();
+      setF({ codigoBarras: codigo });
+      setShowDetails(true);
       setOffMsg('A procurar produto online…');
       const result = await buscarNaOpenFoodFacts(codigo);
       if (result) {
@@ -226,8 +264,10 @@ export default function ProdutosPage() {
               : ''),
           unidade: result.unidade || previous.unidade,
         }));
-        setOffMsg(`Produto encontrado: ${result.nome}. Confirme os dados antes de guardar.`);
-      } else setOffMsg('Produto não encontrado online. Preencha o nome manualmente.');
+        setOffMsg(`Produto encontrado online: ${result.nome}. Complete os dados para registar.`);
+      } else {
+        setOffMsg(`Novo produto com código ${codigo}. Preencha o nome e preço.`);
+      }
     });
 
   const handleSave = (event: React.FormEvent) => {
@@ -416,6 +456,14 @@ export default function ProdutosPage() {
           </button>
           <button
             className="btn-secondary"
+            onClick={handleScanFromToolbar}
+            disabled={!data}
+            title="Ler QR code ou código de barras com a câmara"
+          >
+            <Camera size={16} strokeWidth={2} aria-hidden="true" /> Ler código
+          </button>
+          <button
+            className="btn-secondary"
             onClick={() => openEntradaPara()}
             disabled={!data || produtos.length === 0}
           >
@@ -503,11 +551,20 @@ export default function ProdutosPage() {
           busy={stockAction.pending}
         >
           <div>
-            <p className="required-note">Registe a compra de produtos com atualização do custo médio ponderado.</p>
+            <p className="required-note">
+              Registe a compra de produtos com atualização do custo médio ponderado.
+            </p>
             {entradaErro && <Notice>{entradaErro}</Notice>}
             {stockAction.error && <Notice>{stockAction.error}</Notice>}
 
-            <div style={{ background: 'var(--bg-subtle)', padding: 12, borderRadius: 8, marginBottom: 16 }}>
+            <div
+              style={{
+                background: 'var(--bg-subtle)',
+                padding: 12,
+                borderRadius: 8,
+                marginBottom: 16,
+              }}
+            >
               <div className="form-grid">
                 <Field id="entrada-prod" label="Produto *">
                   <select
@@ -587,7 +644,9 @@ export default function ProdutosPage() {
                             type="button"
                             className="icon-btn delete"
                             aria-label={`Remover ${item.produtoNome} da lista`}
-                            onClick={() => setEntradaItens((prev) => prev.filter((_, i) => i !== idx))}
+                            onClick={() =>
+                              setEntradaItens((prev) => prev.filter((_, i) => i !== idx))
+                            }
                           >
                             <X size={15} strokeWidth={2} aria-hidden="true" />
                           </button>
@@ -807,7 +866,8 @@ export default function ProdutosPage() {
           <div>
             <div style={{ marginBottom: 12, display: 'flex', gap: 16, fontSize: '0.9rem' }}>
               <span>
-                Stock: <strong>{formatQuantity(movimentoProduto.stock, movimentoProduto.unidade)}</strong>
+                Stock:{' '}
+                <strong>{formatQuantity(movimentoProduto.stock, movimentoProduto.unidade)}</strong>
               </span>
               <span>
                 Custo: <strong>{formatMoney(movimentoProduto.custo || '0.00')}</strong>
@@ -836,7 +896,9 @@ export default function ProdutosPage() {
                   <tbody>
                     {movimentos.map((m) => (
                       <tr key={m.id}>
-                        <td>{m.criadoEm ? new Date(m.criadoEm).toLocaleDateString('pt-MZ') : '-'}</td>
+                        <td>
+                          {m.criadoEm ? new Date(m.criadoEm).toLocaleDateString('pt-MZ') : '-'}
+                        </td>
                         <td>
                           <span
                             className={
@@ -859,9 +921,7 @@ export default function ProdutosPage() {
                               : 'var(--color-danger)',
                           }}
                         >
-                          {decimal(m.quantidade).isPositive()
-                            ? `+${m.quantidade}`
-                            : m.quantidade}
+                          {decimal(m.quantidade).isPositive() ? `+${m.quantidade}` : m.quantidade}
                         </td>
                         <td className="numeric">{formatMoney(m.custoUnitario)}</td>
                         <td>{m.motivo || '-'}</td>
@@ -897,7 +957,8 @@ export default function ProdutosPage() {
           label="Remover produto"
         >
           <p>
-            Quer remover <strong>{deleting.nome}</strong>? Se o produto tiver vendas ou movimentos associados, será arquivado para preservar o histórico.
+            Quer remover <strong>{deleting.nome}</strong>? Se o produto tiver vendas ou movimentos
+            associados, será arquivado para preservar o histórico.
           </p>
         </ConfirmDialog>
       )}
