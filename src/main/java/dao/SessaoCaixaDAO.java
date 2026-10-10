@@ -83,4 +83,16 @@ public class SessaoCaixaDAO extends GenericDAO<SessaoCaixa> {
                 .getSingleResult();
         return total != null ? total : BigDecimal.ZERO;
     }
+
+    public BigDecimal calcularDespesasDinheiro(EntityManager em, Long sessaoId, Long uid) {
+        BigDecimal total = em.createQuery(
+                "SELECT COALESCE(SUM(d.valor), 0) FROM DespesaCaixa d " +
+                "WHERE d.usuarioId = :uid " +
+                "AND d.sessaoCaixa.id = :sessaoId",
+                BigDecimal.class)
+                .setParameter("sessaoId", sessaoId)
+                .setParameter("uid", uid)
+                .getSingleResult();
+        return total != null ? total : BigDecimal.ZERO;
+    }
 }

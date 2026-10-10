@@ -3,6 +3,7 @@ package service;
 import dao.CategoriaDAO;
 import dao.DefinicaoLojaDAO;
 import dao.DevedorDAO;
+import dao.DespesaCaixaDAO;
 import dao.DevolucaoDAO;
 import dao.ItemVendaDAO;
 import dao.MovimentoStockDAO;
@@ -14,6 +15,7 @@ import dao.SessaoCaixaDAO;
 import dao.VendaDAO;
 import model.Categoria;
 import model.DefinicaoLoja;
+import model.DespesaCaixa;
 import model.Devedor;
 import model.Devolucao;
 import model.ItemDevolucao;
@@ -49,6 +51,7 @@ public class BarracaService {
     private final DefinicaoLojaDAO definicaoLojaDAO = new DefinicaoLojaDAO();
     private final SessaoCaixaDAO sessaoCaixaDAO = new SessaoCaixaDAO();
     private final DevolucaoDAO devolucaoDAO = new DevolucaoDAO();
+    private final DespesaCaixaDAO despesaCaixaDAO = new DespesaCaixaDAO();
 
     public Categoria criarCategoria(String nome, String descricao, Long usuarioId) {
         if (nome == null || nome.trim().isEmpty()) {
@@ -768,6 +771,10 @@ public class BarracaService {
         Map<String, BigDecimal> totaisMetodo = pagamentoVendaDAO.totaisPorMetodo(usuarioId, dia);
         BigDecimal totalFiado = totaisMetodo.getOrDefault("FIADO", BigDecimal.ZERO);
 
+        LocalDateTime inicioDia = dia.atStartOfDay();
+        LocalDateTime fimDia = dia.plusDays(1).atStartOfDay();
+        BigDecimal totalDespesas = JPAUtil.emTransacao(usuarioId, em -> despesaCaixaDAO.totalDespesasPeriodo(em, inicioDia, fimDia, usuarioId));
+
         Map<String, Object> res = new LinkedHashMap<>();
         res.put("data", dia.toString());
         res.put("totalVendido", decimalJson(totalVendido, 2));
@@ -776,6 +783,7 @@ public class BarracaService {
         res.put("numeroVendas", numeroVendas);
         res.put("vendasAnuladas", vendasAnuladas);
         res.put("totalFiado", decimalJson(totalFiado, 2));
+        res.put("totalDespesas", decimalJson(totalDespesas, 2));
         Map<String, String> formatados = new LinkedHashMap<>();
         totaisMetodo.forEach((k, v) -> formatados.put(k, decimalJson(v, 2)));
         res.put("totaisPorMetodo", formatados);
@@ -985,7 +993,8 @@ public class BarracaService {
             }
             BigDecimal vendasDinheiro = sessaoCaixaDAO.calcularVendasDinheiro(em, aberta.getId(), usuarioId);
             BigDecimal devolucoesDinheiro = sessaoCaixaDAO.calcularDevolucoesDinheiro(em, aberta.getId(), usuarioId);
-            BigDecimal esperado = aberta.getValorInicial().add(vendasDinheiro).subtract(devolucoesDinheiro);
+            BigDecimal despesasDinheiro = sessaoCaixaDAO.calcularDespesasDinheiro(em, aberta.getId(), usuarioId);
+            BigDecimal esperado = aberta.getValorInicial().add(vendasDinheiro).subtract(devolucoesDinheiro).subtract(despesasDinheiro);
 
             Long totalVendas = em.createQuery(
                 "SELECT COUNT(v) FROM Venda v WHERE v.sessaoCaixa.id = :sid AND v.usuarioId = :uid AND v.estado != 'ANULADA'", Long.class)
@@ -999,6 +1008,7 @@ public class BarracaService {
             res.put("valorInicial", decimalJson(aberta.getValorInicial(), 2));
             res.put("vendasDinheiro", decimalJson(vendasDinheiro, 2));
             res.put("devolucoesDinheiro", decimalJson(devolucoesDinheiro, 2));
+            res.put("despesasDinheiro", decimalJson(despesasDinheiro, 2));
             res.put("valorEsperado", decimalJson(esperado, 2));
             res.put("totalVendas", totalVendas);
             res.put("notaAbertura", aberta.getNotaAbertura() != null ? aberta.getNotaAbertura() : "");
@@ -1018,7 +1028,8 @@ public class BarracaService {
 
             BigDecimal vendasDinheiro = sessaoCaixaDAO.calcularVendasDinheiro(em, sessao.getId(), usuarioId);
             BigDecimal devolucoesDinheiro = sessaoCaixaDAO.calcularDevolucoesDinheiro(em, sessao.getId(), usuarioId);
-            BigDecimal esperado = sessao.getValorInicial().add(vendasDinheiro).subtract(devolucoesDinheiro);
+            BigDecimal despesasDinheiro = sessaoCaixaDAO.calcularDespesasDinheiro(em, sessao.getId(), usuarioId);
+            BigDecimal esperado = sessao.getValorInicial().add(vendasDinheiro).subtract(devolucoesDinheiro).subtract(despesasDinheiro);
 
             BigDecimal contado = valorContado != null ? moeda(valorContado) : BigDecimal.ZERO;
             BigDecimal diferenca = contado.subtract(esperado);
@@ -1033,6 +1044,65 @@ public class BarracaService {
 
             return em.merge(sessao);
         });
+    }
+
+    public Map<String, Object> registarDespesaCaixa(BigDecimal valor, String categoria, String descricao, Long operadorId, Long usuarioId) {
+        if (descricao == null || descricao.trim().isEmpty()) {
+            throw new IllegalArgumentException("A descrição da despesa é obrigatória.");
+        }
+        BigDecimal valorNorm = moeda(decimal(valor, "valor"));
+        if (valorNorm.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("O valor da despesa deve ser maior que zero.");
+        }
+
+        return JPAUtil.emTransacao(usuarioId, em -> {
+            SessaoCaixa aberta = sessaoCaixaDAO.buscarAberta(em, usuarioId);
+            if (aberta == null) {
+                DefinicaoLoja def = definicaoLojaDAO.obter(usuarioId);
+                if (def.getControloCaixa()) {
+                    throw new IllegalStateException("Não há nenhuma sessão de caixa aberta para registar a saída.");
+                }
+            }
+
+            DespesaCaixa despesa = new DespesaCaixa(usuarioId, aberta, valorNorm, categoria, descricao.trim(), operadorId);
+            em.persist(despesa);
+            em.flush();
+
+            return formatarDespesaCaixa(despesa);
+        });
+    }
+
+    public List<Map<String, Object>> listarDespesasCaixa(Long sessaoId, Long usuarioId) {
+        return JPAUtil.emTransacao(usuarioId, em -> {
+            List<DespesaCaixa> lista;
+            if (sessaoId != null) {
+                lista = despesaCaixaDAO.listarPorSessao(em, sessaoId, usuarioId);
+            } else {
+                SessaoCaixa aberta = sessaoCaixaDAO.buscarAberta(em, usuarioId);
+                if (aberta != null) {
+                    lista = despesaCaixaDAO.listarPorSessao(em, aberta.getId(), usuarioId);
+                } else {
+                    lista = despesaCaixaDAO.listarRecentes(em, usuarioId, 50);
+                }
+            }
+            List<Map<String, Object>> res = new ArrayList<>();
+            for (DespesaCaixa d : lista) {
+                res.add(formatarDespesaCaixa(d));
+            }
+            return res;
+        });
+    }
+
+    private Map<String, Object> formatarDespesaCaixa(DespesaCaixa d) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", d.getId());
+        m.put("sessaoId", d.getSessaoCaixa() != null ? d.getSessaoCaixa().getId() : null);
+        m.put("valor", decimalJson(d.getValor(), 2));
+        m.put("categoria", d.getCategoria());
+        m.put("descricao", d.getDescricao());
+        m.put("criadaEm", d.getCriadaEm() != null ? d.getCriadaEm().toString() : "");
+        m.put("criadoPor", d.getCriadoPor());
+        return m;
     }
 
     public List<SessaoCaixa> listarHistoricoSessoes(Long usuarioId, int limite) {

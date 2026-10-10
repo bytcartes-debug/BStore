@@ -81,8 +81,36 @@ export interface SessaoCaixaAtual {
   valorInicial?: string;
   vendasDinheiro?: string;
   devolucoesDinheiro?: string;
+  despesasDinheiro?: string;
   valorEsperado?: string;
   totalVendas?: number;
+}
+
+export interface DespesaCaixa {
+  id: number;
+  sessaoId?: number;
+  valor: string;
+  categoria: string;
+  descricao: string;
+  criadaEm: string;
+  criadoPor?: number;
+}
+
+export interface CarrinhoEmEspera {
+  id: string;
+  criadoEm: string;
+  identificador?: string;
+  clienteId?: string;
+  observacao?: string;
+  itens: {
+    produto: Produto;
+    quantidade: string;
+    descontoPercentual?: string;
+    descontoValor?: string;
+    notaDesconto?: string;
+  }[];
+  total: string;
+  totalItens: number;
 }
 
 export interface ItemCarrinho {

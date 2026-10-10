@@ -13,6 +13,7 @@ import {
   type ReciboDados,
 } from '../utils/recibo';
 import { FechoCaixaModal } from '../components/FechoCaixaModal';
+import { DespesaCaixaModal } from '../components/caixa/DespesaCaixaModal';
 import {
   salvarVendaPendente,
   listarVendasPendentes,
@@ -21,14 +22,19 @@ import {
 } from '../utils/offlineQueue';
 import type Decimal from 'decimal.js';
 import {
+  ArrowDownRight,
   Ban,
   BarChart3,
   CheckCircle2,
+  Clock,
   Copy,
   Eye,
+  MessageCircle,
   Minus,
   Monitor,
+  Pause,
   Percent,
+  Play,
   Plus,
   Printer,
   RefreshCw,
@@ -63,6 +69,7 @@ import type {
   SessaoCaixaAtual,
   ItemCarrinho,
   LinhaPagamento,
+  CarrinhoEmEspera,
 } from '../components/vendas/types';
 import { ProductCatalog } from '../components/vendas/ProductCatalog';
 import { PaymentDialog } from '../components/vendas/PaymentDialog';
@@ -102,6 +109,20 @@ export default function VendasPage() {
   const [vendaParaAnular, setVendaParaAnular] = useState<VendaDocumento | null>(null);
   const [motivoAnulacao, setMotivoAnulacao] = useState('');
   const [reciboSucesso, setReciboSucesso] = useState<ReciboDados | null>(null);
+  const [telefoneWhatsAppRecibo, setTelefoneWhatsAppRecibo] = useState('');
+  const [larguraTermica, setLarguraTermica] = useState<'58mm' | '80mm'>('58mm');
+
+  // Despesa de Caixa
+  const [showDespesaModal, setShowDespesaModal] = useState(false);
+
+  // Vendas em Espera (Hold Cart)
+  const [carrinhosEmEspera, setCarrinhosEmEspera] = useState<CarrinhoEmEspera[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('bstore_carrinhos_espera') || '[]');
+    } catch {
+      return [];
+    }
+  });
 
   // Devoluções simples
   const [vendaParaDevolver, setVendaParaDevolver] = useState<VendaDocumento | null>(null);
@@ -436,6 +457,77 @@ export default function VendasPage() {
       return;
     setShowModal(false);
     resetCart();
+  };
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bstore_carrinhos_espera', JSON.stringify(carrinhosEmEspera));
+    } catch {
+      // ignore
+    }
+  }, [carrinhosEmEspera]);
+
+  const handleSegurarCarrinho = () => {
+    if (carrinho.length === 0) {
+      toast('O carrinho está vazio.');
+      return;
+    }
+    const hora = new Date().toLocaleTimeString('pt-MZ', { hour: '2-digit', minute: '2-digit' });
+    const clienteObj = devedores.find((d) => String(d.id) === String(clienteId));
+    const nomePadrao = clienteObj ? clienteObj.nome : `Cliente #${carrinhosEmEspera.length + 1} (${hora})`;
+    const identificador = window.prompt('Identificador ou nota do cliente (ex: Nome, Camisola, Balcão):', nomePadrao);
+    if (identificador === null) return;
+
+    const novoHeld: CarrinhoEmEspera = {
+      id: crypto.randomUUID(),
+      criadoEm: hora,
+      identificador: identificador.trim() || nomePadrao,
+      clienteId: clienteId || undefined,
+      observacao: observacao || undefined,
+      itens: carrinho.map((it) => ({
+        produto: it.produto,
+        quantidade: it.quantidade.toString(),
+        descontoPercentual: it.descontoPercentual,
+        descontoValor: it.descontoValor,
+        notaDesconto: it.notaDesconto,
+      })),
+      total: total.toFixed(2),
+      totalItens: carrinho.reduce((acc, it) => acc + it.quantidade.toNumber(), 0),
+    };
+
+    setCarrinhosEmEspera((prev) => [novoHeld, ...prev]);
+    resetCart();
+    toast('Carrinho em espera! Pode atender o próximo cliente.');
+  };
+
+  const handleRecuperarCarrinho = (held: CarrinhoEmEspera) => {
+    if (carrinho.length > 0) {
+      const confirmar = window.confirm(
+        'Já existe um carrinho ativo no momento. Deseja substituí-lo pelos itens recuperados?'
+      );
+      if (!confirmar) return;
+    }
+
+    const itensRecuperados: ItemCarrinho[] = held.itens.map((it) => ({
+      produto: it.produto,
+      quantidade: decimalSeguro(it.quantidade, 1),
+      descontoPercentual: it.descontoPercentual,
+      descontoValor: it.descontoValor,
+      notaDesconto: it.notaDesconto,
+    }));
+
+    setCarrinho(itensRecuperados);
+    setClienteId(held.clienteId || '');
+    setObservacao(held.observacao || '');
+    setCarrinhosEmEspera((prev) => prev.filter((c) => c.id !== held.id));
+    setShowModal(true);
+    toast(`Carrinho recuperado: ${held.identificador}.`);
+  };
+
+  const handleDescartarCarrinhoEmEspera = (id: string) => {
+    if (!window.confirm('Tem a certeza que deseja eliminar este carrinho em espera?')) return;
+    setCarrinhosEmEspera((prev) => prev.filter((c) => c.id !== id));
+    toast('Carrinho em espera removido.');
   };
 
   const handleScan = useCallback(async () => {
@@ -944,22 +1036,40 @@ export default function VendasPage() {
             </span>
             {sessaoCaixa.aberta && (
               <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                Fundo: {formatMoney(sessaoCaixa.valorInicial || '0')} | Esperado em dinheiro:{' '}
-                {formatMoney(sessaoCaixa.valorEsperado || '0')}
+                Fundo: {formatMoney(sessaoCaixa.valorInicial || '0')}
+                {sessaoCaixa.vendasDinheiro && Number(sessaoCaixa.vendasDinheiro) > 0 && (
+                  <> | Vendas: +{formatMoney(sessaoCaixa.vendasDinheiro)}</>
+                )}
+                {sessaoCaixa.despesasDinheiro && Number(sessaoCaixa.despesasDinheiro) > 0 && (
+                  <> | Saídas: -{formatMoney(sessaoCaixa.despesasDinheiro)}</>
+                )}
+                {' '}| Esperado: {formatMoney(sessaoCaixa.valorEsperado || '0')}
               </span>
             )}
           </div>
 
-          <div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {sessaoCaixa.aberta ? (
-              <button
-                type="button"
-                className="btn-secondary"
-                style={{ fontSize: 12, padding: '4px 10px' }}
-                onClick={() => setShowFechoModal(true)}
-              >
-                Fechar caixa
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ fontSize: 12, padding: '4px 10px', color: '#ea580c' }}
+                  onClick={() => setShowDespesaModal(true)}
+                  title="Registar saída ou despesa de dinheiro do caixa"
+                >
+                  <ArrowDownRight size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                  + Saída / Despesa
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ fontSize: 12, padding: '4px 10px' }}
+                  onClick={() => setShowFechoModal(true)}
+                >
+                  Fechar caixa
+                </button>
+              </>
             ) : (
               <button
                 type="button"
@@ -970,6 +1080,75 @@ export default function VendasPage() {
                 Abrir caixa
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* BANNER DE CARRINHOS EM ESPERA */}
+      {carrinhosEmEspera.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 14px',
+            background: 'rgba(234, 88, 12, 0.08)',
+            border: '1px solid rgba(234, 88, 12, 0.3)',
+            borderRadius: 8,
+            marginBottom: 16,
+            flexWrap: 'wrap',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#c2410c' }}>
+            <Clock size={17} />
+            <strong>{carrinhosEmEspera.length} Carrinho(s) em Espera no Balcão:</strong>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {carrinhosEmEspera.map((held) => (
+              <div
+                key={held.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  background: 'var(--bg-surface, #fff)',
+                  padding: '3px 8px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border-color, #e5e7eb)',
+                }}
+              >
+                <button
+                  type="button"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: 'var(--color-brand, #ea580c)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                  onClick={() => handleRecuperarCarrinho(held)}
+                  title="Recuperar carrinho pausado"
+                >
+                  <Play size={11} fill="currentColor" />
+                  {held.identificador} ({formatMoney(held.total)})
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn delete"
+                  style={{ padding: 2, marginLeft: 4 }}
+                  onClick={() => handleDescartarCarrinhoEmEspera(held.id)}
+                  title="Descartar este carrinho"
+                >
+                  <XCircle size={13} />
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -1297,14 +1476,63 @@ export default function VendasPage() {
                 suggestionsRef={suggestionsRef}
               />
 
+              {carrinhosEmEspera.length > 0 && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 10px',
+                    background: 'rgba(234, 88, 12, 0.08)',
+                    border: '1px solid rgba(234, 88, 12, 0.25)',
+                    borderRadius: 6,
+                    marginBottom: 12,
+                    fontSize: 12,
+                    flexWrap: 'wrap',
+                    gap: 6,
+                  }}
+                >
+                  <span style={{ color: '#c2410c', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Clock size={13} /> {carrinhosEmEspera.length} carrinho(s) em espera:
+                  </span>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {carrinhosEmEspera.map((held) => (
+                      <button
+                        key={held.id}
+                        type="button"
+                        className="btn-secondary"
+                        style={{ fontSize: 11, padding: '2px 8px', color: '#c2410c' }}
+                        onClick={() => handleRecuperarCarrinho(held)}
+                        title="Recuperar este carrinho"
+                      >
+                        <Play size={10} style={{ marginRight: 2 }} /> {held.identificador} ({formatMoney(held.total)})
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* LISTA DO CARRINHO */}
-              <div className="cart-heading">
-                <h4>
-                  <ShoppingCart size={17} strokeWidth={2} aria-hidden="true" /> Carrinho
-                </h4>
-                <span>
-                  {carrinho.length} produto{carrinho.length === 1 ? '' : 's'}
-                </span>
+              <div className="cart-heading" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <ShoppingCart size={17} strokeWidth={2} aria-hidden="true" /> Carrinho
+                  </h4>
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    ({carrinho.length} {carrinho.length === 1 ? 'produto' : 'produtos'})
+                  </span>
+                </div>
+                {carrinho.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ fontSize: 12, padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 4, color: '#ea580c' }}
+                    onClick={handleSegurarCarrinho}
+                    title="Pôr venda em espera e libertar o balcão"
+                  >
+                    <Pause size={12} /> Pôr em Espera
+                  </button>
+                )}
               </div>
 
               {carrinho.length === 0 ? (
@@ -1696,7 +1924,10 @@ export default function VendasPage() {
       {reciboSucesso && (
         <Modal
           title={`Venda #${reciboSucesso.numero} Concluída!`}
-          onClose={() => setReciboSucesso(null)}
+          onClose={() => {
+            setReciboSucesso(null);
+            setTelefoneWhatsAppRecibo('');
+          }}
         >
           <div
             style={{
@@ -1712,12 +1943,72 @@ export default function VendasPage() {
                 fontSize: 12,
                 whiteSpace: 'pre-wrap',
                 margin: 0,
-                maxHeight: 280,
+                maxHeight: 250,
                 overflowY: 'auto',
               }}
             >
-              {gerarTextoRecibo(reciboSucesso)}
+              {gerarTextoRecibo(reciboSucesso, definicoes.nomeLoja || 'BStore')}
             </pre>
+          </div>
+
+          {/* Opções de Envio WhatsApp */}
+          <div
+            style={{
+              padding: '10px 12px',
+              borderRadius: 8,
+              background: 'rgba(37, 211, 102, 0.08)',
+              border: '1px solid rgba(37, 211, 102, 0.3)',
+              marginBottom: 16,
+            }}
+          >
+            <label
+              htmlFor="recibo-whatsapp"
+              style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#15803d', marginBottom: 6 }}
+            >
+              <MessageCircle size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+              WhatsApp do Cliente (opcional)
+            </label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                id="recibo-whatsapp"
+                type="tel"
+                placeholder="Ex: 84 123 4567 ou 82/85/86/87..."
+                value={telefoneWhatsAppRecibo}
+                onChange={(e) => setTelefoneWhatsAppRecibo(e.target.value)}
+                style={{ flex: 1, padding: '6px 10px', fontSize: 13, borderRadius: 6, border: '1px solid var(--border-color)' }}
+              />
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ background: '#16a34a', borderColor: '#16a34a', fontSize: 13, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6 }}
+                onClick={() => partilharReciboWhatsApp(reciboSucesso, definicoes.nomeLoja || 'BStore', telefoneWhatsAppRecibo)}
+              >
+                <Share2 size={14} /> Enviar WhatsApp
+              </button>
+            </div>
+          </div>
+
+          {/* Formato de Impressão Térmica */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
+              <span>Largura do papel térmico:</span>
+              <button
+                type="button"
+                className={larguraTermica === '58mm' ? 'btn-primary' : 'btn-secondary'}
+                style={{ padding: '2px 8px', fontSize: 11 }}
+                onClick={() => setLarguraTermica('58mm')}
+              >
+                58mm (Padrão)
+              </button>
+              <button
+                type="button"
+                className={larguraTermica === '80mm' ? 'btn-primary' : 'btn-secondary'}
+                style={{ padding: '2px 8px', fontSize: 11 }}
+                onClick={() => setLarguraTermica('80mm')}
+              >
+                80mm
+              </button>
+            </div>
           </div>
 
           <div
@@ -1731,22 +2022,15 @@ export default function VendasPage() {
             <button
               type="button"
               className="btn-primary"
-              onClick={() => imprimirReciboTexto(reciboSucesso)}
+              onClick={() => imprimirReciboTexto(reciboSucesso, definicoes.nomeLoja || 'BStore', larguraTermica)}
             >
-              <Printer size={15} strokeWidth={2} aria-hidden="true" /> Imprimir Recibo
-            </button>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => partilharReciboWhatsApp(reciboSucesso)}
-            >
-              <Share2 size={15} strokeWidth={2} aria-hidden="true" /> Enviar por WhatsApp
+              <Printer size={15} strokeWidth={2} aria-hidden="true" /> Imprimir Térmico ({larguraTermica})
             </button>
             <button
               type="button"
               className="btn-secondary"
               onClick={() => {
-                void navigator.clipboard.writeText(gerarTextoRecibo(reciboSucesso));
+                void navigator.clipboard.writeText(gerarTextoRecibo(reciboSucesso, definicoes.nomeLoja || 'BStore'));
                 toast('Recibo copiado para a área de transferência.');
               }}
             >
@@ -1755,12 +2039,24 @@ export default function VendasPage() {
             <button
               type="button"
               className="btn-secondary"
-              onClick={() => setReciboSucesso(null)}
+              onClick={() => {
+                setReciboSucesso(null);
+                setTelefoneWhatsAppRecibo('');
+              }}
             >
               Fechar
             </button>
           </div>
         </Modal>
+      )}
+
+      {/* MODAL DE SAÍDA / DESPESA DE CAIXA */}
+      {showDespesaModal && (
+        <DespesaCaixaModal
+          sessaoId={sessaoCaixa.id}
+          onClose={() => setShowDespesaModal(false)}
+          onDespesaRegistada={() => void reload()}
+        />
       )}
 
       {/* MODAL DE DETALHES DE VENDA */}

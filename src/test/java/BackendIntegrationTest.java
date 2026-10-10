@@ -1506,4 +1506,154 @@ class BackendIntegrationTest {
         JsonNode fechoNode = json.readTree(resFechar.body());
         assertEquals("0.00", fechoNode.get("diferenca").asText());
     }
+
+    @Test
+    void testeDespesasCaixaAbateValorEsperadoEFechaSemDiferenca() throws Exception {
+        Usuario userD = new Usuario("Dono D", "dono_d_" + UUID.randomUUID() + "@test.mz", "Senha2026!", "operator");
+        userD.aplicarDiasAcesso(30);
+        userD = new UsuarioDAO().salvar(userD);
+        String cookieD = "bstore_session=" + new SessaoDAO().criar(userD).getId();
+
+        // 1. Abrir caixa com 1000.00 MT
+        HttpRequest abrir = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/abrir"))
+            .header("Cookie", cookieD).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of("valorInicial", "1000.00"))))
+            .build();
+        HttpResponse<String> resAbrir = HttpClient.newHttpClient().send(abrir, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, resAbrir.statusCode());
+
+        // 2. Vender 500.00 MT em dinheiro
+        Categoria cat = service.criarCategoria("Geral D", "", userD.getId());
+        Produto p1 = service.criarProduto("Farinha de Milho", new BigDecimal("500.00"), new BigDecimal("350.00"), new BigDecimal("10.000"), "un", BigDecimal.ZERO, cat.getId(), null, userD.getId());
+
+        HttpRequest venda = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/vendas/lote"))
+            .header("Cookie", cookieD).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of(
+                "itens", List.of(Map.of("produtoId", p1.getId(), "quantidade", "1.000")),
+                "pagamentos", List.of(Map.of("metodo", "DINHEIRO", "valor", "500.00"))
+            ))))
+            .build();
+        HttpResponse<String> resVenda = HttpClient.newHttpClient().send(venda, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, resVenda.statusCode());
+
+        // 3. Registar Despesa 1: Credelec 200.00 MT
+        HttpRequest despesa1 = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/despesas"))
+            .header("Cookie", cookieD).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of(
+                "valor", "200.00",
+                "categoria", "ENERGIA",
+                "descricao", "Recarga Credelec balcão"
+            ))))
+            .build();
+        HttpResponse<String> resDesp1 = HttpClient.newHttpClient().send(despesa1, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, resDesp1.statusCode());
+        JsonNode desp1Node = json.readTree(resDesp1.body());
+        assertEquals("200.00", desp1Node.get("valor").asText());
+        assertEquals("ENERGIA", desp1Node.get("categoria").asText());
+
+        // 4. Registar Despesa 2: Frete 150.00 MT
+        HttpRequest despesa2 = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/despesas"))
+            .header("Cookie", cookieD).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of(
+                "valor", "150.00",
+                "categoria", "TRANSPORTE",
+                "descricao", "Frete entrega do pão"
+            ))))
+            .build();
+        HttpResponse<String> resDesp2 = HttpClient.newHttpClient().send(despesa2, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, resDesp2.statusCode());
+
+        // 5. Listar despesas do caixa atual
+        HttpRequest listarDesp = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/despesas"))
+            .header("Cookie", cookieD).GET().build();
+        HttpResponse<String> resListar = HttpClient.newHttpClient().send(listarDesp, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resListar.statusCode());
+        JsonNode listaDespNode = json.readTree(resListar.body());
+        assertEquals(2, listaDespNode.size());
+
+        // 6. Verificar resumo do caixa atual:
+        // valorEsperado = 1000 (inicial) + 500 (vendas) - 350 (despesas) = 1150.00 MT
+        HttpRequest getCaixa = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/atual"))
+            .header("Cookie", cookieD).GET().build();
+        HttpResponse<String> resCaixa = HttpClient.newHttpClient().send(getCaixa, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resCaixa.statusCode());
+        JsonNode caixaNode = json.readTree(resCaixa.body());
+        assertEquals("350.00", caixaNode.get("despesasDinheiro").asText());
+        assertEquals("1150.00", caixaNode.get("valorEsperado").asText());
+
+        // 7. Fechar caixa com 1150.00 MT -> Diferença 0.00
+        HttpRequest fechar = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/fechar"))
+            .header("Cookie", cookieD).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of(
+                "valorContado", "1150.00",
+                "notaFecho", "Fecho certinho descontando Credelec e Frete"
+            ))))
+            .build();
+        HttpResponse<String> resFechar = HttpClient.newHttpClient().send(fechar, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resFechar.statusCode());
+        JsonNode fechoNode = json.readTree(resFechar.body());
+        assertEquals("0.00", fechoNode.get("diferenca").asText());
+
+        // 8. Fecho diário também deve refletir as despesas
+        HttpRequest fechoDiario = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/fecho"))
+            .header("Cookie", cookieD).GET().build();
+        HttpResponse<String> resDiario = HttpClient.newHttpClient().send(fechoDiario, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resDiario.statusCode());
+        JsonNode diarioNode = json.readTree(resDiario.body());
+        assertEquals("350.00", diarioNode.get("totalDespesas").asText());
+    }
+
+    @Test
+    void testeDespesaCaixaIsolamentoMultiTenant() throws Exception {
+        Usuario userE = new Usuario("Dono E", "dono_e_" + UUID.randomUUID() + "@test.mz", "Senha2026!", "operator");
+        userE.aplicarDiasAcesso(30);
+        userE = new UsuarioDAO().salvar(userE);
+        String cookieE = "bstore_session=" + new SessaoDAO().criar(userE).getId();
+
+        Usuario userF = new Usuario("Dono F", "dono_f_" + UUID.randomUUID() + "@test.mz", "Senha2026!", "operator");
+        userF.aplicarDiasAcesso(30);
+        userF = new UsuarioDAO().salvar(userF);
+        String cookieF = "bstore_session=" + new SessaoDAO().criar(userF).getId();
+
+        // User E abre caixa e lança 100 MT de despesa
+        HttpRequest abrirE = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/abrir"))
+            .header("Cookie", cookieE).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of("valorInicial", "200.00"))))
+            .build();
+        HttpClient.newHttpClient().send(abrirE, HttpResponse.BodyHandlers.ofString());
+
+        HttpRequest despE = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/despesas"))
+            .header("Cookie", cookieE).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of(
+                "valor", "100.00",
+                "categoria", "LIMPEZA",
+                "descricao", "Detergente"
+            ))))
+            .build();
+        HttpClient.newHttpClient().send(despE, HttpResponse.BodyHandlers.ofString());
+
+        // User F abre caixa com 500 MT
+        HttpRequest abrirF = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/abrir"))
+            .header("Cookie", cookieF).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of("valorInicial", "500.00"))))
+            .build();
+        HttpClient.newHttpClient().send(abrirF, HttpResponse.BodyHandlers.ofString());
+
+        // User F consulta despesas: deve estar vazia (0 despesas)
+        HttpRequest listarF = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/despesas"))
+            .header("Cookie", cookieF).GET().build();
+        HttpResponse<String> resListarF = HttpClient.newHttpClient().send(listarF, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resListarF.statusCode());
+        JsonNode listaF = json.readTree(resListarF.body());
+        assertEquals(0, listaF.size());
+
+        // User F consulta caixa atual: despesas = 0.00, valorEsperado = 500.00
+        HttpRequest caixaF = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/atual"))
+            .header("Cookie", cookieF).GET().build();
+        HttpResponse<String> resCaixaF = HttpClient.newHttpClient().send(caixaF, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resCaixaF.statusCode());
+        JsonNode nodeF = json.readTree(resCaixaF.body());
+        assertEquals("0.00", nodeF.get("despesasDinheiro").asText());
+        assertEquals("500.00", nodeF.get("valorEsperado").asText());
+    }
 }

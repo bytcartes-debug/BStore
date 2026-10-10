@@ -334,3 +334,46 @@ test('atalho de câmara na barra de produtos abre edição se o produto já exis
   await expect(page.getByRole('heading', { name: 'Editar produto' })).toBeVisible();
   await expect(page.locator('#product-name')).toHaveValue('Arroz agulha de qualidade superior');
 });
+
+test('pôr carrinho em espera e recuperar com 1 clique', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/');
+  await navigate(page, 'Vendas');
+
+  await page.getByRole('button', { name: 'Registar venda', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Pesquisar produto' }).fill('Água');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Adicionar', exact: true }).click();
+
+  // Dialog com 1 item no carrinho
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Carrinho/i })).toBeVisible();
+
+  // Pôr em espera (aceitando o prompt com nome do cliente)
+  page.on('dialog', async (dialog) => {
+    if (dialog.type() === 'prompt') {
+      await dialog.accept('Cliente Djob');
+    }
+  });
+
+  const btnPausar = page.getByRole('button', { name: /Pôr em Espera/i });
+  await expect(btnPausar).toBeVisible();
+  await btnPausar.click();
+
+  // Carrinho no modal fica vazio
+  await expect(page.getByText('O carrinho está vazio.')).toBeVisible();
+  await page.getByRole('button', { name: 'Cancelar' }).click();
+
+  // Na página de vendas deve aparecer a barra com o carrinho em espera
+  const btnRecuperar = page.getByRole('button', { name: /Cliente Djob/i });
+  await expect(btnRecuperar).toBeVisible();
+
+  // Clica para recuperar
+  await btnRecuperar.click();
+
+  // O modal abre e o item está de volta no carrinho
+  const modal = page.getByRole('dialog');
+  await expect(modal).toBeVisible();
+  await expect(modal.getByText('Água mineral 1,5 L')).toBeVisible();
+});

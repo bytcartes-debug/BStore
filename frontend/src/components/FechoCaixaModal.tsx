@@ -13,6 +13,7 @@ interface FechoCaixaData {
   numeroVendas: number;
   vendasAnuladas: number;
   totalFiado: string;
+  totalDespesas?: string;
   totaisPorMetodo: Record<string, string>;
 }
 
@@ -23,6 +24,7 @@ interface SessaoCaixaAtual {
   valorInicial?: string;
   vendasDinheiro?: string;
   devolucoesDinheiro?: string;
+  despesasDinheiro?: string;
   valorEsperado?: string;
   totalVendas?: number;
 }
@@ -184,6 +186,7 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
             <tr><td>Vendas Concluídas:</td><td style="text-align:right">${dados.numeroVendas}</td></tr>
             <tr><td>Vendas Anuladas:</td><td style="text-align:right;color:#c00">${dados.vendasAnuladas}</td></tr>
             <tr><td>Vendas a Fiado:</td><td style="text-align:right">${formatMoney(dados.totalFiado)}</td></tr>
+            <tr><td>Saídas / Despesas:</td><td style="text-align:right;color:#ea580c">-${formatMoney(dados.totalDespesas || '0')}</td></tr>
           </table>
           <hr />
           <h4 style="margin:8px 0">RECEBIMENTOS POR MÉTODO</h4>
@@ -272,6 +275,10 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
                 <div className="card" style={{ padding: 10, textAlign: 'center' }}>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Devoluções</span>
                   <strong style={{ display: 'block', fontSize: 16, color: '#dc2626' }}>-{formatMoney(sessao.devolucoesDinheiro || '0')}</strong>
+                </div>
+                <div className="card" style={{ padding: 10, textAlign: 'center' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Despesas / Saídas</span>
+                  <strong style={{ display: 'block', fontSize: 16, color: '#ea580c' }}>-{formatMoney(sessao.despesasDinheiro || '0')}</strong>
                 </div>
                 <div className="card" style={{ padding: 10, textAlign: 'center', background: 'var(--bg-subtle)' }}>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Valor Esperado</span>
@@ -411,6 +418,13 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
                   <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>Vendido a Fiado</span>
                   <strong style={{ display: 'block', fontSize: 18, color: '#d97706' }}>
                     {formatMoney(dados.totalFiado)}
+                  </strong>
+                </div>
+
+                <div className="card" style={{ padding: 12, textAlign: 'center' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>Saídas / Despesas</span>
+                  <strong style={{ display: 'block', fontSize: 18, color: '#ea580c' }}>
+                    -{formatMoney(dados.totalDespesas || '0')}
                   </strong>
                 </div>
               </div>

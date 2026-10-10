@@ -90,28 +90,51 @@ export function gerarTextoRecibo(recibo: ReciboDados, nomeLoja = 'Flex Stock'): 
   ].join('\n');
 }
 
-export function partilharReciboWhatsApp(recibo: ReciboDados, nomeLoja = 'Flex Stock') {
+export function formatarNumeroWhatsApp(telefone?: string): string {
+  if (!telefone) return '';
+  const limpo = telefone.replace(/\D/g, '');
+  if (!limpo) return '';
+  if (limpo.length === 9) {
+    return `258${limpo}`;
+  }
+  return limpo;
+}
+
+export function partilharReciboWhatsApp(recibo: ReciboDados, nomeLoja = 'Flex Stock', telefone?: string) {
   const texto = gerarTextoRecibo(recibo, nomeLoja);
-  const url = `https://wa.me/?text=${encodeURIComponent(texto)}`;
+  const numFormatado = formatarNumeroWhatsApp(telefone);
+  const url = numFormatado
+    ? `https://wa.me/${numFormatado}?text=${encodeURIComponent(texto)}`
+    : `https://wa.me/?text=${encodeURIComponent(texto)}`;
   window.open(url, '_blank');
 }
 
-export function imprimirReciboTexto(recibo: ReciboDados, nomeLoja = 'Flex Stock') {
+export function imprimirReciboTexto(
+  recibo: ReciboDados,
+  nomeLoja = 'Flex Stock',
+  largura: '58mm' | '80mm' = '58mm',
+) {
   const texto = gerarTextoRecibo(recibo, nomeLoja);
-  const win = window.open('', '_blank', 'width=400,height=600');
+  const win = window.open('', '_blank', 'width=420,height=600');
   if (!win) return;
+  const printWidth = largura === '80mm' ? '72mm' : '48mm';
   win.document.write(`
     <!DOCTYPE html>
     <html>
       <head>
         <title>Recibo #${recibo.numero}</title>
         <style>
+          @page {
+            margin: 0;
+            size: ${largura} auto;
+          }
           body {
             font-family: 'Courier New', Courier, monospace;
-            font-size: 13px;
+            font-size: 12px;
             white-space: pre-wrap;
-            padding: 16px;
-            margin: 0;
+            padding: 8px 4px;
+            margin: 0 auto;
+            width: ${printWidth};
             color: #000;
           }
         </style>

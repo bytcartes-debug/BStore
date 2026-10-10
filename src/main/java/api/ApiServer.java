@@ -220,6 +220,8 @@ public class ApiServer {
         app.post("/api/caixa/abrir", this::abrirSessaoCaixa);
         app.post("/api/caixa/fechar", this::fecharSessaoCaixa);
         app.get("/api/caixa/historico", this::listarHistoricoCaixa);
+        app.get("/api/caixa/despesas", this::listarDespesasCaixa);
+        app.post("/api/caixa/despesas", this::registarDespesaCaixa);
 
         app.post("/api/vendas/{id}/devolver", this::devolverVenda);
         app.get("/api/vendas/{id}/devolucoes", this::listarDevolucoesVenda);
@@ -782,6 +784,23 @@ public class ApiServer {
             res.add(m);
         }
         ctx.json(res);
+    }
+
+    private void listarDespesasCaixa(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long sessaoId = longQuery(ctx, "sessaoId");
+        ctx.json(service.listarDespesasCaixa(sessaoId, uid));
+    }
+
+    private void registarDespesaCaixa(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long opId = utilizador(ctx).usuario.getId();
+        Map<String, Object> body = corpo(ctx);
+        BigDecimal valor = decimalObrigatorio(body, "valor");
+        String categoria = texto(body, "categoria");
+        String descricao = textoObrigatorio(body, "descricao");
+        Map<String, Object> res = service.registarDespesaCaixa(valor, categoria, descricao, opId, uid);
+        ctx.status(HttpStatus.CREATED).json(res);
     }
 
     @SuppressWarnings("unchecked")

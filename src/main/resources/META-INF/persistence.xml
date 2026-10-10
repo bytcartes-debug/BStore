@@ -24,6 +24,7 @@
         <class>model.SessaoCaixa</class>
         <class>model.Devolucao</class>
         <class>model.ItemDevolucao</class>
+        <class>model.DespesaCaixa</class>
 
         <properties>
             <!-- Configuração base (será sobrescrita pelo JPAUtil via variáveis de ambiente) -->
