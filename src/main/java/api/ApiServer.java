@@ -300,7 +300,15 @@ public class ApiServer {
     private void getDashboard(Context ctx) {
         Long uid = utilizadorId(ctx);
         LocalDate hoje = LocalDate.now();
-        Map<LocalDate, BigDecimal> totais = vendaDAO.totaisPorDia(hoje.minusDays(6), hoje, uid);
+
+        Map<LocalDate, BigDecimal> totais;
+        try {
+            totais = vendaDAO.totaisPorDia(hoje.minusDays(6), hoje, uid);
+        } catch (Exception e) {
+            System.err.println("[DASHBOARD] Falha ao carregar totaisPorDia: " + e.getMessage());
+            totais = Collections.emptyMap();
+        }
+
         List<Map<String, Object>> vendasPorDia = new ArrayList<>();
         for (int i = 6; i >= 0; i--) {
             LocalDate dia = hoje.minusDays(i);
@@ -309,57 +317,98 @@ public class ApiServer {
             item.put("total", decimalJson(totais.getOrDefault(dia, BigDecimal.ZERO), 2));
             vendasPorDia.add(item);
         }
-        List<Map<String, Object>> alertas = service.produtosComStockBaixo(uid).stream()
-            .map(this::produtoStockJson).collect(Collectors.toList());
-        List<Map<String, Object>> recentes = vendaDAO.recentes(uid, 10).stream()
-            .map(this::vendaJson).collect(Collectors.toList());
+
+        List<Map<String, Object>> alertas;
+        try {
+            alertas = service.produtosComStockBaixo(uid).stream()
+                .map(this::produtoStockJson).collect(Collectors.toList());
+        } catch (Exception e) {
+            System.err.println("[DASHBOARD] Falha ao carregar alertasStock: " + e.getMessage());
+            alertas = Collections.emptyList();
+        }
+
+        List<Map<String, Object>> recentes;
+        try {
+            recentes = vendaDAO.recentes(uid, 10).stream()
+                .map(this::vendaJson).collect(Collectors.toList());
+        } catch (Exception e) {
+            System.err.println("[DASHBOARD] Falha ao carregar vendasRecentes: " + e.getMessage());
+            recentes = Collections.emptyList();
+        }
 
         Map<String, Object> dashboard = new LinkedHashMap<>();
         BigDecimal totalVendasHoje = totais.getOrDefault(hoje, BigDecimal.ZERO);
-        BigDecimal totalVendas7Dias = totais.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        Map<String, BigDecimal> lucros = vendaDAO.lucroDashboard(hoje, uid);
-        BigDecimal lucroHoje = lucros.get("hoje");
-        BigDecimal lucro7Dias = lucros.get("7dias");
-        BigDecimal valorTotalStockCusto = stockService.calcularValorTotalStockCusto(uid);
+        Map<String, BigDecimal> lucros;
+        try {
+            lucros = vendaDAO.lucroDashboard(hoje, uid);
+        } catch (Exception e) {
+            System.err.println("[DASHBOARD] Falha ao carregar lucros: " + e.getMessage());
+            lucros = Map.of("hoje", BigDecimal.ZERO, "7dias", BigDecimal.ZERO);
+        }
+        BigDecimal lucroHoje = lucros.getOrDefault("hoje", BigDecimal.ZERO);
+        BigDecimal lucro7Dias = lucros.getOrDefault("7dias", BigDecimal.ZERO);
+
+        BigDecimal valorTotalStockCusto;
+        try {
+            valorTotalStockCusto = stockService.calcularValorTotalStockCusto(uid);
+        } catch (Exception e) {
+            System.err.println("[DASHBOARD] Falha ao carregar valorTotalStockCusto: " + e.getMessage());
+            valorTotalStockCusto = BigDecimal.ZERO;
+        }
         if (valorTotalStockCusto == null) valorTotalStockCusto = BigDecimal.ZERO;
 
         dashboard.put("totalVendasHoje", decimalJson(totalVendasHoje, 2));
         dashboard.put("lucroHoje", decimalJson(lucroHoje, 2));
         dashboard.put("lucroUltimos7Dias", decimalJson(lucro7Dias, 2));
         dashboard.put("valorTotalStockCusto", decimalJson(valorTotalStockCusto, 2));
-        dashboard.put("totalProdutos", service.totalProdutos(uid));
-        dashboard.put("totalCategorias", categoriaDAO.contarTodos(uid));
-        dashboard.put("totalDevedores", devedorDAO.contarTodos(uid));
+        try { dashboard.put("totalProdutos", service.totalProdutos(uid)); } catch (Exception e) { dashboard.put("totalProdutos", 0L); }
+        try { dashboard.put("totalCategorias", categoriaDAO.contarTodos(uid)); } catch (Exception e) { dashboard.put("totalCategorias", 0L); }
+        try { dashboard.put("totalDevedores", devedorDAO.contarTodos(uid)); } catch (Exception e) { dashboard.put("totalDevedores", 0L); }
         dashboard.put("alertasStock", alertas != null ? alertas : Collections.emptyList());
-        Map<String, BigDecimal> totaisMetodo = new dao.PagamentoVendaDAO().totaisPorMetodo(uid, hoje);
+
         Map<String, String> metodoFormatado = new LinkedHashMap<>();
-        if (totaisMetodo != null) {
-            totaisMetodo.forEach((k, v) -> metodoFormatado.put(k, decimalJson(v != null ? v : BigDecimal.ZERO, 2)));
+        try {
+            Map<String, BigDecimal> totaisMetodo = new dao.PagamentoVendaDAO().totaisPorMetodo(uid, hoje);
+            if (totaisMetodo != null) {
+                totaisMetodo.forEach((k, v) -> metodoFormatado.put(k, decimalJson(v != null ? v : BigDecimal.ZERO, 2)));
+            }
+        } catch (Exception e) {
+            System.err.println("[DASHBOARD] Falha ao carregar vendasPorMetodo: " + e.getMessage());
         }
         dashboard.put("vendasPorMetodo", metodoFormatado);
 
-        List<Object[]> maisVendidosRaw = new dao.ItemVendaDAO().produtosMaisVendidos(uid, hoje.minusDays(6), hoje, 5);
         List<Map<String, Object>> maisVendidos = new ArrayList<>();
-        if (maisVendidosRaw != null) {
-            for (Object[] r : maisVendidosRaw) {
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("produtoId", r[0]);
-                item.put("nome", r[1]);
-                item.put("quantidade", decimalJson((BigDecimal) r[2], 3));
-                item.put("quantidadeTotal", decimalJson((BigDecimal) r[2], 3));
-                item.put("total", decimalJson((BigDecimal) r[3], 2));
-                item.put("valorTotal", decimalJson((BigDecimal) r[3], 2));
-                maisVendidos.add(item);
+        try {
+            List<Object[]> maisVendidosRaw = new dao.ItemVendaDAO().produtosMaisVendidos(uid, hoje.minusDays(6), hoje, 5);
+            if (maisVendidosRaw != null) {
+                for (Object[] r : maisVendidosRaw) {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("produtoId", r[0]);
+                    item.put("nome", r[1]);
+                    item.put("quantidade", decimalJson(toBigDecimal(r[2]), 3));
+                    item.put("quantidadeTotal", decimalJson(toBigDecimal(r[2]), 3));
+                    item.put("total", decimalJson(toBigDecimal(r[3]), 2));
+                    item.put("valorTotal", decimalJson(toBigDecimal(r[3]), 2));
+                    maisVendidos.add(item);
+                }
             }
+        } catch (Exception e) {
+            System.err.println("[DASHBOARD] Falha ao carregar produtosMaisVendidos: " + e.getMessage());
         }
         dashboard.put("produtosMaisVendidos", maisVendidos);
 
         dashboard.put("vendasRecentes", recentes != null ? recentes : Collections.emptyList());
         dashboard.put("vendasPorDia", vendasPorDia != null ? vendasPorDia : Collections.emptyList());
-
         dashboard.put("faltaReporCount", alertas != null ? alertas.size() : 0);
-        BigDecimal perdasMes = service.calcularPerdasMesACusto(uid);
+
+        BigDecimal perdasMes;
+        try {
+            perdasMes = service.calcularPerdasMesACusto(uid);
+        } catch (Exception e) {
+            System.err.println("[DASHBOARD] Falha ao carregar perdasMes: " + e.getMessage());
+            perdasMes = BigDecimal.ZERO;
+        }
         dashboard.put("perdasMes", decimalJson(perdasMes != null ? perdasMes : BigDecimal.ZERO, 2));
 
         ctx.json(dashboard);
@@ -1254,6 +1303,17 @@ public class ApiServer {
 
     private String decimalJson(BigDecimal valor, int escala) {
         return valor == null ? null : valor.setScale(escala, RoundingMode.HALF_UP).toPlainString();
+    }
+
+    private BigDecimal toBigDecimal(Object val) {
+        if (val == null) return BigDecimal.ZERO;
+        if (val instanceof BigDecimal) return (BigDecimal) val;
+        if (val instanceof Number) return new BigDecimal(val.toString());
+        try {
+            return new BigDecimal(val.toString().trim());
+        } catch (Exception e) {
+            return BigDecimal.ZERO;
+        }
     }
 
     private void validarRole(String role) {

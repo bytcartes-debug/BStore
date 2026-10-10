@@ -178,10 +178,10 @@ public class VendaDAO extends GenericDAO<Venda> {
             @SuppressWarnings("unchecked")
             List<Object[]> rows = em.createNativeQuery(
                 "SELECT v.criada_em, v.total, 1 FROM vendas v " +
-                "WHERE v.usuario_id = :uid AND v.estado != 'ANULADA' AND v.criada_em >= :inicio AND v.criada_em < :fimExclusive " +
+                "WHERE v.usuario_id = :uid AND v.estado != 'ANULADA' AND v.criada_em >= CAST(:inicio AS timestamp) AND v.criada_em < CAST(:fimExclusive AS timestamp) " +
                 "UNION ALL " +
                 "SELECT d.criada_em, d.total, -1 FROM devolucoes d " +
-                "WHERE d.usuario_id = :uid AND d.criada_em >= :inicio AND d.criada_em < :fimExclusive")
+                "WHERE d.usuario_id = :uid AND d.criada_em >= CAST(:inicio AS timestamp) AND d.criada_em < CAST(:fimExclusive AS timestamp)")
                 .setParameter("uid", usuarioId)
                 .setParameter("inicio", tsInicio)
                 .setParameter("fimExclusive", tsFim)
@@ -316,12 +316,12 @@ public class VendaDAO extends GenericDAO<Venda> {
 
             Object resVendasObj = em.createNativeQuery(
                 "SELECT " +
-                "COALESCE(SUM(CASE WHEN v.criada_em >= :inicioHoje THEN iv.total - (iv.quantidade * iv.custo_unitario) ELSE 0 END), 0), " +
-                "COALESCE(SUM(iv.total - (iv.quantidade * iv.custo_unitario)), 0) " +
+                "COALESCE(SUM(CASE WHEN v.criada_em >= CAST(:inicioHoje AS timestamp) THEN iv.total - (iv.quantidade * iv.custo_unitario) ELSE 0.00 END), 0.00), " +
+                "COALESCE(SUM(iv.total - (iv.quantidade * iv.custo_unitario)), 0.00) " +
                 "FROM venda_itens iv " +
                 "JOIN vendas v ON v.id = iv.venda_id " +
                 "WHERE iv.usuario_id = :uid AND iv.custo_conhecido = TRUE AND v.estado != 'ANULADA' " +
-                "AND v.criada_em >= :inicio7Dias AND v.criada_em < :fimExclusive")
+                "AND v.criada_em >= CAST(:inicio7Dias AS timestamp) AND v.criada_em < CAST(:fimExclusive AS timestamp)")
                 .setParameter("uid", usuarioId)
                 .setParameter("inicioHoje", tsHoje)
                 .setParameter("inicio7Dias", ts7Dias)
@@ -332,13 +332,13 @@ public class VendaDAO extends GenericDAO<Venda> {
 
             Object resDevsObj = em.createNativeQuery(
                 "SELECT " +
-                "COALESCE(SUM(CASE WHEN d.criada_em >= :inicioHoje THEN idv.valor - (idv.quantidade * iv.custo_unitario) ELSE 0 END), 0), " +
-                "COALESCE(SUM(idv.valor - (idv.quantidade * iv.custo_unitario)), 0) " +
+                "COALESCE(SUM(CASE WHEN d.criada_em >= CAST(:inicioHoje AS timestamp) THEN idv.valor - (idv.quantidade * iv.custo_unitario) ELSE 0.00 END), 0.00), " +
+                "COALESCE(SUM(idv.valor - (idv.quantidade * iv.custo_unitario)), 0.00) " +
                 "FROM devolucao_itens idv " +
                 "JOIN devolucoes d ON d.id = idv.devolucao_id " +
                 "JOIN venda_itens iv ON iv.id = idv.item_venda_id " +
                 "WHERE d.usuario_id = :uid AND iv.custo_conhecido = TRUE " +
-                "AND d.criada_em >= :inicio7Dias AND d.criada_em < :fimExclusive")
+                "AND d.criada_em >= CAST(:inicio7Dias AS timestamp) AND d.criada_em < CAST(:fimExclusive AS timestamp)")
                 .setParameter("uid", usuarioId)
                 .setParameter("inicioHoje", tsHoje)
                 .setParameter("inicio7Dias", ts7Dias)

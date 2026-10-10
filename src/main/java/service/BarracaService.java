@@ -1246,15 +1246,19 @@ public class BarracaService {
 
     public BigDecimal calcularPerdasMesACusto(Long usuarioId) {
         return JPAUtil.emTransacao(usuarioId, em -> {
-            LocalDateTime inicioMes = LocalDate.now().withDayOfMonth(1).atStartOfDay();
-            BigDecimal perdas = em.createQuery(
-                "SELECT COALESCE(SUM(ABS(m.quantidade) * COALESCE(m.custoUnitario, 0)), 0) FROM MovimentoStock m " +
-                "WHERE m.usuarioId = :uid AND (m.tipo = 'PERDA' OR (m.tipo = 'AJUSTE' AND m.quantidade < 0)) " +
-                "AND m.criadoEm >= :inicioMes", BigDecimal.class)
-                .setParameter("uid", usuarioId)
-                .setParameter("inicioMes", inicioMes)
-                .getSingleResult();
-            return perdas != null ? perdas.setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+            try {
+                LocalDateTime inicioMes = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+                BigDecimal perdas = em.createQuery(
+                    "SELECT SUM(ABS(m.quantidade) * m.custoUnitario) FROM MovimentoStock m " +
+                    "WHERE m.usuarioId = :uid AND (m.tipo = 'PERDA' OR (m.tipo = 'AJUSTE' AND m.quantidade < 0)) " +
+                    "AND m.criadoEm >= :inicioMes", BigDecimal.class)
+                    .setParameter("uid", usuarioId)
+                    .setParameter("inicioMes", inicioMes)
+                    .getSingleResult();
+                return perdas != null ? perdas.setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+            } catch (Exception e) {
+                return BigDecimal.ZERO;
+            }
         });
     }
 

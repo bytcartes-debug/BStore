@@ -31,7 +31,7 @@ public class PagamentoVendaDAO extends GenericDAO<PagamentoVenda> {
         LocalDateTime fimExclusive = d.plusDays(1).atStartOfDay();
         return JPAUtil.emTransacao(usuarioId, em -> {
             List<Object[]> rows = em.createQuery(
-                "SELECT p.metodo, SUM(p.valor - COALESCE(p.troco, 0)) FROM PagamentoVenda p JOIN p.venda v " +
+                "SELECT p.metodo, SUM(p.valor - p.troco) FROM PagamentoVenda p JOIN p.venda v " +
                 "WHERE p.usuarioId = :uid AND v.estado != 'ANULADA' AND v.criadaEm >= :inicio AND v.criadaEm < :fimExclusive " +
                 "GROUP BY p.metodo", Object[].class)
                 .setParameter("uid", usuarioId)
@@ -41,7 +41,11 @@ public class PagamentoVendaDAO extends GenericDAO<PagamentoVenda> {
 
             Map<String, BigDecimal> mapa = new LinkedHashMap<>();
             for (Object[] r : rows) {
-                mapa.put((String) r[0], (BigDecimal) r[1]);
+                if (r[0] != null) {
+                    BigDecimal val = r[1] instanceof BigDecimal ? (BigDecimal) r[1]
+                        : (r[1] != null ? new BigDecimal(r[1].toString()) : BigDecimal.ZERO);
+                    mapa.put(r[0].toString(), val);
+                }
             }
 
             // Subtrair devoluções ocorridas nesta data no método da venda original
