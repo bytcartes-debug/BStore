@@ -1,11 +1,11 @@
 import { useToast } from '../utils/toast';
 import { useState } from 'react';
-import { apiFetch, apiRequest } from '../utils/api';
+import { apiFetch, apiRequest, descarregarFicheiro } from '../utils/api';
 import { useMutation, useResource } from '../utils/useResource';
 import { abrirScanner } from '../utils/scanner';
 import { buscarNaOpenFoodFacts } from '../utils/openFoodFacts';
 import { decimal, formatMoney, formatQuantity, parseDecimalInput } from '../utils/decimal';
-import { ArrowDownLeft, Camera, ClipboardList, Plus, SlidersHorizontal, X } from 'lucide-react';
+import { ArrowDownLeft, Camera, ClipboardList, Download, Plus, SlidersHorizontal, X } from 'lucide-react';
 import {
   PageHeading,
   Loading,
@@ -14,6 +14,7 @@ import {
   Field,
   Notice,
   ConfirmDialog,
+  Spinner,
 } from '../components/UI';
 import type {
   Categoria,
@@ -55,6 +56,7 @@ export default function ProdutosPage() {
   const [stockFilter, setStockFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('active'); // active | archived | all
   const [sort, setSort] = useState('name');
+  const [exportandoStock, setExportandoStock] = useState(false);
 
   // Modais
   const [showModal, setShowModal] = useState(false);
@@ -444,6 +446,21 @@ export default function ProdutosPage() {
     setStatusFilter('active');
   };
 
+  const handleExportarStock = async () => {
+    try {
+      setExportandoStock(true);
+      await descarregarFicheiro(
+        '/api/stock/exportar',
+        `stock_inventario_${new Date().toISOString().slice(0, 10)}.csv`,
+      );
+      toast('Inventário de stock exportado com sucesso.');
+    } catch {
+      toast('Não foi possível exportar o inventário de stock.');
+    } finally {
+      setExportandoStock(false);
+    }
+  };
+
   return (
     <div>
       <PageHeading
@@ -482,6 +499,14 @@ export default function ProdutosPage() {
             disabled={!data || produtos.length === 0}
           >
             <ClipboardList size={16} strokeWidth={2} aria-hidden="true" /> Inventário
+          </button>
+          <button
+            className="btn-secondary"
+            onClick={() => void handleExportarStock()}
+            disabled={!data || produtos.length === 0 || exportandoStock}
+            title="Exportar inventário completo para Excel / CSV"
+          >
+            {exportandoStock ? <Spinner size="small" /> : <Download size={16} strokeWidth={2} aria-hidden="true" />} Exportar Stock
           </button>
         </div>
       </PageHeading>

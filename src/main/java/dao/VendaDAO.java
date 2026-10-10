@@ -158,6 +158,61 @@ public class VendaDAO extends GenericDAO<Venda> {
         });
     }
 
+    public List<Venda> listarParaExportacao(Long usuarioId, LocalDate inicio, LocalDate fim,
+                                           String metodo, String estado, String pesquisa) {
+        String termo = Pagina.pesquisa(pesquisa);
+        if (inicio != null && fim != null && inicio.isAfter(fim)) {
+            throw new IllegalArgumentException("O início não pode ser posterior ao fim.");
+        }
+
+        LocalDateTime inicioTs = inicio != null ? inicio.atStartOfDay() : null;
+        LocalDateTime fimExclusive = fim != null ? fim.plusDays(1).atStartOfDay() : null;
+
+        StringBuilder where = new StringBuilder(" WHERE v.usuarioId = :uid");
+        if (estado != null && !estado.isBlank() && !"todos".equalsIgnoreCase(estado)) {
+            where.append(" AND v.estado = :estado");
+        }
+        if (inicioTs != null) where.append(" AND v.criadaEm >= :inicio");
+        if (fimExclusive != null) where.append(" AND v.criadaEm < :fimExclusive");
+        if (!termo.isEmpty()) {
+            where.append(" AND (LOWER(v.observacao) LIKE :q ESCAPE '!'");
+            where.append(" OR EXISTS (SELECT 1 FROM ItemVenda iv WHERE iv.venda.id = v.id AND LOWER(iv.produto.nome) LIKE :q ESCAPE '!')");
+            try {
+                Long num = Long.parseLong(termo);
+                where.append(" OR v.numero = ").append(num);
+            } catch (NumberFormatException ignored) {}
+            where.append(")");
+        }
+        if (metodo != null && !metodo.isBlank() && !"todos".equalsIgnoreCase(metodo)) {
+            where.append(" AND EXISTS (SELECT 1 FROM PagamentoVenda pv WHERE pv.venda.id = v.id AND pv.metodo = :metodo)");
+        }
+
+        return JPAUtil.emTransacao(usuarioId, em -> {
+            TypedQuery<Venda> query = em.createQuery(
+                "SELECT v FROM Venda v" + where + " ORDER BY v.criadaEm DESC, v.id DESC", Venda.class);
+            query.setParameter("uid", usuarioId);
+            if (estado != null && !estado.isBlank() && !"todos".equalsIgnoreCase(estado)) {
+                query.setParameter("estado", estado.toUpperCase());
+            }
+            if (inicioTs != null) query.setParameter("inicio", inicioTs);
+            if (fimExclusive != null) query.setParameter("fimExclusive", fimExclusive);
+            if (!termo.isEmpty()) query.setParameter("q", "%" + termo + "%");
+            if (metodo != null && !metodo.isBlank() && !"todos".equalsIgnoreCase(metodo)) {
+                query.setParameter("metodo", metodo.toUpperCase());
+            }
+            query.setMaxResults(5000);
+            List<Venda> list = query.getResultList();
+            for (Venda v : list) {
+                org.hibernate.Hibernate.initialize(v.getItens());
+                for (model.ItemVenda iv : v.getItens()) {
+                    org.hibernate.Hibernate.initialize(iv.getProduto());
+                }
+                org.hibernate.Hibernate.initialize(v.getPagamentos());
+            }
+            return list;
+        });
+    }
+
     public List<Venda> recentes(Long usuarioId, int limite) {
         return JPAUtil.emTransacao(usuarioId, em -> em.createQuery(
             "SELECT v FROM Venda v WHERE v.usuarioId = :uid ORDER BY v.criadaEm DESC, v.id DESC", Venda.class)

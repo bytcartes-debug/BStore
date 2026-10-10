@@ -197,9 +197,11 @@ public class ApiServer {
         app.get("/api/stock/contagem/previa", this::previaContagem);
         app.post("/api/stock/contagem/previa", this::previaContagem);
         app.post("/api/stock/contagem", this::confirmarContagem);
+        app.get("/api/stock/exportar", this::exportarStockCsv);
         app.get("/api/stock/movimentos", this::listarMovimentosStock);
         app.get("/api/stock/integridade/{id}", this::verificarIntegridadeStock);
 
+        app.get("/api/vendas/exportar", this::exportarVendasCsv);
         app.get("/api/vendas", this::listarVendas);
         app.get("/api/vendas/{id}", this::obterVenda);
         app.post("/api/vendas", this::registarVenda);
@@ -220,6 +222,8 @@ public class ApiServer {
         app.post("/api/caixa/abrir", this::abrirSessaoCaixa);
         app.post("/api/caixa/fechar", this::fecharSessaoCaixa);
         app.get("/api/caixa/historico", this::listarHistoricoCaixa);
+        app.get("/api/caixa/exportar", this::exportarCaixaCsv);
+        app.get("/api/caixa/despesas/exportar", this::exportarDespesasCaixaCsv);
         app.get("/api/caixa/despesas", this::listarDespesasCaixa);
         app.post("/api/caixa/despesas", this::registarDespesaCaixa);
 
@@ -477,6 +481,15 @@ public class ApiServer {
             .map(this::produtoJson).collect(Collectors.toList()));
     }
 
+    private void exportarStockCsv(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        byte[] bytes = service.exportarStockCsv(uid);
+        String nomeFicheiro = "stock_inventario_" + LocalDate.now() + ".csv";
+        ctx.contentType("text/csv; charset=UTF-8")
+           .header("Content-Disposition", "attachment; filename=\"" + nomeFicheiro + "\"")
+           .result(bytes);
+    }
+
     private void criarProduto(Context ctx) {
         Long uid = utilizadorId(ctx);
         Map<String, Object> body = corpo(ctx);
@@ -548,6 +561,20 @@ public class ApiServer {
             return;
         }
         ctx.json(service.listarVendas(uid).stream().map(this::vendaJson).collect(Collectors.toList()));
+    }
+
+    private void exportarVendasCsv(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        LocalDate inicio = dataQuery(ctx, "inicio");
+        LocalDate fim = dataQuery(ctx, "fim");
+        String metodo = ctx.queryParam("metodo");
+        String estado = ctx.queryParam("estado");
+        String q = ctx.queryParam("q");
+        byte[] bytes = service.exportarVendasCsv(inicio, fim, metodo, estado, q, uid);
+        String nomeFicheiro = "vendas_" + LocalDate.now() + ".csv";
+        ctx.contentType("text/csv; charset=UTF-8")
+           .header("Content-Disposition", "attachment; filename=\"" + nomeFicheiro + "\"")
+           .result(bytes);
     }
 
     private void obterVenda(Context ctx) {
@@ -784,6 +811,26 @@ public class ApiServer {
             res.add(m);
         }
         ctx.json(res);
+    }
+
+    private void exportarCaixaCsv(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        int limite = inteiroQuery(ctx, "limite", 200);
+        byte[] bytes = service.exportarCaixaCsv(uid, limite);
+        String nomeFicheiro = "fechos_caixa_" + LocalDate.now() + ".csv";
+        ctx.contentType("text/csv; charset=UTF-8")
+           .header("Content-Disposition", "attachment; filename=\"" + nomeFicheiro + "\"")
+           .result(bytes);
+    }
+
+    private void exportarDespesasCaixaCsv(Context ctx) {
+        Long uid = utilizadorId(ctx);
+        Long sessaoId = longQuery(ctx, "sessaoId");
+        byte[] bytes = service.exportarDespesasCaixaCsv(sessaoId, uid);
+        String nomeFicheiro = "despesas_caixa_" + LocalDate.now() + ".csv";
+        ctx.contentType("text/csv; charset=UTF-8")
+           .header("Content-Disposition", "attachment; filename=\"" + nomeFicheiro + "\"")
+           .result(bytes);
     }
 
     private void listarDespesasCaixa(Context ctx) {

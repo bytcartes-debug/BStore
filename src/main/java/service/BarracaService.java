@@ -1332,6 +1332,202 @@ public class BarracaService {
         });
     }
 
+    public byte[] exportarVendasCsv(LocalDate inicio, LocalDate fim, String metodo, String estado, String q, Long usuarioId) {
+        List<Venda> vendas = vendaDAO.listarParaExportacao(usuarioId, inicio, fim, metodo, estado, q);
+        Map<Long, String> clientesMap = new HashMap<>();
+        try {
+            for (Devedor d : devedorDAO.listarTodos(usuarioId)) {
+                clientesMap.put(d.getId(), d.getNome());
+            }
+        } catch (Exception ignored) {}
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(util.CsvUtil.UTF8_BOM);
+        sb.append("Número;Data / Hora;Estado;Total (MZN);Custo Total (MZN);Lucro Estimado (MZN);Métodos de Pagamento;Cliente;Observação;Itens Vendidos\r\n");
+
+        for (Venda v : vendas) {
+            String numero = v.getNumero() != null ? String.valueOf(v.getNumero()) : String.valueOf(v.getId());
+            String dataHora = util.CsvUtil.formatarDataHora(v.getCriadaEm());
+            String est = v.getEstado() != null ? v.getEstado() : "CONCLUIDA";
+            String total = util.CsvUtil.formatarMoeda(v.getTotal());
+            String custo = util.CsvUtil.formatarMoeda(v.getTotalCusto());
+            BigDecimal lucroCalc = "CONCLUIDA".equalsIgnoreCase(est)
+                ? (v.getTotal() != null && v.getTotalCusto() != null ? v.getTotal().subtract(v.getTotalCusto()) : BigDecimal.ZERO)
+                : BigDecimal.ZERO;
+            String lucro = util.CsvUtil.formatarMoeda(lucroCalc);
+
+            StringBuilder pgs = new StringBuilder();
+            if (v.getPagamentos() != null) {
+                for (PagamentoVenda pv : v.getPagamentos()) {
+                    if (pgs.length() > 0) pgs.append(" | ");
+                    String mNome = pv.getMetodoPagamento() != null ? pv.getMetodoPagamento().getNome() : pv.getMetodo();
+                    pgs.append(mNome).append(": ").append(util.CsvUtil.formatarMoeda(pv.getValor())).append(" MZN");
+                }
+            }
+
+            String cliente = "Consumidor Final";
+            if (v.getClienteId() != null && clientesMap.containsKey(v.getClienteId())) {
+                cliente = clientesMap.get(v.getClienteId());
+            }
+
+            String obs = v.getObservacao() != null ? v.getObservacao() : "";
+
+            StringBuilder its = new StringBuilder();
+            if (v.getItens() != null) {
+                for (ItemVenda iv : v.getItens()) {
+                    if (its.length() > 0) its.append(" | ");
+                    String pNome = iv.getProduto() != null ? iv.getProduto().getNome() : "Item";
+                    its.append(util.CsvUtil.formatarQuantidade(iv.getQuantidade()))
+                       .append("x ")
+                       .append(pNome)
+                       .append(" (")
+                       .append(util.CsvUtil.formatarMoeda(iv.getTotal()))
+                       .append(" MZN)");
+                }
+            }
+
+            sb.append(util.CsvUtil.escape(numero)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(dataHora)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(est)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(total)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(custo)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(lucro)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(pgs.toString())).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(cliente)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(obs)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(its.toString())).append("\r\n");
+        }
+
+        return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    public byte[] exportarStockCsv(Long usuarioId) {
+        List<Produto> produtos = produtoDAO.listarOrdenado(usuarioId, true);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(util.CsvUtil.UTF8_BOM);
+        sb.append("ID;Código de Barras;Nome do Produto;Categoria;Unidade;Preço de Venda (MZN);Preço de Custo (MZN);Stock Atual;Stock Mínimo;Stock Máximo;Valor Total a Custo (MZN);Valor Total a Venda (MZN);Margem Unitária (MZN);Margem Unitária (%);Estado de Reposição;Ativo\r\n");
+
+        for (Produto p : produtos) {
+            String id = String.valueOf(p.getId());
+            String codigoBarras = p.getCodigoBarras() != null ? p.getCodigoBarras() : "";
+            String nome = p.getNome() != null ? p.getNome() : "";
+            String categoria = p.getCategoria() != null ? p.getCategoria().getNome() : "Geral";
+            String unidade = p.getUnidade() != null ? p.getUnidade() : "un";
+            BigDecimal preco = p.getPreco() != null ? p.getPreco() : BigDecimal.ZERO;
+            BigDecimal custo = p.getCusto() != null ? p.getCusto() : BigDecimal.ZERO;
+            BigDecimal stock = p.getQuantidadeStock() != null ? p.getQuantidadeStock() : BigDecimal.ZERO;
+            BigDecimal min = p.getStockMinimo() != null ? p.getStockMinimo() : BigDecimal.ZERO;
+            BigDecimal max = p.getStockMaximo();
+
+            BigDecimal totalCusto = stock.multiply(custo);
+            BigDecimal totalVenda = stock.multiply(preco);
+            BigDecimal margemMzn = preco.subtract(custo);
+            BigDecimal margemPct = preco.compareTo(BigDecimal.ZERO) > 0
+                ? margemMzn.multiply(new BigDecimal("100")).divide(preco, 2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+
+            String reposicao;
+            if (stock.compareTo(BigDecimal.ZERO) <= 0) {
+                reposicao = "Esgotado";
+            } else if (stock.compareTo(min) <= 0) {
+                reposicao = "Repor Urgente";
+            } else if (max != null && stock.compareTo(max) > 0) {
+                reposicao = "Excesso de Stock";
+            } else {
+                reposicao = "Normal";
+            }
+
+            String ativo = Boolean.TRUE.equals(p.getAtivo()) ? "Sim" : "Arquivado";
+
+            sb.append(util.CsvUtil.escape(id)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(codigoBarras)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(nome)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(categoria)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(unidade)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(util.CsvUtil.formatarMoeda(preco))).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(util.CsvUtil.formatarMoeda(custo))).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(util.CsvUtil.formatarQuantidade(stock))).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(util.CsvUtil.formatarQuantidade(min))).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(max != null ? util.CsvUtil.formatarQuantidade(max) : "")).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(util.CsvUtil.formatarMoeda(totalCusto))).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(util.CsvUtil.formatarMoeda(totalVenda))).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(util.CsvUtil.formatarMoeda(margemMzn))).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(util.CsvUtil.formatarPercentual(margemPct))).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(reposicao)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(ativo)).append("\r\n");
+        }
+
+        return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    public byte[] exportarCaixaCsv(Long usuarioId, int limite) {
+        List<SessaoCaixa> sessoes = sessaoCaixaDAO.listarHistorico(usuarioId, limite > 0 ? limite : 200);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(util.CsvUtil.UTF8_BOM);
+        sb.append("ID Sessão;Estado;Data Abertura;Data Fecho;Fundo Inicial (MZN);Valor Esperado (MZN);Valor Contado (MZN);Diferença (MZN);Nota Abertura;Nota Fecho\r\n");
+
+        for (SessaoCaixa s : sessoes) {
+            String id = String.valueOf(s.getId());
+            String estado = s.getEstado() != null ? s.getEstado() : "FECHADA";
+            String abertaEm = util.CsvUtil.formatarDataHora(s.getAbertaEm());
+            String fechadaEm = s.getFechadaEm() != null ? util.CsvUtil.formatarDataHora(s.getFechadaEm()) : "Em aberto";
+            String inicial = util.CsvUtil.formatarMoeda(s.getValorInicial());
+            String esperado = s.getValorEsperado() != null ? util.CsvUtil.formatarMoeda(s.getValorEsperado()) : "";
+            String contado = s.getValorContado() != null ? util.CsvUtil.formatarMoeda(s.getValorContado()) : "";
+            String diferenca = s.getDiferenca() != null ? util.CsvUtil.formatarMoeda(s.getDiferenca()) : "";
+            String notaAb = s.getNotaAbertura() != null ? s.getNotaAbertura() : "";
+            String notaFe = s.getNotaFecho() != null ? s.getNotaFecho() : "";
+
+            sb.append(util.CsvUtil.escape(id)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(estado)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(abertaEm)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(fechadaEm)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(inicial)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(esperado)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(contado)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(diferenca)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(notaAb)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(notaFe)).append("\r\n");
+        }
+
+        return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    public byte[] exportarDespesasCaixaCsv(Long sessaoId, Long usuarioId) {
+        List<Map<String, Object>> despesas = listarDespesasCaixa(sessaoId, usuarioId);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(util.CsvUtil.UTF8_BOM);
+        sb.append("ID;ID Sessão;Data / Hora;Categoria;Descrição;Valor (MZN)\r\n");
+
+        for (Map<String, Object> d : despesas) {
+            String id = String.valueOf(d.get("id"));
+            String sId = d.get("sessaoId") != null ? String.valueOf(d.get("sessaoId")) : "-";
+            String dataHora = d.get("criadaEm") != null ? String.valueOf(d.get("criadaEm")).replace('T', ' ').substring(0, Math.min(19, String.valueOf(d.get("criadaEm")).length())) : "";
+            String cat = d.get("categoria") != null ? String.valueOf(d.get("categoria")) : "OUTRO";
+            String desc = d.get("descricao") != null ? String.valueOf(d.get("descricao")) : "";
+            String val = "0,00";
+            if (d.get("valor") != null) {
+                try {
+                    val = util.CsvUtil.formatarMoeda(new BigDecimal(d.get("valor").toString()));
+                } catch (Exception ignored) {
+                    val = String.valueOf(d.get("valor")).replace('.', ',');
+                }
+            }
+
+            sb.append(util.CsvUtil.escape(id)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(sId)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(dataHora)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(cat)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(desc)).append(util.CsvUtil.DELIMITER)
+              .append(util.CsvUtil.escape(val)).append("\r\n");
+        }
+
+        return sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
     private static Long longValue(Object value, String campo) {
         if (value == null) {
             throw new IllegalArgumentException("O campo " + campo + " é obrigatório.");

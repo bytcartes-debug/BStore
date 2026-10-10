@@ -1656,4 +1656,70 @@ class BackendIntegrationTest {
         assertEquals("0.00", nodeF.get("despesasDinheiro").asText());
         assertEquals("500.00", nodeF.get("valorEsperado").asText());
     }
+
+    @Test void exportarVendasCsvRetornaFormatoValidoEIsolamento() throws Exception {
+        // Registar venda para o utilizador atual
+        safe.registar(cart(product, "2"), user.getId(), UUID.randomUUID().toString());
+
+        HttpResponse<String> res = request("GET", "/api/vendas/exportar", null, null);
+        assertEquals(200, res.statusCode());
+        assertTrue(res.headers().firstValue("Content-Type").orElse("").contains("text/csv"));
+        assertTrue(res.headers().firstValue("Content-Disposition").orElse("").contains("vendas_"));
+
+        String body = res.body();
+        assertTrue(body.startsWith(util.CsvUtil.UTF8_BOM), "CSV deve conter UTF-8 BOM para o Excel.");
+        assertTrue(body.contains("Número;Data / Hora;Estado;Total (MZN)"));
+        assertTrue(body.contains("Arroz"));
+
+        // Outro utilizador não deve ver a venda acima
+        Usuario outro = new Usuario("Outro CSV", UUID.randomUUID() + "@teste.mz", "Senha12345", "operator");
+        outro.aplicarDiasAcesso(30);
+        outro = new UsuarioDAO().salvar(outro);
+        String outroCookie = "bstore_session=" + new SessaoDAO().criar(outro).getId();
+
+        HttpRequest reqOutro = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/vendas/exportar"))
+            .header("Cookie", outroCookie).GET().build();
+        HttpResponse<String> resOutro = HttpClient.newHttpClient().send(reqOutro, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resOutro.statusCode());
+        assertFalse(resOutro.body().contains("Arroz"), "Vendas de outro inquilino não podem vazar no CSV.");
+    }
+
+    @Test void exportarStockCsvRetornaInventarioValido() throws Exception {
+        HttpResponse<String> res = request("GET", "/api/stock/exportar", null, null);
+        assertEquals(200, res.statusCode());
+        assertTrue(res.headers().firstValue("Content-Type").orElse("").contains("text/csv"));
+        assertTrue(res.headers().firstValue("Content-Disposition").orElse("").contains("stock_inventario_"));
+
+        String body = res.body();
+        assertTrue(body.startsWith(util.CsvUtil.UTF8_BOM));
+        assertTrue(body.contains("ID;Código de Barras;Nome do Produto;Categoria;Unidade"));
+        assertTrue(body.contains("Arroz"));
+        assertTrue(body.contains("80,00")); // Preço formatado com vírgula para Excel lusófono
+    }
+
+    @Test void exportarCaixaEDespesasCsvRetornaFormatoCorreto() throws Exception {
+        // Abrir caixa e registar despesa
+        request("POST", "/api/caixa/abrir", Map.of("valorInicial", "350.00"), null);
+        request("POST", "/api/caixa/despesas", Map.of(
+            "valor", "50.00",
+            "categoria", "TRANSPORTE",
+            "descricao", "Chapa para compras"
+        ), null);
+
+        // Exportar sessões de caixa
+        HttpResponse<String> resCaixa = request("GET", "/api/caixa/exportar", null, null);
+        assertEquals(200, resCaixa.statusCode());
+        assertTrue(resCaixa.body().startsWith(util.CsvUtil.UTF8_BOM));
+        assertTrue(resCaixa.body().contains("ID Sessão;Estado;Data Abertura;Data Fecho"));
+        assertTrue(resCaixa.body().contains("350,00"));
+
+        // Exportar despesas
+        HttpResponse<String> resDespesas = request("GET", "/api/caixa/despesas/exportar", null, null);
+        assertEquals(200, resDespesas.statusCode());
+        assertTrue(resDespesas.body().startsWith(util.CsvUtil.UTF8_BOM));
+        assertTrue(resDespesas.body().contains("ID;ID Sessão;Data / Hora;Categoria;Descrição;Valor (MZN)"));
+        assertTrue(resDespesas.body().contains("Chapa para compras"));
+        assertTrue(resDespesas.body().contains("50,00"));
+    }
 }
+

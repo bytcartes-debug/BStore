@@ -51,3 +51,28 @@ export async function apiRequest<T = void>(url: string, options?: RequestInit): 
   }
   return response.status === 204 ? (undefined as T) : response.json();
 }
+
+export async function descarregarFicheiro(url: string, nomePadrao: string): Promise<void> {
+  const response = await apiFetch(url);
+  if (!response.ok) {
+    throw new ApiError('Falha ao descarregar ficheiro.', response.status);
+  }
+  const blob = await response.blob();
+  const blobUrl = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  const disposition = response.headers.get('Content-Disposition');
+  let filename = nomePadrao;
+  if (disposition) {
+    const match = disposition.match(/filename="?([^";]+)"?/);
+    if (match && match[1]) {
+      filename = match[1];
+    }
+  }
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(blobUrl);
+}
+

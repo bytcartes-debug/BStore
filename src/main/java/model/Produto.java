@@ -78,6 +78,7 @@ public class Produto {
     public void setCusto(BigDecimal custo) { this.custo = (custo != null) ? custo : BigDecimal.ZERO; }
 
     public boolean isAtivo() { return ativo; }
+    public Boolean getAtivo() { return ativo; }
     public void setAtivo(boolean ativo) { this.ativo = ativo; }
 
     public BigDecimal getQuantidadeStock() { return quantidadeStock; }

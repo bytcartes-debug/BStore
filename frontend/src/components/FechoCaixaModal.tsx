@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, CreditCard, Printer, CheckCircle2, History } from 'lucide-react';
-import { apiRequest } from '../utils/api';
+import { RefreshCw, CreditCard, Printer, CheckCircle2, History, Download } from 'lucide-react';
+import { apiRequest, descarregarFicheiro } from '../utils/api';
 import { decimalSeguro, formatMoney, parseDecimalInput } from '../utils/decimal';
 import { Modal, Spinner, Notice, Field } from './UI';
 import { useToast } from '../utils/toast';
@@ -68,6 +68,7 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
   // Histórico
   const [historico, setHistorico] = useState<SessaoHistorico[]>([]);
   const [carregandoHistorico, setCarregandoHistorico] = useState(false);
+  const [exportandoHistorico, setExportandoHistorico] = useState(false);
 
   const [erro, setErro] = useState<string | null>(null);
 
@@ -128,6 +129,21 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
   const valorEsperadoDec = decimalSeguro(sessao?.valorEsperado, 0);
   const valorContadoDec = parseDecimalInput(valorContado) || decimalSeguro(0);
   const diferencaDec = valorContadoDec.minus(valorEsperadoDec);
+
+  const handleExportarHistorico = async () => {
+    try {
+      setExportandoHistorico(true);
+      await descarregarFicheiro(
+        '/api/caixa/exportar?limite=200',
+        `fechos_caixa_${new Date().toISOString().slice(0, 10)}.csv`,
+      );
+      toast('Histórico de fechos exportado com sucesso.');
+    } catch {
+      toast('Não foi possível exportar os fechos de caixa.');
+    } finally {
+      setExportandoHistorico(false);
+    }
+  };
 
   const handleFecharSessao = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -519,6 +535,15 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
           <div className="modal-actions" style={{ marginTop: 20 }}>
             <button type="button" className="btn-secondary" onClick={onClose}>
               Fechar
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => void handleExportarHistorico()}
+              disabled={exportandoHistorico || historico.length === 0}
+              title="Exportar histórico de fechos para CSV / Excel"
+            >
+              {exportandoHistorico ? <Spinner size="small" /> : <Download size={16} />} Exportar CSV
             </button>
           </div>
         </div>

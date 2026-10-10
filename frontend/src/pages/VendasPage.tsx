@@ -1,6 +1,6 @@
 import { useToast } from '../utils/toast';
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { apiFetch, apiRequest } from '../utils/api';
+import { apiFetch, apiRequest, descarregarFicheiro } from '../utils/api';
 import { useMutation, useResource } from '../utils/useResource';
 import { abrirScanner } from '../utils/scanner';
 import { notificarVendaRegistada } from '../utils/notificacoes';
@@ -28,6 +28,7 @@ import {
   CheckCircle2,
   Clock,
   Copy,
+  Download,
   Eye,
   MessageCircle,
   Minus,
@@ -169,6 +170,7 @@ export default function VendasPage() {
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [vendasPendentes, setVendasPendentes] = useState<VendaPendente[]>([]);
   const [sincronizando, setSincronizando] = useState(false);
+  const [exportandoVendas, setExportandoVendas] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLUListElement>(null);
@@ -351,6 +353,26 @@ export default function VendasPage() {
         v.pagamentos.some((p) => p.metodo.toUpperCase() === filterMetodo.toUpperCase()));
     return matchSearch && matchEstado && matchMetodo;
   });
+
+  const handleExportarVendas = async () => {
+    try {
+      setExportandoVendas(true);
+      const params = new URLSearchParams();
+      if (filterEstado && filterEstado !== 'todos') params.set('estado', filterEstado);
+      if (filterMetodo && filterMetodo !== 'todos') params.set('metodo', filterMetodo);
+      if (search.trim()) params.set('q', search.trim());
+      const query = params.toString() ? `?${params.toString()}` : '';
+      await descarregarFicheiro(
+        `/api/vendas/exportar${query}`,
+        `vendas_${new Date().toISOString().slice(0, 10)}.csv`,
+      );
+      toast('Relatório de vendas descarregado com sucesso.');
+    } catch {
+      toast('Não foi possível descarregar o relatório de vendas.');
+    } finally {
+      setExportandoVendas(false);
+    }
+  };
 
   const suggestions = produtos
     .filter((p) => p.nome.toLocaleLowerCase().includes(busca.trim().toLocaleLowerCase()))
@@ -1216,6 +1238,18 @@ export default function VendasPage() {
               </option>
             ))}
           </select>
+
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void handleExportarVendas()}
+            disabled={exportandoVendas || vendas.length === 0}
+            title="Exportar vendas filtradas para CSV / Excel"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px' }}
+          >
+            {exportandoVendas ? <Spinner size="small" /> : <Download size={15} aria-hidden="true" />}
+            Exportar CSV
+          </button>
         </div>
 
         <span className="result-count">
