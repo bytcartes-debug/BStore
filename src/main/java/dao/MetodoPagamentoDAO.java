@@ -43,6 +43,7 @@ public class MetodoPagamentoDAO extends GenericDAO<MetodoPagamento> {
     }
 
     public MetodoPagamento buscarPorId(EntityManager em, Long id, Long uid) {
+        garantirMetodosPadrao(em, uid);
         List<MetodoPagamento> list = em.createQuery(
                 "SELECT m FROM MetodoPagamento m WHERE m.id = :id AND m.usuarioId = :uid",
                 MetodoPagamento.class)
@@ -53,6 +54,7 @@ public class MetodoPagamentoDAO extends GenericDAO<MetodoPagamento> {
     }
 
     public MetodoPagamento buscarPorNome(EntityManager em, String nome, Long uid) {
+        garantirMetodosPadrao(em, uid);
         List<MetodoPagamento> list = em.createQuery(
                 "SELECT m FROM MetodoPagamento m WHERE LOWER(m.nome) = LOWER(:nome) AND m.usuarioId = :uid",
                 MetodoPagamento.class)
@@ -63,6 +65,13 @@ public class MetodoPagamentoDAO extends GenericDAO<MetodoPagamento> {
     }
 
     public void garantirMetodosPadrao(EntityManager em, Long uid) {
+        model.DefinicaoLoja def = em.find(model.DefinicaoLoja.class, uid, javax.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (def == null) {
+            def = new model.DefinicaoLoja(uid, false, "Loja");
+            em.persist(def);
+            em.flush();
+            def = em.find(model.DefinicaoLoja.class, uid, javax.persistence.LockModeType.PESSIMISTIC_WRITE);
+        }
         Long total = em.createQuery("SELECT COUNT(m) FROM MetodoPagamento m WHERE m.usuarioId = :uid", Long.class)
                 .setParameter("uid", uid)
                 .getSingleResult();

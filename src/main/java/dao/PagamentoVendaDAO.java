@@ -26,21 +26,91 @@ public class PagamentoVendaDAO extends GenericDAO<PagamentoVenda> {
     }
 
     public Map<String, BigDecimal> totaisPorMetodo(Long usuarioId, LocalDate data) {
-        LocalDateTime inicio = data.atStartOfDay();
-        LocalDateTime fim = data.atTime(23, 59, 59);
+        LocalDate d = data != null ? data : LocalDate.now();
+        LocalDateTime inicio = d.atStartOfDay();
+        LocalDateTime fimExclusive = d.plusDays(1).atStartOfDay();
         return JPAUtil.emTransacao(usuarioId, em -> {
             List<Object[]> rows = em.createQuery(
-                "SELECT p.metodo, SUM(p.valor) FROM PagamentoVenda p JOIN p.venda v " +
-                "WHERE p.usuarioId = :uid AND v.estado = 'CONCLUIDA' AND v.criadaEm BETWEEN :inicio AND :fim " +
+                "SELECT p.metodo, SUM(p.valor - COALESCE(p.troco, 0)) FROM PagamentoVenda p JOIN p.venda v " +
+                "WHERE p.usuarioId = :uid AND v.estado != 'ANULADA' AND v.criadaEm >= :inicio AND v.criadaEm < :fimExclusive " +
                 "GROUP BY p.metodo", Object[].class)
                 .setParameter("uid", usuarioId)
                 .setParameter("inicio", inicio)
-                .setParameter("fim", fim)
+                .setParameter("fimExclusive", fimExclusive)
                 .getResultList();
+
             Map<String, BigDecimal> mapa = new LinkedHashMap<>();
             for (Object[] r : rows) {
                 mapa.put((String) r[0], (BigDecimal) r[1]);
             }
+
+            // Subtrair devoluções ocorridas nesta data no método da venda original
+            List<model.Devolucao> devolucoes = em.createQuery(
+                "SELECT d FROM Devolucao d WHERE d.usuarioId = :uid AND d.criadaEm >= :inicio AND d.criadaEm < :fimExclusive",
+                model.Devolucao.class)
+                .setParameter("uid", usuarioId)
+                .setParameter("inicio", inicio)
+                .setParameter("fimExclusive", fimExclusive)
+                .getResultList();
+
+            if (!devolucoes.isEmpty()) {
+                List<Long> vendaIds = new java.util.ArrayList<>();
+                for (model.Devolucao devItem : devolucoes) {
+                    if (devItem.getVenda() != null && devItem.getVenda().getId() != null) {
+                        vendaIds.add(devItem.getVenda().getId());
+                    }
+                }
+
+                Map<Long, List<PagamentoVenda>> pagsPorVenda = new java.util.HashMap<>();
+                if (!vendaIds.isEmpty()) {
+                    List<PagamentoVenda> todosPags = em.createQuery(
+                        "SELECT p FROM PagamentoVenda p WHERE p.venda.id IN (:vids) AND p.usuarioId = :uid ORDER BY p.id ASC",
+                        PagamentoVenda.class)
+                        .setParameter("vids", vendaIds)
+                        .setParameter("uid", usuarioId)
+                        .getResultList();
+
+                    for (PagamentoVenda p : todosPags) {
+                        pagsPorVenda.computeIfAbsent(p.getVenda().getId(), k -> new java.util.ArrayList<>()).add(p);
+                    }
+                }
+
+                for (model.Devolucao dev : devolucoes) {
+                    List<PagamentoVenda> pags = dev.getVenda() != null
+                        ? pagsPorVenda.getOrDefault(dev.getVenda().getId(), java.util.Collections.emptyList())
+                        : java.util.Collections.emptyList();
+
+                    if (pags.isEmpty()) continue;
+
+                    if (pags.size() == 1) {
+                        String met = pags.get(0).getMetodo();
+                        mapa.merge(met, dev.getTotal().negate(), BigDecimal::add);
+                    } else {
+                        BigDecimal totalNet = pags.stream()
+                            .map(p -> p.getValor().subtract(p.getTroco() != null ? p.getTroco() : BigDecimal.ZERO))
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                        if (totalNet.compareTo(BigDecimal.ZERO) > 0) {
+                            BigDecimal restanteDev = dev.getTotal();
+                            for (int i = 0; i < pags.size(); i++) {
+                                PagamentoVenda p = pags.get(i);
+                                BigDecimal pagNet = p.getValor().subtract(p.getTroco() != null ? p.getTroco() : BigDecimal.ZERO);
+                                BigDecimal quota;
+                                if (i == pags.size() - 1) {
+                                    quota = restanteDev;
+                                } else {
+                                    quota = dev.getTotal().multiply(pagNet).divide(totalNet, 2, java.math.RoundingMode.HALF_UP);
+                                    restanteDev = restanteDev.subtract(quota);
+                                }
+                                mapa.merge(p.getMetodo(), quota.negate(), BigDecimal::add);
+                            }
+                        } else {
+                            mapa.merge(pags.get(0).getMetodo(), dev.getTotal().negate(), BigDecimal::add);
+                        }
+                    }
+                }
+            }
+
             return mapa;
         });
     }

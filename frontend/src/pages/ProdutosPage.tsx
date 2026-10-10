@@ -6,79 +6,33 @@ import { abrirScanner } from '../utils/scanner';
 import { buscarNaOpenFoodFacts } from '../utils/openFoodFacts';
 import { decimal, formatMoney, formatQuantity, parseDecimalInput } from '../utils/decimal';
 import {
-  AlertTriangle,
   ArrowDownLeft,
-  ChevronDown,
-  ChevronUp,
   ClipboardList,
-  History,
-  Package,
-  Pencil,
   Plus,
-  RefreshCw,
-  ScanLine,
-  Search,
   SlidersHorizontal,
-  Trash2,
   X,
 } from 'lucide-react';
 import {
   PageHeading,
-  SearchField,
   Loading,
   LoadError,
-  EmptyState,
   Modal,
   Field,
   Notice,
-  Spinner,
   ConfirmDialog,
 } from '../components/UI';
+import type {
+  Categoria,
+  Produto,
+  MovimentoStock,
+  ItemEntrada,
+  ProdutoFormData,
+} from '../components/produtos/types';
+import { CategoryFilter } from '../components/produtos/CategoryFilter';
+import { ProductTable } from '../components/produtos/ProductTable';
+import { ProductFormModal } from '../components/produtos/ProductFormModal';
 
-const UNIDADES = ['un', 'kg', 'L', 'g', 'ml'];
-
-interface Categoria {
-  id: number;
-  nome: string;
-}
-
-interface Produto {
-  id: number;
-  nome: string;
-  preco: string;
-  custo?: string;
-  margem?: string;
-  stock: string;
-  stockMinimo: string;
-  unidade: string;
-  categoriaId: number;
-  categoriaNome?: string;
-  codigoBarras?: string;
-  ativo?: boolean;
-}
-
-interface MovimentoStock {
-  id: number;
-  produtoId: number;
-  produtoNome: string;
-  tipo: string;
-  quantidade: string;
-  custoUnitario: string;
-  motivo?: string;
-  referenciaTipo?: string;
-  referenciaId?: number;
-  criadoEm: string;
-}
-
-interface ItemEntrada {
-  produtoId: number;
-  produtoNome: string;
-  quantidade: string;
-  custoUnitario: string;
-  motivo: string;
-}
-
-const FORM_VAZIO = {
+const FORM_VAZIO: ProdutoFormData = {
   nome: '',
   preco: '',
   custo: '',
@@ -484,376 +438,61 @@ export default function ProdutosPage() {
         </div>
       </PageHeading>
 
-      <div className="toolbar">
-        <SearchField value={search} onChange={setSearch} label="Pesquisar por nome ou código" />
-        <Field id="product-category-filter" label="Categoria">
-          <select
-            id="product-category-filter"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-          >
-            <option value="">Todas as categorias</option>
-            {categorias.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field id="product-stock-filter" label="Stock">
-          <select
-            id="product-stock-filter"
-            value={stockFilter}
-            onChange={(e) => setStockFilter(e.target.value)}
-          >
-            <option value="all">Todos os produtos</option>
-            <option value="low">Stock baixo</option>
-          </select>
-        </Field>
-        <Field id="product-status-filter" label="Estado">
-          <select
-            id="product-status-filter"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="active">Apenas ativos</option>
-            <option value="archived">Apenas arquivados</option>
-            <option value="all">Todos (ativos e arquivados)</option>
-          </select>
-        </Field>
-        <Field id="product-sort" label="Ordenar por">
-          <select id="product-sort" value={sort} onChange={(e) => setSort(e.target.value)}>
-            <option value="name">Nome</option>
-            <option value="price">Menor preço</option>
-            <option value="stock">Menor stock</option>
-          </select>
-        </Field>
-      </div>
+      <CategoryFilter
+        search={search}
+        onSearchChange={setSearch}
+        category={category}
+        onCategoryChange={setCategory}
+        categorias={categorias}
+        stockFilter={stockFilter}
+        onStockFilterChange={setStockFilter}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        sort={sort}
+        onSortChange={setSort}
+      />
 
       {error && <LoadError message={error} retry={reload} />}
       {loading && !data ? (
         <Loading />
       ) : (
         data && (
-          <div className="card">
-            {produtos.length === 0 ? (
-              <EmptyState
-                title="O seu catálogo começa aqui"
-                description="Adicione produtos para acompanhar o stock e começar a vender."
-                icon={<Package size={36} strokeWidth={1.8} aria-hidden="true" />}
-              >
-                <button className="btn-secondary" onClick={openNew}>
-                  <Plus size={16} strokeWidth={2} aria-hidden="true" /> Adicionar primeiro produto
-                </button>
-              </EmptyState>
-            ) : filtered.length === 0 ? (
-              <EmptyState
-                title="Nenhum produto corresponde à pesquisa"
-                description="Altere o nome, o código ou os filtros para encontrar o que procura."
-                icon={<Search size={36} strokeWidth={1.8} aria-hidden="true" />}
-              >
-                <button className="btn-secondary" onClick={clearFilters}>
-                  <RefreshCw size={14} strokeWidth={2} aria-hidden="true" /> Limpar filtros
-                </button>
-              </EmptyState>
-            ) : (
-              <>
-                <div className="table-summary">
-                  <span>
-                    {filtered.length} de {produtos.length} produtos
-                  </span>
-                  {loading && (
-                    <span role="status">
-                      <Spinner /> A atualizar…
-                    </span>
-                  )}
-                </div>
-                <div className="table-wrapper">
-                  <table className="responsive-table">
-                    <caption className="sr-only">Produtos e níveis de stock</caption>
-                    <thead>
-                      <tr>
-                        <th scope="col">Produto</th>
-                        <th scope="col" className="numeric">
-                          Preço
-                        </th>
-                        <th scope="col" className="numeric">
-                          Custo
-                        </th>
-                        <th scope="col" className="numeric">
-                          Margem
-                        </th>
-                        <th scope="col" className="numeric">
-                          Stock
-                        </th>
-                        <th scope="col">Categoria</th>
-                        <th scope="col">Código</th>
-                        <th scope="col">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtered.map((p) => (
-                        <tr key={p.id}>
-                          <td data-label="Produto" className="cell-name">
-                            {p.nome}
-                            {p.ativo === false && (
-                              <span className="badge badge-subtle" style={{ marginLeft: 6 }}>
-                                Arquivado
-                              </span>
-                            )}
-                          </td>
-                          <td data-label="Preço" className="numeric">
-                            {formatMoney(p.preco)}
-                          </td>
-                          <td data-label="Custo" className="numeric">
-                            {formatMoney(p.custo || '0.00')}
-                          </td>
-                          <td data-label="Margem" className="numeric">
-                            {p.margem ? `${p.margem}%` : '-'}
-                          </td>
-                          <td data-label="Stock" className="numeric">
-                            <div className="stock-cell">
-                              <span>{formatQuantity(p.stock, p.unidade)}</span>
-                              {decimal(p.stock).lte(p.stockMinimo) && (
-                                <span className="badge badge-warning">
-                                  <AlertTriangle size={12} strokeWidth={2} aria-hidden="true" /> Stock baixo
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td data-label="Categoria" className="cell-secondary">
-                            {p.categoriaNome || 'Sem categoria'}
-                          </td>
-                          <td data-label="Código" className="cell-secondary">
-                            {p.codigoBarras || 'Não definido'}
-                          </td>
-                          <td data-label="Ações">
-                            <div className="action-group">
-                              <button
-                                className="icon-btn"
-                                onClick={() => openEdit(p)}
-                                aria-label={`Editar ${p.nome}`}
-                                title="Editar produto"
-                              >
-                                <Pencil size={15} strokeWidth={2} aria-hidden="true" />
-                              </button>
-                              <button
-                                className="icon-btn"
-                                onClick={() => void openHistorico(p)}
-                                aria-label={`Histórico de ${p.nome}`}
-                                title="Histórico de movimentos"
-                              >
-                                <History size={15} strokeWidth={2} aria-hidden="true" />
-                              </button>
-                              <button
-                                className="icon-btn delete"
-                                onClick={() => {
-                                  remove.setError(null);
-                                  setDeleting(p);
-                                }}
-                                aria-label={`Remover ${p.nome}`}
-                                title="Arquivar ou remover produto"
-                              >
-                                <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
-          </div>
+          <ProductTable
+            produtos={produtos}
+            filtered={filtered}
+            loading={loading}
+            onOpenNew={openNew}
+            onClearFilters={clearFilters}
+            onEdit={openEdit}
+            onHistorico={(p) => void openHistorico(p)}
+            onDelete={(p) => {
+              remove.setError(null);
+              setDeleting(p);
+            }}
+          />
         )
       )}
 
       {/* Modal Adicionar / Editar Produto */}
       {showModal && (
-        <Modal
-          title={editing ? 'Editar produto' : 'Adicionar produto'}
+        <ProductFormModal
+          editing={editing}
+          form={form}
+          onChangeForm={setF}
           onClose={() => setShowModal(false)}
-          busy={save.pending || scan.pending}
-        >
-          <form onSubmit={handleSave}>
-            <p className="required-note">Os campos com * são obrigatórios.</p>
-            {save.error && <Notice>{save.error}</Notice>}
-            {scan.error && <Notice>{scan.error}</Notice>}
-            {offMsg && <Notice kind="info">{offMsg}</Notice>}
-
-            <fieldset disabled={save.pending || scan.pending}>
-              <Field id="product-name" label="Nome *">
-                <input
-                  id="product-name"
-                  value={form.nome}
-                  onChange={(e) => setF({ nome: e.target.value })}
-                  placeholder="Nome do produto"
-                  required
-                />
-              </Field>
-
-              <Field id="product-price" label="Preço (MT) *">
-                <input
-                  id="product-price"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  value={form.preco}
-                  onChange={(e) => setF({ preco: e.target.value })}
-                  placeholder="0,00"
-                  required
-                />
-              </Field>
-
-              {editing && (
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', fontSize: '0.875rem', marginBottom: 4 }}>
-                    Stock atual (apenas leitura)
-                  </label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontSize: '1.1rem', fontWeight: 600 }}>
-                      {formatQuantity(editing.stock, editing.unidade)}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => {
-                        setShowModal(false);
-                        openEntradaPara(editing);
-                      }}
-                    >
-                      <ArrowDownLeft size={15} strokeWidth={2} aria-hidden="true" /> Entrada
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => {
-                        setShowModal(false);
-                        openAjustePara(editing);
-                      }}
-                    >
-                      <SlidersHorizontal size={15} strokeWidth={2} aria-hidden="true" /> Ajuste
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div style={{ margin: '16px 0' }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowDetails(!showDetails)}
-                  style={{ width: '100%', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                >
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    {showDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    {showDetails ? 'Ocultar detalhes' : 'Mais detalhes (Custo, unidade, categoria...)'}
-                  </span>
-                </button>
-              </div>
-
-              {showDetails && (
-                <div className="more-details-panel">
-                  <div className="form-grid">
-                    <Field id="product-cost" label="Preço de custo (MT)">
-                      <input
-                        id="product-cost"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        inputMode="decimal"
-                        value={form.custo}
-                        onChange={(e) => setF({ custo: e.target.value })}
-                        placeholder="0,00"
-                      />
-                    </Field>
-
-                    {!editing && (
-                      <Field id="product-stock-initial" label="Stock inicial">
-                        <input
-                          id="product-stock-initial"
-                          type="number"
-                          min="0"
-                          step="0.001"
-                          inputMode="decimal"
-                          value={form.stock}
-                          onChange={(e) => setF({ stock: e.target.value })}
-                          placeholder="0"
-                        />
-                      </Field>
-                    )}
-
-                    <Field id="product-minimum" label="Stock mínimo">
-                      <input
-                        id="product-minimum"
-                        type="number"
-                        min="0"
-                        step="0.001"
-                        inputMode="decimal"
-                        value={form.stockMinimo}
-                        onChange={(e) => setF({ stockMinimo: e.target.value })}
-                      />
-                    </Field>
-
-                    <Field id="product-unit" label="Unidade">
-                      <select
-                        id="product-unit"
-                        value={form.unidade}
-                        onChange={(e) => setF({ unidade: e.target.value })}
-                      >
-                        {UNIDADES.map((unit) => (
-                          <option key={unit}>{unit}</option>
-                        ))}
-                        {!UNIDADES.includes(form.unidade) && <option>{form.unidade}</option>}
-                      </select>
-                    </Field>
-                  </div>
-
-                  <Field id="product-category" label="Categoria">
-                    <select
-                      id="product-category"
-                      value={form.categoriaId}
-                      onChange={(e) => setF({ categoriaId: e.target.value })}
-                    >
-                      <option value="">Geral (automática se não escolhida)</option>
-                      {categorias.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.nome}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-
-                  <Field id="product-barcode" label="Código de barras">
-                    <div className="input-action">
-                      <input
-                        id="product-barcode"
-                        value={form.codigoBarras}
-                        onChange={(e) => setF({ codigoBarras: e.target.value })}
-                        placeholder="Opcional"
-                      />
-                      <button type="button" className="btn-secondary" onClick={handleScan}>
-                        {scan.pending ? <Spinner size="small" /> : <ScanLine size={16} strokeWidth={2} aria-hidden="true" />} Ler código
-                      </button>
-                    </div>
-                  </Field>
-                </div>
-              )}
-
-              <div className="modal-actions">
-                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn-primary">
-                  {save.pending && <Spinner />}
-                  {save.pending ? 'A guardar…' : editing ? 'Guardar alterações' : 'Criar produto'}
-                </button>
-              </div>
-            </fieldset>
-          </form>
-        </Modal>
+          onSubmit={handleSave}
+          isSaving={save.pending}
+          saveError={save.error}
+          isScanning={scan.pending}
+          scanError={scan.error}
+          offMsg={offMsg}
+          categorias={categorias}
+          showDetails={showDetails}
+          onToggleDetails={() => setShowDetails(!showDetails)}
+          onScan={handleScan}
+          onOpenEntrada={openEntradaPara}
+          onOpenAjuste={openAjustePara}
+        />
       )}
 
       {/* Modal Entrada de Stock (Compra) */}

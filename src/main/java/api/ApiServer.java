@@ -30,6 +30,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class ApiServer {
@@ -48,6 +49,7 @@ public class ApiServer {
     private final dao.ProdutoDAO produtoDAO = new dao.ProdutoDAO();
     private final dao.VendaDAO vendaDAO = new dao.VendaDAO();
     private final service.StockService stockService = new service.StockService();
+    private final service.RateLimiterLogin rateLimiterLogin = new service.RateLimiterLogin();
     private final Javalin app;
 
     public ApiServer() {
@@ -74,6 +76,10 @@ public class ApiServer {
         app.stop();
     }
 
+    public service.RateLimiterLogin getRateLimiterLogin() {
+        return rateLimiterLogin;
+    }
+
     private void configurarErros() {
         app.exception(service.VendaIdempotenteService.ChaveReutilizadaException.class,
             (e, ctx) -> ctx.status(HttpStatus.CONFLICT).json(Map.of("erro", e.getMessage(), "codigo", "CHAVE_REUTILIZADA")));
@@ -89,8 +95,10 @@ public class ApiServer {
             (e, ctx) -> responderErro(ctx, HttpStatus.CONFLICT, e.getMessage()));
         app.exception(Exception.class,
             (e, ctx) -> {
+                String errorId = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+                System.err.println("[ERRO INTERNO " + errorId + "] " + e.getMessage());
                 e.printStackTrace();
-                responderErro(ctx, HttpStatus.INTERNAL_SERVER_ERROR, "Ocorreu um erro interno: " + e.getMessage());
+                responderErro(ctx, HttpStatus.INTERNAL_SERVER_ERROR, "Ocorreu um erro interno. Tente novamente. Código: " + errorId);
             });
     }
 
@@ -237,17 +245,39 @@ public class ApiServer {
         });
     }
 
+    private String obterIpCliente(Context ctx) {
+        String xff = ctx.header("X-Forwarded-For");
+        if (xff != null && !xff.isBlank()) {
+            return xff.split(",")[0].trim();
+        }
+        return ctx.ip();
+    }
+
     private void login(Context ctx) {
+        String ip = obterIpCliente(ctx);
         Map<String, Object> body = corpo(ctx);
         String email = textoObrigatorio(body, "email").toLowerCase();
         String senha = textoObrigatorio(body, "password");
+
+        String chaveIp = "ip:" + ip;
+        String chaveEmail = "email:" + email;
+
+        if (rateLimiterLogin.estaBloqueado(chaveIp) || rateLimiterLogin.estaBloqueado(chaveEmail)) {
+            responderErro(ctx, HttpStatus.TOO_MANY_REQUESTS, "Demasiadas tentativas. Tente novamente daqui a 10 minutos.");
+            return;
+        }
+
         Usuario usuario = usuarioDAO.buscarPorEmail(email);
         if (usuario == null || !usuario.verificarSenha(senha)) {
+            rateLimiterLogin.registarFalha(chaveIp);
+            rateLimiterLogin.registarFalha(chaveEmail);
             throw new AutenticacaoException("Email ou senha incorretos.");
         }
         if (usuario.isExpirado()) {
             throw new PermissaoException("Conta expirada. Contacte o administrador.");
         }
+        rateLimiterLogin.limpar(chaveIp);
+        rateLimiterLogin.limpar(chaveEmail);
         if (usuario.usaHashLegado()) {
             usuario.setSenha(senha);
             usuarioDAO.actualizar(usuario);
@@ -288,16 +318,9 @@ public class ApiServer {
         BigDecimal totalVendasHoje = totais.getOrDefault(hoje, BigDecimal.ZERO);
         BigDecimal totalVendas7Dias = totais.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        java.time.LocalDateTime inicioHoje = hoje.atStartOfDay();
-        java.time.LocalDateTime fimHoje = hoje.atTime(23, 59, 59, 999999999);
-        java.time.LocalDateTime inicio7Dias = hoje.minusDays(6).atStartOfDay();
-
-        BigDecimal custoVendasHoje = stockService.calcularCustoVendasPeriodo(uid, inicioHoje, fimHoje);
-        if (custoVendasHoje == null) custoVendasHoje = BigDecimal.ZERO;
-        BigDecimal custoVendas7Dias = stockService.calcularCustoVendasPeriodo(uid, inicio7Dias, fimHoje);
-        if (custoVendas7Dias == null) custoVendas7Dias = BigDecimal.ZERO;
-        BigDecimal lucroHoje = totalVendasHoje.subtract(custoVendasHoje);
-        BigDecimal lucro7Dias = totalVendas7Dias.subtract(custoVendas7Dias);
+        Map<String, BigDecimal> lucros = vendaDAO.lucroDashboard(hoje, uid);
+        BigDecimal lucroHoje = lucros.get("hoje");
+        BigDecimal lucro7Dias = lucros.get("7dias");
         BigDecimal valorTotalStockCusto = stockService.calcularValorTotalStockCusto(uid);
         if (valorTotalStockCusto == null) valorTotalStockCusto = BigDecimal.ZERO;
 

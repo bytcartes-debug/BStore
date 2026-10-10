@@ -391,9 +391,10 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
                 style={{
                   minHeight: '40px',
                   padding: '0.4rem 0.9rem',
-                  background: m.ativo ? '#10b981' : 'transparent',
-                  color: m.ativo ? '#ffffff' : 'inherit',
-                  borderColor: m.ativo ? '#10b981' : undefined,
+                  background: m.ativo ? '#065f46' : 'transparent',
+                  color: m.ativo ? '#ffffff' : 'var(--text-primary)',
+                  borderColor: m.ativo ? '#065f46' : 'var(--border-color)',
+                  fontWeight: 600,
                 }}
               >
                 {m.ativo ? 'Ativo' : 'Desligado'}

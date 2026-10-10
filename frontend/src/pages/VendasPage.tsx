@@ -23,10 +23,8 @@ import type Decimal from 'decimal.js';
 import {
   Ban,
   BarChart3,
-  Check,
   CheckCircle2,
   Copy,
-  CreditCard,
   Eye,
   Minus,
   Monitor,
@@ -36,12 +34,10 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
-  ScanLine,
   Search,
   Share2,
   ShoppingCart,
   Trash2,
-  User,
   WifiOff,
   XCircle,
 } from 'lucide-react';
@@ -57,107 +53,20 @@ import {
   Spinner,
 } from '../components/UI';
 import './VendasPage.css';
-
-interface Produto {
-  id: number;
-  nome: string;
-  preco: string;
-  stock: string;
-  unidade: string;
-  codigoBarras?: string;
-  custo?: string;
-}
-
-interface Categoria {
-  id: number;
-  nome: string;
-}
-
-interface Devedor {
-  id: number;
-  nome: string;
-  saldo?: string;
-}
-
-interface ItemVendaDetalhe {
-  id: number;
-  produto: string;
-  quantidade: string;
-  precoUnitario: string;
-  total: string;
-  descontoPercentual?: string;
-  descontoValor?: string;
-  notaDesconto?: string;
-}
-
-interface PagamentoVendaDetalhe {
-  id: number;
-  metodo: string;
-  valor: string;
-  troco: string;
-  referencia?: string;
-}
-
-interface VendaDocumento {
-  id: number;
-  numero: number;
-  total: string;
-  totalCusto?: string;
-  lucro?: string;
-  estado: string;
-  data: string;
-  hora: string;
-  criadaEm: string;
-  clienteId?: number;
-  observacao?: string;
-  anuladaEm?: string;
-  motivoAnulacao?: string;
-  itens?: ItemVendaDetalhe[];
-  pagamentos?: PagamentoVendaDetalhe[];
-  produto?: string;
-  quantidade?: string;
-  troco?: string;
-}
-
-interface MetodoPagamentoConfig {
-  id: number;
-  nome: string;
-  tipo: string;
-  ativo: boolean;
-  ordem: number;
-}
-
-interface DefinicoesLoja {
-  controloCaixa: boolean;
-  nomeLoja: string;
-}
-
-interface SessaoCaixaAtual {
-  aberta: boolean;
-  id?: number;
-  abertaEm?: string;
-  valorInicial?: string;
-  vendasDinheiro?: string;
-  devolucoesDinheiro?: string;
-  valorEsperado?: string;
-  totalVendas?: number;
-}
-
-interface ItemCarrinho {
-  produto: Produto;
-  quantidade: Decimal;
-  descontoPercentual?: string;
-  descontoValor?: string;
-  notaDesconto?: string;
-}
-
-interface LinhaPagamento {
-  id: string;
-  metodoId?: number;
-  metodo: string;
-  valor: string;
-  referencia?: string;
-}
+import type {
+  Produto,
+  Categoria,
+  Devedor,
+  VendaDocumento,
+  MetodoPagamentoConfig,
+  DefinicoesLoja,
+  SessaoCaixaAtual,
+  ItemCarrinho,
+  LinhaPagamento,
+} from '../components/vendas/types';
+import { ProductCatalog } from '../components/vendas/ProductCatalog';
+import { PaymentDialog } from '../components/vendas/PaymentDialog';
+import { SaleDetailsModal } from '../components/vendas/SaleDetailsModal';
 
 const loadSalesData = async (signal: AbortSignal) => {
   const [vendas, produtos, categorias, devedores, metodos, definicoes, sessaoCaixa] = await Promise.all([
@@ -760,12 +669,23 @@ export default function VendasPage() {
             nota: item.notaDesconto,
           };
         }),
-        pagamentos: pagamentos.map((p) => ({
-          metodoId: p.metodoId,
-          metodo: p.metodo,
-          valor: p.valor || (pagamentos.length === 1 ? total.toFixed(2) : '0.00'),
-          referencia: p.referencia?.trim() || undefined,
-        })),
+        pagamentos: pagamentos.map((p) => {
+          let valorCalculado = p.valor;
+          const isFiado = p.metodo === 'FIADO' || metodosDisponiveis.find((m) => m.id === p.metodoId)?.tipo === 'FIADO';
+          if (isFiado) {
+            const outros = pagamentos
+              .filter((x) => x.id !== p.id)
+              .reduce((acc, x) => acc.plus(decimalSeguro(x.valor)), decimalSeguro(0));
+            const saldo = total.minus(outros);
+            valorCalculado = saldo.gt(0) ? saldo.toFixed(2) : (p.valor || '0.00');
+          }
+          return {
+            metodoId: p.metodoId,
+            metodo: p.metodo,
+            valor: valorCalculado || (pagamentos.length === 1 ? total.toFixed(2) : '0.00'),
+            referencia: p.referencia?.trim() || undefined,
+          };
+        }),
         clienteId: clienteId ? Number(clienteId) : undefined,
         observacao: observacao.trim() || undefined,
       };
@@ -1355,171 +1275,27 @@ export default function VendasPage() {
             {scanMessage && <Notice kind="success">{scanMessage}</Notice>}
 
             <fieldset disabled={save.pending || scan.pending}>
-              <div className="sale-add-row">
-                <div className="product-combobox">
-                  <label htmlFor="sale-product" className="field-label">
-                    Pesquisar produto
-                  </label>
-                  <div className="search-field">
-                    <span className="search-icon" aria-hidden="true">
-                      <Search size={18} strokeWidth={2} />
-                    </span>
-                    <input
-                      id="sale-product"
-                      ref={inputRef}
-                      role="combobox"
-                      aria-autocomplete="list"
-                      aria-expanded={showSuggestions}
-                      aria-controls="sale-suggestions"
-                      aria-activedescendant={
-                        showSuggestions && activeOption >= 0
-                          ? `sale-option-${suggestions[activeOption]?.id}`
-                          : undefined
-                      }
-                      autoComplete="off"
-                      value={busca}
-                      placeholder="Nome do produto"
-                      onChange={(e) => {
-                        setBusca(e.target.value);
-                        setSelectedProd(null);
-                        setShowSuggestions(true);
-                        setActiveOption(-1);
-                      }}
-                      onFocus={() => {
-                        if (!selectedProd) setShowSuggestions(true);
-                      }}
-                      onBlur={() => setShowSuggestions(false)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'ArrowDown') {
-                          event.preventDefault();
-                          setShowSuggestions(true);
-                          setActiveOption((index) =>
-                            Math.min(index + 1, suggestions.length - 1),
-                          );
-                        }
-                        if (event.key === 'ArrowUp') {
-                          event.preventDefault();
-                          setActiveOption((index) => Math.max(0, index - 1));
-                        }
-                        if (event.key === 'Escape' && showSuggestions) {
-                          event.preventDefault();
-                          setShowSuggestions(false);
-                        }
-                        if (event.key === 'Enter') {
-                          event.preventDefault();
-                          if (showSuggestions && activeOption >= 0 && suggestions[activeOption]) {
-                            selectProduct(suggestions[activeOption]);
-                          } else if (selectedProd) {
-                            addSelected();
-                          }
-                        }
-                      }}
-                    />
-                  </div>
-                  {showSuggestions && (
-                    <ul
-                      id="sale-suggestions"
-                      ref={suggestionsRef}
-                      role="listbox"
-                      className="product-suggestions"
-                    >
-                      {suggestions.length === 0 ? (
-                        <li className="suggestion-empty" role="option" aria-disabled="true">
-                          {produtos.length === 0
-                            ? 'Adicione produtos na página Produtos para começar.'
-                            : 'Nenhum produto encontrado.'}
-                        </li>
-                      ) : (
-                        suggestions.map((p, index) => (
-                          <li
-                            id={`sale-option-${p.id}`}
-                            role="option"
-                            key={p.id}
-                            aria-selected={index === activeOption}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => selectProduct(p)}
-                          >
-                            <strong>{p.nome}</strong>
-                            <span>
-                              {formatMoney(p.preco)} · Stock:{' '}
-                              {formatQuantity(p.stock, p.unidade || 'un')}
-                            </span>
-                          </li>
-                        ))
-                      )}
-                    </ul>
-                  )}
-                </div>
-
-                <Field
-                  id="sale-quantity"
-                  label={selectedProd ? `Qtd (${selectedProd.unidade || 'un'})` : 'Qtd'}
-                >
-                  <input
-                    id="sale-quantity"
-                    type="number"
-                    min="0.001"
-                    step="0.001"
-                    inputMode="decimal"
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addSelected();
-                      }
-                    }}
-                  />
-                </Field>
-
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={addSelected}
-                  disabled={!selectedProd}
-                >
-                  <Plus size={16} strokeWidth={2.2} aria-hidden="true" /> Adicionar
-                </button>
-
-                <div
-                  style={{
-                    gridColumn: '1 / -1',
-                    display: 'flex',
-                    gap: 12,
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => void handleScan()}
-                  >
-                    {scan.pending ? (
-                      <Spinner size="small" />
-                    ) : (
-                      <ScanLine size={16} strokeWidth={2} aria-hidden="true" />
-                    )}{' '}
-                    Ler código
-                  </button>
-                  <label
-                    style={{
-                      display: 'flex',
-                      gap: 6,
-                      alignItems: 'center',
-                      fontSize: 13,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={continuousScan}
-                      onChange={(e) => setContinuousScan(e.target.checked)}
-                    />
-                    Scanner contínuo (reabre após leitura)
-                  </label>
-                </div>
-              </div>
+              <ProductCatalog
+                busca={busca}
+                onBuscaChange={setBusca}
+                selectedProd={selectedProd}
+                onSelectProduct={selectProduct}
+                suggestions={suggestions}
+                showSuggestions={showSuggestions}
+                onSetShowSuggestions={setShowSuggestions}
+                activeOption={activeOption}
+                onSetActiveOption={setActiveOption}
+                produtos={produtos}
+                quantity={quantity}
+                onQuantityChange={setQuantity}
+                onAddSelected={addSelected}
+                onScan={() => void handleScan()}
+                isScanning={scan.pending}
+                continuousScan={continuousScan}
+                onContinuousScanChange={setContinuousScan}
+                inputRef={inputRef}
+                suggestionsRef={suggestionsRef}
+              />
 
               {/* LISTA DO CARRINHO */}
               <div className="cart-heading">
@@ -1627,336 +1403,32 @@ export default function VendasPage() {
                 </div>
               )}
 
-              {/* SEÇÃO DE PAGAMENTO (RECEBER EM 3 TOQUES) */}
-              <div
-                style={{
-                  marginTop: 24,
-                  borderTop: '2px solid var(--border-color)',
-                  paddingTop: 16,
-                }}
-              >
-                {/* Total em destaque grande */}
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'baseline',
-                    marginBottom: 16,
-                    padding: '12px 16px',
-                    borderRadius: 8,
-                    background: 'var(--bg-subtle)',
-                  }}
-                >
-                  <span style={{ fontSize: 15, fontWeight: 600 }}>Total a pagar:</span>
-                  <strong
-                    style={{
-                      fontSize: 32,
-                      color: 'var(--color-brand)',
-                      letterSpacing: '-0.5px',
-                    }}
-                  >
-                    {formatMoney(total)}
-                  </strong>
-                </div>
-
-                {/* BOTÕES TOUCH DE MÉTODOS ACTIVOS */}
-                <span
-                  style={{
-                    display: 'block',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    marginBottom: 8,
-                  }}
-                >
-                  Forma de pagamento rápida:
-                </span>
-                <div className="payment-methods-grid">
-                  {metodosDisponiveis.map((m) => {
-                    const isSelected =
-                      pagamentos[0]?.metodo.toUpperCase() === m.nome.toUpperCase() ||
-                      (m.tipo === 'FIADO' && pagamentos[0]?.metodo.toUpperCase() === 'FIADO');
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        className={`payment-method-tile ${isSelected ? 'selected' : ''}`}
-                        onClick={() => selecionarMetodoPrincipal(m)}
-                      >
-                        <CreditCard size={18} />
-                        <span>{m.nome}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* ATALHOS DE NOTAS PARA DINHEIRO */}
-                {temDinheiro && (
-                  <div>
-                    <span
-                      style={{
-                        display: 'block',
-                        fontSize: 12,
-                        color: 'var(--text-secondary)',
-                        marginBottom: 4,
-                      }}
-                    >
-                      Notas recebidas (atalho):
-                    </span>
-                    <div className="quick-cash-row">
-                      <button
-                        type="button"
-                        className="quick-cash-btn"
-                        onClick={() => updateLinhaPagamento(pagamentos[0].id, 'valor', total.toFixed(2))}
-                      >
-                        Exato ({formatMoney(total)})
-                      </button>
-                      {[50, 100, 200, 500, 1000, 2000].map((valorNota) => (
-                        <button
-                          key={valorNota}
-                          type="button"
-                          className="quick-cash-btn"
-                          onClick={() =>
-                            updateLinhaPagamento(pagamentos[0].id, 'valor', valorNota.toString())
-                          }
-                        >
-                          {valorNota} MT
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* LINHAS DE PAGAMENTO DETALHADAS (DIVIDIR PAGAMENTO) */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '14px 0 8px' }}>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>Divisão do pagamento:</span>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    style={{ fontSize: 12, padding: '3px 8px' }}
-                    onClick={addLinhaPagamento}
-                  >
-                    <Plus size={13} /> Dividir
-                  </button>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {pagamentos.map((p, idx) => (
-                    <div key={p.id} className="sale-payment-split-row">
-                      <Field id={`metodo-${p.id}`} label={`Forma ${idx + 1}`}>
-                        <select
-                          id={`metodo-${p.id}`}
-                          value={p.metodo}
-                          onChange={(e) => updateLinhaPagamento(p.id, 'metodo', e.target.value)}
-                        >
-                          {metodosDisponiveis.map((m) => (
-                            <option
-                              key={m.id}
-                              value={m.tipo === 'FIADO' ? 'FIADO' : m.nome.toUpperCase()}
-                            >
-                              {m.nome}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-
-                      <Field id={`valor-${p.id}`} label="Valor (MT)">
-                        <input
-                          id={`valor-${p.id}`}
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          value={p.valor}
-                          placeholder={pagamentos.length === 1 ? total.toFixed(2) : '0,00'}
-                          onChange={(e) => updateLinhaPagamento(p.id, 'valor', e.target.value)}
-                        />
-                      </Field>
-
-                      <button
-                        type="button"
-                        className="icon-btn delete"
-                        disabled={pagamentos.length <= 1}
-                        onClick={() => removeLinhaPagamento(p.id)}
-                        style={{ marginBottom: 6 }}
-                        title="Remover linha"
-                        aria-label="Remover linha"
-                      >
-                        <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
-                      </button>
-
-                      {/* Campo opcional de referência para pagamentos digitais */}
-                      {p.metodo !== 'DINHEIRO' && p.metodo !== 'FIADO' && (
-                        <div style={{ gridColumn: '1 / -1', marginTop: -4 }}>
-                          <input
-                            type="text"
-                            placeholder="Código / referência da transação (opcional)"
-                            value={p.referencia || ''}
-                            onChange={(e) =>
-                              updateLinhaPagamento(p.id, 'referencia', e.target.value)
-                            }
-                            style={{
-                              width: '100%',
-                              padding: '6px 8px',
-                              fontSize: 12,
-                              borderRadius: 6,
-                              border: '1px solid var(--border-color)',
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {/* CAMPO DE CLIENTE CASO TENHA FIADO */}
-                {temFiado && (
-                  <div
-                    style={{
-                      marginTop: 16,
-                      padding: 12,
-                      background: 'var(--bg-subtle)',
-                      borderRadius: 8,
-                      border: '1px solid var(--border-color)',
-                    }}
-                  >
-                    <label
-                      htmlFor="cliente-fiado"
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        fontWeight: 600,
-                        marginBottom: 6,
-                      }}
-                    >
-                      <User size={15} strokeWidth={2} aria-hidden="true" /> Cliente Devedor
-                      (Obrigatório para Fiado):
-                    </label>
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                      <select
-                        id="cliente-fiado"
-                        value={clienteId}
-                        onChange={(e) => setClienteId(e.target.value)}
-                        style={{
-                          flex: 1,
-                          padding: 8,
-                          borderRadius: 6,
-                          border: '1px solid var(--input-border)',
-                        }}
-                        required
-                      >
-                        <option value="">Selecione o cliente…</option>
-                        {devedores.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.nome} {d.saldo ? `(Saldo: ${formatMoney(d.saldo)})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        onClick={() => setCriandoNovoCliente((v) => !v)}
-                      >
-                        {criandoNovoCliente ? (
-                          'Cancelar'
-                        ) : (
-                          <>
-                            <Plus size={14} strokeWidth={2} aria-hidden="true" /> Novo
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {criandoNovoCliente && (
-                      <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                        <input
-                          type="text"
-                          placeholder="Nome do novo cliente"
-                          value={novoClienteNome}
-                          onChange={(e) => setNovoClienteNome(e.target.value)}
-                          style={{
-                            flex: 1,
-                            padding: 8,
-                            borderRadius: 6,
-                            border: '1px solid var(--input-border)',
-                          }}
-                        />
-                        <button
-                          type="button"
-                          className="btn-primary"
-                          onClick={() => void criarClienteRapido()}
-                          disabled={!novoClienteNome.trim()}
-                        >
-                          Guardar
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* RESUMO DE VALORES E TROCO EM TEMPO REAL */}
-                <div style={{ marginTop: 16 }}>
-                  {trocoCalculado.gt(0) && (
-                    <Notice kind="success">
-                      Troco a devolver: <strong>{formatMoney(trocoCalculado)}</strong>
-                    </Notice>
-                  )}
-                  {faltaPagar.gt(0) && !temFiado && (
-                    <Notice kind="error">
-                      Falta receber: <strong>{formatMoney(faltaPagar)}</strong>
-                    </Notice>
-                  )}
-                </div>
-
-                <div style={{ marginTop: 16 }}>
-                  <label
-                    htmlFor="sale-obs"
-                    style={{
-                      display: 'block',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      marginBottom: 4,
-                    }}
-                  >
-                    Observações (Opcional):
-                  </label>
-                  <input
-                    id="sale-obs"
-                    type="text"
-                    value={observacao}
-                    onChange={(e) => setObservacao(e.target.value)}
-                    placeholder="Ex: Entrega ao domicílio, cliente regular..."
-                    style={{
-                      width: '100%',
-                      padding: 8,
-                      borderRadius: 6,
-                      border: '1px solid var(--border-color, #ccc)',
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="modal-actions" style={{ marginTop: 24 }}>
-                <button type="button" className="btn-secondary" onClick={closeModal}>
-                  Cancelar
-                </button>
-                <button
-                  className="btn-primary"
-                  type="submit"
-                  disabled={
-                    carrinho.length === 0 ||
-                    save.pending ||
-                    (!temFiado && faltaPagar.gt(0))
-                  }
-                  style={{ minHeight: 48, fontSize: 16 }}
-                >
-                  {save.pending ? (
-                    <Spinner size="small" />
-                  ) : (
-                    <Check size={18} strokeWidth={2.2} aria-hidden="true" />
-                  )}
-                  {save.pending ? ' A processar…' : ' Confirmar venda'}
-                </button>
-              </div>
+              <PaymentDialog
+                total={total}
+                metodosDisponiveis={metodosDisponiveis}
+                pagamentos={pagamentos}
+                temDinheiro={temDinheiro}
+                temFiado={temFiado}
+                onSelecionarMetodoPrincipal={selecionarMetodoPrincipal}
+                onUpdateLinhaPagamento={updateLinhaPagamento}
+                onAddLinhaPagamento={addLinhaPagamento}
+                onRemoveLinhaPagamento={removeLinhaPagamento}
+                devedores={devedores}
+                clienteId={clienteId}
+                onClienteIdChange={setClienteId}
+                criandoNovoCliente={criandoNovoCliente}
+                onSetCriandoNovoCliente={setCriandoNovoCliente}
+                novoClienteNome={novoClienteNome}
+                onNovoClienteNomeChange={setNovoClienteNome}
+                onCriarClienteRapido={() => void criarClienteRapido()}
+                trocoCalculado={trocoCalculado}
+                faltaPagar={faltaPagar}
+                observacao={observacao}
+                onObservacaoChange={setObservacao}
+                onCancel={closeModal}
+                canSubmit={carrinho.length > 0 && (temFiado || faltaPagar.lte(0))}
+                isSaving={save.pending}
+              />
             </fieldset>
           </form>
         </Modal>
@@ -2293,251 +1765,17 @@ export default function VendasPage() {
 
       {/* MODAL DE DETALHES DE VENDA */}
       {vendaDetalhes && (
-        <Modal
-          title={`Detalhes do Documento — Venda #${vendaDetalhes.numero}`}
+        <SaleDetailsModal
+          vendaDetalhes={vendaDetalhes}
+          devedores={devedores}
           onClose={() => setVendaDetalhes(null)}
-          wide
-        >
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-              gap: 12,
-              marginBottom: 16,
-            }}
-          >
-            <div>
-              <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>
-                Data e Hora:
-              </span>
-              <strong style={{ display: 'block' }}>
-                {vendaDetalhes.data} {vendaDetalhes.hora}
-              </strong>
-            </div>
-            <div>
-              <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>Estado:</span>
-              <div>
-                {vendaDetalhes.estado === 'ANULADA' ? (
-                  <span className="badge" style={{ background: '#fee2e2', color: '#991b1b' }}>
-                    <XCircle size={13} strokeWidth={2} aria-hidden="true" /> ANULADA
-                  </span>
-                ) : vendaDetalhes.estado === 'DEVOLVIDA' ||
-                  vendaDetalhes.estado === 'PARCIALMENTE_DEVOLVIDA' ? (
-                  <span className="badge" style={{ background: '#fef3c7', color: '#92400e' }}>
-                    <RotateCcw size={13} strokeWidth={2} aria-hidden="true" />{' '}
-                    {vendaDetalhes.estado}
-                  </span>
-                ) : (
-                  <span className="badge" style={{ background: '#dcfce7', color: '#166534' }}>
-                    <CheckCircle2 size={13} strokeWidth={2} aria-hidden="true" /> CONCLUÍDA
-                  </span>
-                )}
-              </div>
-            </div>
-            <div>
-              <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>
-                Total da Venda:
-              </span>
-              <strong
-                style={{
-                  display: 'block',
-                  fontSize: 18,
-                  color: 'var(--primary, #1e40af)',
-                }}
-              >
-                {formatMoney(vendaDetalhes.total)}
-              </strong>
-            </div>
-            {vendaDetalhes.lucro && (
-              <div>
-                <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>
-                  Lucro Bruto:
-                </span>
-                <strong style={{ display: 'block', color: '#16a34a' }}>
-                  {formatMoney(vendaDetalhes.lucro)}
-                </strong>
-              </div>
-            )}
-          </div>
-
-          {vendaDetalhes.motivoAnulacao && (
-            <div
-              style={{
-                padding: 12,
-                background: '#fee2e2',
-                borderRadius: 8,
-                marginBottom: 16,
-                color: '#991b1b',
-              }}
-            >
-              <strong>Motivo da Anulação:</strong> {vendaDetalhes.motivoAnulacao}
-              {vendaDetalhes.anuladaEm && (
-                <div style={{ fontSize: 12, marginTop: 4 }}>
-                  Em: {vendaDetalhes.anuladaEm.replace('T', ' ').slice(0, 16)}
-                </div>
-              )}
-            </div>
-          )}
-
-          {vendaDetalhes.observacao && (
-            <p style={{ fontSize: 13, fontStyle: 'italic', marginBottom: 16 }}>
-              Observação: {vendaDetalhes.observacao}
-            </p>
-          )}
-
-          <h4 style={{ margin: '16px 0 8px 0' }}>Itens da Venda</h4>
-          <table className="responsive-table" style={{ marginBottom: 16 }}>
-            <thead>
-              <tr>
-                <th>Produto</th>
-                <th className="numeric">Quantidade</th>
-                <th className="numeric">Preço Unitário</th>
-                <th className="numeric">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vendaDetalhes.itens && vendaDetalhes.itens.length > 0 ? (
-                vendaDetalhes.itens.map((it) => (
-                  <tr key={it.id}>
-                    <td>
-                      <strong>{it.produto}</strong>
-                      {it.notaDesconto && (
-                        <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                          Desc: {it.notaDesconto}
-                        </div>
-                      )}
-                    </td>
-                    <td className="numeric font-mono">
-                      {formatQuantity(it.quantidade, '')}
-                    </td>
-                    <td className="numeric font-mono">
-                      {formatMoney(it.precoUnitario)}
-                    </td>
-                    <td className="numeric font-mono" style={{ fontWeight: 600 }}>
-                      {formatMoney(it.total)}
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td>{vendaDetalhes.produto || `Venda #${vendaDetalhes.numero}`}</td>
-                  <td className="numeric font-mono">
-                    {formatQuantity(vendaDetalhes.quantidade || '1', '')}
-                  </td>
-                  <td className="numeric font-mono">{formatMoney(vendaDetalhes.total)}</td>
-                  <td className="numeric font-mono" style={{ fontWeight: 600 }}>
-                    {formatMoney(vendaDetalhes.total)}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          {vendaDetalhes.pagamentos && vendaDetalhes.pagamentos.length > 0 && (
-            <>
-              <h4 style={{ margin: '16px 0 8px 0' }}>Formas de Pagamento</h4>
-              <table className="responsive-table">
-                <thead>
-                  <tr>
-                    <th>Método</th>
-                    <th className="numeric">Valor</th>
-                    <th className="numeric">Troco</th>
-                    <th>Referência</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {vendaDetalhes.pagamentos.map((p) => (
-                    <tr key={p.id}>
-                      <td>
-                        <strong>{formatarMetodoPagamento(p.metodo)}</strong>
-                      </td>
-                      <td className="numeric font-mono">{formatMoney(p.valor)}</td>
-                      <td className="numeric font-mono">{formatMoney(p.troco || '0.00')}</td>
-                      <td style={{ fontSize: 12 }}>{p.referencia || '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-
-          <div className="modal-actions" style={{ marginTop: 20 }}>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setVendaDetalhes(null)}
-            >
-              Fechar
-            </button>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => {
-                const clienteObj = devedores.find((d) => d.id === vendaDetalhes.clienteId);
-                const dados: ReciboDados = {
-                  id: vendaDetalhes.id,
-                  numero: vendaDetalhes.numero,
-                  data: vendaDetalhes.data,
-                  hora: vendaDetalhes.hora,
-                  total: vendaDetalhes.total,
-                  troco: vendaDetalhes.troco,
-                  observacao: vendaDetalhes.observacao,
-                  clienteNome: clienteObj?.nome,
-                  itens:
-                    vendaDetalhes.itens && vendaDetalhes.itens.length > 0
-                      ? vendaDetalhes.itens.map((it) => ({
-                          produto: it.produto,
-                          quantidade: it.quantidade,
-                          precoUnitario: it.precoUnitario,
-                          total: it.total,
-                        }))
-                      : [
-                          {
-                            produto: vendaDetalhes.produto || `Venda #${vendaDetalhes.numero}`,
-                            quantidade: vendaDetalhes.quantidade || '1',
-                            precoUnitario: vendaDetalhes.total,
-                            total: vendaDetalhes.total,
-                          },
-                        ],
-                  pagamentos: vendaDetalhes.pagamentos?.map((p) => ({
-                    metodo: p.metodo,
-                    valor: p.valor,
-                    troco: p.troco,
-                  })),
-                };
-                imprimirReciboTexto(dados);
-              }}
-            >
-              <Printer size={15} strokeWidth={2} aria-hidden="true" /> Imprimir Recibo
-            </button>
-
-            {/* BOTÃO DEVOLVER PRODUTOS */}
-            {vendaDetalhes.estado !== 'ANULADA' &&
-              vendaDetalhes.estado !== 'DEVOLVIDA' && (
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => iniciarDevolucao(vendaDetalhes)}
-                >
-                  <RotateCcw size={15} strokeWidth={2} aria-hidden="true" /> Devolver produtos
-                </button>
-              )}
-
-            {vendaDetalhes.estado === 'CONCLUIDA' && (
-              <button
-                type="button"
-                className="btn-secondary"
-                style={{ color: '#dc2626' }}
-                onClick={() => {
-                  setMotivoAnulacao('');
-                  setVendaParaAnular(vendaDetalhes);
-                }}
-              >
-                <Ban size={15} strokeWidth={2} aria-hidden="true" /> Anular
-              </button>
-            )}
-          </div>
-        </Modal>
+          onImprimirRecibo={(dados) => imprimirReciboTexto(dados)}
+          onIniciarDevolucao={(v) => iniciarDevolucao(v)}
+          onAnular={(v) => {
+            setMotivoAnulacao('');
+            setVendaParaAnular(v);
+          }}
+        />
       )}
 
       {/* MODAL DE DEVOLUÇÃO SIMPLES */}

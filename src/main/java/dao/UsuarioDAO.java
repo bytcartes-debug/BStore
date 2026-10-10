@@ -11,6 +11,23 @@ public class UsuarioDAO extends GenericDAO<Usuario> {
         super(Usuario.class);
     }
 
+    @Override
+    public Usuario salvar(Usuario objeto) {
+        EntityManager em = getEM();
+        try {
+            em.getTransaction().begin();
+            em.persist(objeto);
+            em.persist(new model.DefinicaoLoja(objeto.getId(), false, objeto.getNome()));
+            em.getTransaction().commit();
+            return objeto;
+        } catch (Exception e) {
+            if (em.getTransaction().isActive()) em.getTransaction().rollback();
+            throw e;
+        } finally {
+            em.close();
+        }
+    }
+
     public List<Usuario> listarTodos() {
         EntityManager em = getEM();
         try {

@@ -235,3 +235,38 @@ test('venda guardada offline é enviada uma única vez ao restabelecer ligação
   expect(vendasEnviadas[0].idempotencyKey).toBe(vendasEnviadas[0].body.uuidCliente);
 });
 
+test('painel carrega com utilizador novo sem vendas nem produtos e sem erro', async ({ page }) => {
+  await mockApi(page);
+  // Simular utilizador novo: dashboard vazio sem vendas nem produtos
+  await page.route('**/api/dashboard', (route) =>
+    route.fulfill({
+      json: {
+        totalVendasHoje: '0.00',
+        lucroHoje: '0.00',
+        lucroUltimos7Dias: '0.00',
+        valorTotalStockCusto: '0.00',
+        totalProdutos: 0,
+        totalCategorias: 0,
+        totalDevedores: 0,
+        alertasStock: [],
+        vendasPorMetodo: [],
+        produtosMaisVendidos: [],
+        vendasRecentes: [],
+        vendasPorDia: [],
+      },
+    }),
+  );
+
+  await page.goto('/');
+  await navigate(page, 'Visão Geral');
+
+  // Confirma que não mostra a mensagem de erro do PageErrorBoundary
+  await expect(
+    page.getByText('Não foi possível abrir esta página. Recarregue para tentar novamente.'),
+  ).toHaveCount(0);
+
+  // Confirma que o painel renderiza os cartões principais
+  await expect(page.getByText('Vendas de Hoje')).toBeVisible();
+  await expect(page.getByText('MT 0.00').first()).toBeVisible();
+});
+

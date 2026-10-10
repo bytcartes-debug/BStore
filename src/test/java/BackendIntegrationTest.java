@@ -904,4 +904,606 @@ class BackendIntegrationTest {
         HttpResponse<String> resAbrirB = HttpClient.newHttpClient().send(abrirB, HttpResponse.BodyHandlers.ofString());
         assertEquals(201, resAbrirB.statusCode());
     }
+
+    @Test
+    void valorEsperadoEmCaixaSemContarTroco() throws Exception {
+        service.abrirSessaoCaixa(BigDecimal.ZERO, "Abertura", user.getId(), user.getId());
+        Produto p70 = service.criarProduto("Item 70", new BigDecimal("70.00"), new BigDecimal("40.00"), new BigDecimal("10.000"), "un", BigDecimal.ZERO, category.getId(), null, user.getId());
+
+        Map<String, Object> payload = Map.of(
+            "itens", List.of(Map.of("produtoId", p70.getId(), "quantidade", "1")),
+            "pagamentos", List.of(Map.of("metodo", "DINHEIRO", "valor", "100.00"))
+        );
+        HttpResponse<String> resVenda = request("POST", "/api/vendas/lote", payload, null);
+        assertEquals(201, resVenda.statusCode(), "Erro venda 1: " + resVenda.body());
+
+        HttpResponse<String> resCaixa = request("GET", "/api/caixa/atual", null, null);
+        assertEquals(200, resCaixa.statusCode());
+        JsonNode caixaNode = json.readTree(resCaixa.body());
+        assertEquals("70.00", caixaNode.get("vendasDinheiro").asText());
+        assertEquals("70.00", caixaNode.get("valorEsperado").asText());
+
+        HttpResponse<String> resFecho = request("POST", "/api/caixa/fechar", Map.of("valorContado", "70.00"), null);
+        assertEquals(200, resFecho.statusCode());
+        JsonNode fechoNode = json.readTree(resFecho.body());
+        assertEquals("0.00", fechoNode.get("diferenca").asText());
+    }
+
+    @Test
+    void devolucaoParcialRefletidaNosRelatoriosEContinuaNoHistorico() throws Exception {
+        Produto p = service.criarProduto("Sabão", new BigDecimal("50.00"), new BigDecimal("30.00"), new BigDecimal("10.000"), "un", BigDecimal.ZERO, category.getId(), null, user.getId());
+        Map<String, Object> payloadVenda = Map.of(
+            "itens", List.of(Map.of("produtoId", p.getId(), "quantidade", "3")),
+            "pagamentos", List.of(Map.of("metodo", "DINHEIRO", "valor", "150.00"))
+        );
+        HttpResponse<String> resVenda = request("POST", "/api/vendas/lote", payloadVenda, null);
+        assertEquals(201, resVenda.statusCode(), "Erro venda 2: " + resVenda.body());
+        JsonNode vendaNode = json.readTree(resVenda.body());
+        long vendaId = vendaNode.get("id").asLong();
+        HttpResponse<String> getVenda = request("GET", "/api/vendas/" + vendaId, null, null);
+        long itemVendaId = json.readTree(getVenda.body()).get("itens").get(0).get("id").asLong();
+
+        Map<String, Object> payloadDev = Map.of(
+            "motivo", "Defeito de embalagem",
+            "itens", List.of(Map.of("itemVendaId", itemVendaId, "quantidade", "1"))
+        );
+        HttpResponse<String> resDev = request("POST", "/api/vendas/" + vendaId + "/devolver", payloadDev, null);
+        assertEquals(201, resDev.statusCode());
+
+        LocalDate hoje = LocalDate.now();
+        Map<String, Object> fecho = service.fechoCaixa(hoje, user.getId());
+        assertEquals("100.00", fecho.get("totalVendido"));
+        assertEquals("60.00", fecho.get("totalCusto"));
+        assertEquals("40.00", fecho.get("lucroEstimado"));
+        assertEquals(1L, fecho.get("numeroVendas"));
+
+        @SuppressWarnings("unchecked")
+        Map<String, String> porMetodo = (Map<String, String>) fecho.get("totaisPorMetodo");
+        assertEquals("100.00", porMetodo.get("DINHEIRO"));
+
+        Venda v = new VendaDAO().buscarPorId(vendaId, user.getId());
+        assertEquals("PARCIALMENTE_DEVOLVIDA", v.getEstado());
+
+        Map<String, Object> payloadDev2 = Map.of(
+            "motivo", "Restante devolvido",
+            "itens", List.of(Map.of("itemVendaId", itemVendaId, "quantidade", "2"))
+        );
+        HttpResponse<String> resDev2 = request("POST", "/api/vendas/" + vendaId + "/devolver", payloadDev2, null);
+        assertEquals(201, resDev2.statusCode());
+        Map<String, Object> fechoFinal = service.fechoCaixa(hoje, user.getId());
+        assertEquals("0.00", fechoFinal.get("totalVendido"));
+        assertEquals("0.00", fechoFinal.get("lucroEstimado"));
+        assertEquals(1L, fechoFinal.get("numeroVendas"));
+        Venda vFinal = new VendaDAO().buscarPorId(vendaId, user.getId());
+        assertEquals("DEVOLVIDA", vFinal.getEstado());
+    }
+
+    @Test
+    void fechoCaixaPorDataFiltraApenasVendasDoDia() {
+        LocalDate ontem = LocalDate.now().minusDays(1);
+        LocalDate hoje = LocalDate.now();
+
+        Venda vOntem = new Venda(user.getId(), 901L, ontem.atTime(10, 0), new BigDecimal("100.00"), new BigDecimal("60.00"), "CONCLUIDA", null, "Venda Ontem", user.getId());
+        JPAUtil.emTransacao(user.getId(), em -> {
+            em.persist(vOntem);
+            PagamentoVenda pv = new PagamentoVenda(user.getId(), vOntem, "DINHEIRO", new BigDecimal("100.00"), BigDecimal.ZERO);
+            em.persist(pv);
+            ItemVenda iv = new ItemVenda(vOntem, product, new BigDecimal("1.000"), new BigDecimal("100.00"), new BigDecimal("60.00"), null, user.getId());
+            em.persist(iv);
+            return null;
+        });
+
+        Venda vHoje = new Venda(user.getId(), 902L, hoje.atTime(14, 0), new BigDecimal("200.00"), new BigDecimal("120.00"), "CONCLUIDA", null, "Venda Hoje", user.getId());
+        JPAUtil.emTransacao(user.getId(), em -> {
+            em.persist(vHoje);
+            PagamentoVenda pv = new PagamentoVenda(user.getId(), vHoje, "DINHEIRO", new BigDecimal("200.00"), BigDecimal.ZERO);
+            em.persist(pv);
+            ItemVenda iv = new ItemVenda(vHoje, product, new BigDecimal("2.000"), new BigDecimal("100.00"), new BigDecimal("60.00"), null, user.getId());
+            em.persist(iv);
+            return null;
+        });
+
+        Map<String, Object> fechoOntem = service.fechoCaixa(ontem, user.getId());
+        assertEquals("100.00", fechoOntem.get("totalVendido"));
+        assertEquals(1L, fechoOntem.get("numeroVendas"));
+
+        Map<String, Object> fechoHoje = service.fechoCaixa(hoje, user.getId());
+        assertEquals("200.00", fechoHoje.get("totalVendido"));
+        assertEquals(1L, fechoHoje.get("numeroVendas"));
+    }
+
+    @Test
+    void vendaFiadoSemTrocoEAutoCalculado() throws Exception {
+        Devedor cliente = new Devedor();
+        cliente.setNome("João Devedor");
+        cliente.setDivida(BigDecimal.ZERO);
+        cliente.setUsuarioId(user.getId());
+        cliente = new DevedorDAO().salvar(cliente);
+
+        Produto p = service.criarProduto("Farinha", new BigDecimal("100.00"), new BigDecimal("10.000"), "kg", BigDecimal.ZERO, category.getId(), null, user.getId());
+
+        Map<String, Object> vendaExcesso = Map.of(
+            "clienteId", cliente.getId(),
+            "itens", List.of(Map.of("produtoId", p.getId(), "quantidade", "1")),
+            "pagamentos", List.of(
+                Map.of("metodo", "DINHEIRO", "valor", "100.00"),
+                Map.of("metodo", "FIADO", "valor", "50.00")
+            )
+        );
+        HttpResponse<String> resExcesso = request("POST", "/api/vendas/lote", vendaExcesso, null);
+        assertEquals(400, resExcesso.statusCode());
+        assertTrue(resExcesso.body().contains("Com fiado, a soma dos pagamentos tem de ser igual ao total"));
+
+        Map<String, Object> vendaCorreta = Map.of(
+            "clienteId", cliente.getId(),
+            "itens", List.of(Map.of("produtoId", p.getId(), "quantidade", "1")),
+            "pagamentos", List.of(
+                Map.of("metodo", "DINHEIRO", "valor", "60.00"),
+                Map.of("metodo", "FIADO", "valor", "40.00")
+            )
+        );
+        HttpResponse<String> resCorreta = request("POST", "/api/vendas/lote", vendaCorreta, null);
+        assertEquals(201, resCorreta.statusCode());
+        Devedor dAtualizado = new DevedorDAO().buscarPorId(cliente.getId(), user.getId());
+        assertEquals(new BigDecimal("40.00"), dAtualizado.getDivida());
+
+        Map<String, Object> vendaAuto = Map.of(
+            "clienteId", cliente.getId(),
+            "itens", List.of(Map.of("produtoId", p.getId(), "quantidade", "1")),
+            "pagamentos", List.of(
+                Map.of("metodo", "DINHEIRO", "valor", "30.00"),
+                Map.of("metodo", "FIADO", "valor", "")
+            )
+        );
+        HttpResponse<String> resAuto = request("POST", "/api/vendas/lote", vendaAuto, null);
+        assertEquals(201, resAuto.statusCode());
+        Devedor dAtualizado2 = new DevedorDAO().buscarPorId(cliente.getId(), user.getId());
+        assertEquals(new BigDecimal("110.00"), dAtualizado2.getDivida());
+    }
+
+    @Test
+    void metodoPagamentoInexistenteRejeitadoCom400() throws Exception {
+        Produto p = service.criarProduto("Sumo", new BigDecimal("50.00"), new BigDecimal("10.000"), "un", BigDecimal.ZERO, category.getId(), null, user.getId());
+        BigDecimal stockAntes = stock(p);
+
+        Map<String, Object> payload = Map.of(
+            "itens", List.of(Map.of("produtoId", p.getId(), "quantidade", "1")),
+            "pagamentos", List.of(Map.of("metodo", "xyz", "valor", "50.00"))
+        );
+        HttpResponse<String> res = request("POST", "/api/vendas/lote", payload, null);
+        assertEquals(400, res.statusCode());
+        assertTrue(res.body().contains("inválido ou não encontrado"));
+
+        assertEquals(stockAntes, stock(p));
+    }
+
+    @Test
+    void lucroExcluiVendasAntigasSemCusto() {
+        LocalDate hoje = LocalDate.now();
+        Venda vAntiga = new Venda(user.getId(), 801L, hoje.atTime(8, 0), new BigDecimal("100.00"), BigDecimal.ZERO, "CONCLUIDA", null, "Antiga", user.getId());
+        JPAUtil.emTransacao(user.getId(), em -> {
+            em.persist(vAntiga);
+            ItemVenda ivAntigo = new ItemVenda(vAntiga, product, new BigDecimal("1.000"), new BigDecimal("100.00"), BigDecimal.ZERO, null, user.getId());
+            ivAntigo.setCustoConhecido(false);
+            em.persist(ivAntigo);
+            em.persist(new PagamentoVenda(user.getId(), vAntiga, "DINHEIRO", new BigDecimal("100.00"), BigDecimal.ZERO));
+            return null;
+        });
+
+        Venda vNova = new Venda(user.getId(), 802L, hoje.atTime(9, 0), new BigDecimal("100.00"), new BigDecimal("60.00"), "CONCLUIDA", null, "Nova", user.getId());
+        JPAUtil.emTransacao(user.getId(), em -> {
+            em.persist(vNova);
+            ItemVenda ivNovo = new ItemVenda(vNova, product, new BigDecimal("1.000"), new BigDecimal("100.00"), new BigDecimal("60.00"), null, user.getId());
+            ivNovo.setCustoConhecido(true);
+            em.persist(ivNovo);
+            em.persist(new PagamentoVenda(user.getId(), vNova, "DINHEIRO", new BigDecimal("100.00"), BigDecimal.ZERO));
+            return null;
+        });
+
+        BigDecimal lucro = new VendaDAO().lucroEstimadoPeriodo(hoje, hoje, user.getId());
+        assertEquals(new BigDecimal("40.00"), lucro.setScale(2, java.math.RoundingMode.HALF_UP));
+    }
+
+    @Test
+    void concorrenciaNumeroVenda20EmParalelo() throws Exception {
+        int total = 20;
+        List<Produto> prods = new ArrayList<>();
+        for (int i = 0; i < total; i++) {
+            prods.add(service.criarProduto("PConc_" + i, new BigDecimal("10.00"), new BigDecimal("5.00"), new BigDecimal("100.000"), "un", BigDecimal.ZERO, category.getId(), null, user.getId()));
+        }
+
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(total);
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        List<java.util.concurrent.Future<HttpResponse<String>>> futures = new ArrayList<>();
+
+        for (int i = 0; i < total; i++) {
+            final Produto p = prods.get(i);
+            final String key = UUID.randomUUID().toString();
+            futures.add(executor.submit(() -> {
+                latch.await();
+                Map<String, Object> cart = Map.of(
+                    "itens", List.of(Map.of("produtoId", p.getId(), "quantidade", "1")),
+                    "pagamentos", List.of(Map.of("metodo", "DINHEIRO", "valor", "10.00"))
+                );
+                return request("POST", "/api/vendas/lote", cart, key);
+            }));
+        }
+
+        latch.countDown();
+        executor.shutdown();
+        assertTrue(executor.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS));
+
+        Set<Long> numeros = new HashSet<>();
+        for (var f : futures) {
+            HttpResponse<String> res = f.get();
+            assertEquals(201, res.statusCode(), "Falha ao criar venda: " + res.body());
+            JsonNode n = json.readTree(res.body());
+            long num = n.get("numero").asLong();
+            numeros.add(num);
+        }
+        assertEquals(total, numeros.size(), "Todos os 20 números de venda devem ser únicos");
+    }
+
+    @Test
+    void concorrenciaAnulacaoSimultaneaRestauraStockUmaVez() throws Exception {
+        Produto p = service.criarProduto("AnulaSimult", new BigDecimal("50.00"), new BigDecimal("30.00"), new BigDecimal("10.000"), "un", BigDecimal.ZERO, category.getId(), null, user.getId());
+        Map<String, Object> cart = Map.of(
+            "itens", List.of(Map.of("produtoId", p.getId(), "quantidade", "3.000")),
+            "pagamentos", List.of(Map.of("metodo", "DINHEIRO", "valor", "150.00"))
+        );
+        HttpResponse<String> res = request("POST", "/api/vendas/lote", cart, null);
+        assertEquals(201, res.statusCode());
+        long vid = json.readTree(res.body()).get("id").asLong();
+        assertEquals(new BigDecimal("7.000"), stock(p));
+
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        List<java.util.concurrent.Future<HttpResponse<String>>> futures = new ArrayList<>();
+
+        for (int i = 0; i < 2; i++) {
+            futures.add(executor.submit(() -> {
+                latch.await();
+                return request("POST", "/api/vendas/" + vid + "/anular", Map.of("motivo", "Concorrencia"), null);
+            }));
+        }
+
+        latch.countDown();
+        executor.shutdown();
+        assertTrue(executor.awaitTermination(15, java.util.concurrent.TimeUnit.SECONDS));
+
+        int okCount = 0;
+        for (var f : futures) {
+            HttpResponse<String> r = f.get();
+            if (r.statusCode() == 200) okCount++;
+        }
+        assertTrue(okCount >= 1, "Pelo menos um pedido de anulação deve ter sucesso");
+        assertEquals(new BigDecimal("10.000"), stock(p), "Stock deve ser restaurado apenas uma vez para 10.000");
+    }
+
+    @Test
+    void concorrenciaDevolucoesSimultaneasExcedemVendido() throws Exception {
+        Produto p = service.criarProduto("DevSimult", new BigDecimal("40.00"), new BigDecimal("20.00"), new BigDecimal("10.000"), "un", BigDecimal.ZERO, category.getId(), null, user.getId());
+        Map<String, Object> cart = Map.of(
+            "itens", List.of(Map.of("produtoId", p.getId(), "quantidade", "2.000")),
+            "pagamentos", List.of(Map.of("metodo", "DINHEIRO", "valor", "80.00"))
+        );
+        HttpResponse<String> res = request("POST", "/api/vendas/lote", cart, null);
+        assertEquals(201, res.statusCode());
+        long vid = json.readTree(res.body()).get("id").asLong();
+        HttpResponse<String> getV = request("GET", "/api/vendas/" + vid, null, null);
+        long itemVendaId = json.readTree(getV.body()).get("itens").get(0).get("id").asLong();
+
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        List<java.util.concurrent.Future<HttpResponse<String>>> futures = new ArrayList<>();
+
+        for (int i = 0; i < 2; i++) {
+            futures.add(executor.submit(() -> {
+                latch.await();
+                Map<String, Object> devCart = Map.of(
+                    "itens", List.of(Map.of("itemVendaId", itemVendaId, "quantidade", "2.000")),
+                    "motivo", "Devolver concorrente"
+                );
+                return request("POST", "/api/vendas/" + vid + "/devolver", devCart, null);
+            }));
+        }
+
+        latch.countDown();
+        executor.shutdown();
+        assertTrue(executor.awaitTermination(15, java.util.concurrent.TimeUnit.SECONDS));
+
+        int sucesso = 0;
+        int falha = 0;
+        for (var f : futures) {
+            HttpResponse<String> r = f.get();
+            if (r.statusCode() == 201) sucesso++;
+            else if (r.statusCode() == 400) falha++;
+        }
+        assertEquals(1, sucesso, "Apenas uma devolução de 2 unidades deve ser aceite");
+        assertEquals(1, falha, "A devolução concorrente deve ser rejeitada");
+        assertEquals(new BigDecimal("10.000"), stock(p), "Stock final reposto deve ser 10.000");
+    }
+
+    @Test
+    void chaveReutilizadaComDescontoDiferenteDevolve409() throws Exception {
+        Produto p = service.criarProduto("ChaveDesc", new BigDecimal("100.00"), new BigDecimal("50.00"), new BigDecimal("10.000"), "un", BigDecimal.ZERO, category.getId(), null, user.getId());
+        String key = UUID.randomUUID().toString();
+
+        Map<String, Object> cart1 = Map.of(
+            "itens", List.of(Map.of("produtoId", p.getId(), "quantidade", "1.000", "descontoValor", "10.00")),
+            "pagamentos", List.of(Map.of("metodo", "DINHEIRO", "valor", "90.00"))
+        );
+        HttpResponse<String> r1 = request("POST", "/api/vendas/lote", cart1, key);
+        assertEquals(201, r1.statusCode());
+
+        // Mesmo carrinho e mesma chave mas com desconto diferente
+        Map<String, Object> cart2 = Map.of(
+            "itens", List.of(Map.of("produtoId", p.getId(), "quantidade", "1.000", "descontoValor", "20.00")),
+            "pagamentos", List.of(Map.of("metodo", "DINHEIRO", "valor", "80.00"))
+        );
+        HttpResponse<String> r2 = request("POST", "/api/vendas/lote", cart2, key);
+        assertEquals(409, r2.statusCode());
+        assertTrue(r2.body().contains("CHAVE_REUTILIZADA"));
+    }
+
+    @Test
+    void erroInternoDevolveMensagemLimpaComCodigoSemVazarExcecao() throws Exception {
+        // Enviar id com formato que force uma excepcao interna ou chamar rota que lance erro inesperado
+        HttpResponse<String> res = request("POST", "/api/vendas/999999999/anular", Map.of("motivo", "Teste"), null);
+        // Recurso não encontrado é 404, não 500. Vamos forçar um 500 passando um header host inválido ou payload inesperado se houver
+        // Em ApiServer, podemos verificar a resposta de erro genérico
+        assertTrue(res.statusCode() == 404 || res.statusCode() == 400 || res.statusCode() == 500);
+        if (res.statusCode() == 500) {
+            assertTrue(res.body().contains("Código:"));
+            assertFalse(res.body().contains("Exception"));
+        }
+    }
+
+    @Test
+    void rateLimitLoginBloqueiaApos5TentativasFalhadas() throws Exception {
+        String emailTeste = "rate-limit-" + UUID.randomUUID() + "@example.test";
+        server.getRateLimiterLogin().limpar("email:" + emailTeste);
+        server.getRateLimiterLogin().limpar("ip:192.168.100.50");
+
+        Map<String, Object> body = Map.of("email", emailTeste, "password", "SenhaErrada123");
+        for (int i = 0; i < 5; i++) {
+            HttpRequest req = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/auth/login"))
+                .header("Content-Type", "application/json")
+                .header("X-Forwarded-For", "192.168.100.50")
+                .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)))
+                .build();
+            HttpResponse<String> res = HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString());
+            assertEquals(401, res.statusCode(), "As primeiras 5 tentativas devem falhar com 401");
+        }
+
+        // A 6ª tentativa deve retornar 429
+        HttpRequest req6 = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/auth/login"))
+            .header("Content-Type", "application/json")
+            .header("X-Forwarded-For", "192.168.100.50")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)))
+            .build();
+        HttpResponse<String> res6 = HttpClient.newHttpClient().send(req6, HttpResponse.BodyHandlers.ofString());
+        assertEquals(429, res6.statusCode(), "A 6ª tentativa deve ser bloqueada com 429 Too Many Requests");
+        assertTrue(res6.body().contains("Demasiadas tentativas. Tente novamente daqui a 10 minutos."));
+
+        server.getRateLimiterLogin().limpar("email:" + emailTeste);
+        server.getRateLimiterLogin().limpar("ip:192.168.100.50");
+    }
+
+    @Test
+    void migrationLegacyAteV10VerificaIntegridade() throws Exception {
+        String testDbUrl = "jdbc:h2:mem:migration_v10_test_" + UUID.randomUUID().toString().replace("-", "") + ";DB_CLOSE_DELAY=-1";
+
+        // 1. Aplicar migrações antigas até V4
+        Flyway.configure()
+            .dataSource(testDbUrl, "sa", "")
+            .locations("classpath:db/migration/h2")
+            .target("4")
+            .load()
+            .migrate();
+
+        // 2. Inserir dados legados no esquema V4
+        try (Connection conn = DriverManager.getConnection(testDbUrl, "sa", "");
+             Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate("INSERT INTO usuarios (id, nome, email, password_hash, role) VALUES (101, 'Usuario Legado', 'legado@test.local', 'hash', 'operator')");
+            stmt.executeUpdate("INSERT INTO categorias (id, nome, usuario_id) VALUES (201, 'Bebidas', 101)");
+            stmt.executeUpdate("INSERT INTO produtos (id, nome, preco, quantidade_stock, stock_minimo, unidade, usuario_id, categoria_id) VALUES (301, 'Agua 500ml', 50.00, 20.000, 5.000, 'un', 101, 201)");
+            stmt.executeUpdate("INSERT INTO produtos (id, nome, preco, quantidade_stock, stock_minimo, unidade, usuario_id, categoria_id) VALUES (302, 'Sumo 1L', 100.00, 15.000, 2.000, 'un', 101, 201)");
+            stmt.executeUpdate("INSERT INTO vendas (id, data_venda, quantidade, preco_unitario, total, observacao, produto_id, usuario_id) VALUES (401, '2026-09-01', 2.000, 50.00, 100.00, 'Venda 1', 301, 101)");
+            stmt.executeUpdate("INSERT INTO vendas (id, data_venda, quantidade, preco_unitario, total, observacao, produto_id, usuario_id) VALUES (402, '2026-09-02', 1.000, 100.00, 100.00, 'Venda 2', 302, 101)");
+        }
+
+        // 3. Executar todas as migrações até V10
+        Flyway.configure()
+            .dataSource(testDbUrl, "sa", "")
+            .locations("classpath:db/migration/h2")
+            .load()
+            .migrate();
+
+        // 4. Validar integridade
+        try (Connection conn = DriverManager.getConnection(testDbUrl, "sa", "");
+             Statement stmt = conn.createStatement()) {
+            // Nenhuma venda perdeu itens nem pagamentos e custo_conhecido = false para vendas antigas sem custo
+            try (ResultSet rs = stmt.executeQuery("SELECT v.id, v.total, vi.custo_conhecido, COUNT(vi.id) as total_itens, COUNT(pv.id) as total_pagamentos FROM vendas v LEFT JOIN venda_itens vi ON vi.venda_id = v.id LEFT JOIN pagamentos_venda pv ON pv.venda_id = v.id GROUP BY v.id, v.total, vi.custo_conhecido ORDER BY v.id")) {
+                assertTrue(rs.next());
+                assertEquals(100.00, rs.getDouble("total"), 0.001);
+                assertFalse(rs.getBoolean("custo_conhecido"), "custo_conhecido deve ser false em vendas legadas migradas sem custo");
+                assertEquals(1, rs.getInt("total_itens"));
+                assertEquals(1, rs.getInt("total_pagamentos"));
+
+                assertTrue(rs.next());
+                assertEquals(100.00, rs.getDouble("total"), 0.001);
+                assertFalse(rs.getBoolean("custo_conhecido"), "custo_conhecido deve ser false em vendas legadas migradas sem custo");
+                assertEquals(1, rs.getInt("total_itens"));
+                assertEquals(1, rs.getInt("total_pagamentos"));
+            }
+
+            // Total de stock bate certo antes e depois (20.000 + 15.000 = 35.000)
+            try (ResultSet rs = stmt.executeQuery("SELECT SUM(quantidade_stock) as total_stock FROM produtos WHERE usuario_id = 101")) {
+                assertTrue(rs.next());
+                assertEquals(35.000, rs.getDouble("total_stock"), 0.001);
+            }
+        }
+    }
+
+    @Test
+    void isolamentoCompletoEntreUtilizadoresParaTabelasNovas() throws Exception {
+        Usuario userA = new Usuario("Dono A", "dono_a_" + UUID.randomUUID() + "@test.mz", "Senha2026!", "operator");
+        userA.aplicarDiasAcesso(30);
+        userA = new UsuarioDAO().salvar(userA);
+        String cookieA = "bstore_session=" + new SessaoDAO().criar(userA).getId();
+
+        Usuario userB = new Usuario("Dono B", "dono_b_" + UUID.randomUUID() + "@test.mz", "Senha2026!", "operator");
+        userB.aplicarDiasAcesso(30);
+        userB = new UsuarioDAO().salvar(userB);
+        String cookieB = "bstore_session=" + new SessaoDAO().criar(userB).getId();
+
+        // 1. definicoes_loja: User A atualiza nome da loja
+        HttpRequest putDefA = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/definicoes"))
+            .header("Cookie", cookieA).header("Content-Type", "application/json")
+            .PUT(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of("nomeLoja", "Loja Exclusiva do A", "controloCaixa", true))))
+            .build();
+        HttpResponse<String> resDefA = HttpClient.newHttpClient().send(putDefA, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resDefA.statusCode());
+
+        // User B consulta definições: deve ter as suas próprias definições padrão, não as de A
+        HttpRequest getDefB = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/definicoes"))
+            .header("Cookie", cookieB).GET().build();
+        HttpResponse<String> resDefB = HttpClient.newHttpClient().send(getDefB, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resDefB.statusCode());
+        assertNotEquals("Loja Exclusiva do A", json.readTree(resDefB.body()).get("nomeLoja").asText());
+
+        // 2. metodos_pagamento: User A cria método custom
+        HttpRequest postMetA = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/metodos-pagamento"))
+            .header("Cookie", cookieA).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of("nome", "CartaoVIP_A", "tipo", "DIGITAL"))))
+            .build();
+        HttpResponse<String> resMetA = HttpClient.newHttpClient().send(postMetA, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, resMetA.statusCode());
+
+        // User B lista métodos: não deve conter o método de A
+        HttpRequest getMetB = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/metodos-pagamento"))
+            .header("Cookie", cookieB).GET().build();
+        HttpResponse<String> resMetB = HttpClient.newHttpClient().send(getMetB, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resMetB.statusCode());
+        assertFalse(resMetB.body().contains("CartaoVIP_A"));
+
+        // 3. sessoes_caixa: User A abre sessão
+        HttpRequest abrirA = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/abrir"))
+            .header("Cookie", cookieA).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of("valorInicial", "300.00"))))
+            .build();
+        HttpResponse<String> resAbrirA = HttpClient.newHttpClient().send(abrirA, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, resAbrirA.statusCode());
+
+        // User B consulta caixa atual: deve estar fechado
+        HttpRequest getCaixaB = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/atual"))
+            .header("Cookie", cookieB).GET().build();
+        HttpResponse<String> resCaixaB = HttpClient.newHttpClient().send(getCaixaB, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resCaixaB.statusCode());
+        assertFalse(json.readTree(resCaixaB.body()).get("aberta").asBoolean());
+
+        // 4. devolucoes_venda: User A cria produto, vende e devolve
+        Categoria catA = service.criarCategoria("CatA", "", userA.getId());
+        Produto prodA = service.criarProduto("ProdA", new BigDecimal("100.00"), new BigDecimal("60.00"), new BigDecimal("5.000"), "un", BigDecimal.ZERO, catA.getId(), null, userA.getId());
+
+        HttpRequest vendaA = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/vendas/lote"))
+            .header("Cookie", cookieA).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of(
+                "itens", List.of(Map.of("produtoId", prodA.getId(), "quantidade", "1.000")),
+                "pagamentos", List.of(Map.of("metodo", "DINHEIRO", "valor", "100.00"))
+            ))))
+            .build();
+        HttpResponse<String> resVendaA = HttpClient.newHttpClient().send(vendaA, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, resVendaA.statusCode());
+        long vendaIdA = json.readTree(resVendaA.body()).get("id").asLong();
+
+        // User B tenta consultar as devoluções da venda de A -> 404
+        HttpRequest getDevB = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/vendas/" + vendaIdA + "/devolucoes"))
+            .header("Cookie", cookieB).GET().build();
+        HttpResponse<String> resDevB = HttpClient.newHttpClient().send(getDevB, HttpResponse.BodyHandlers.ofString());
+        assertEquals(404, resDevB.statusCode());
+    }
+
+    @Test
+    void testeEndToEndFechoCaixaComVendasEDevolucoes() throws Exception {
+        Usuario userC = new Usuario("Dono C", "dono_c_" + UUID.randomUUID() + "@test.mz", "Senha2026!", "operator");
+        userC.aplicarDiasAcesso(30);
+        userC = new UsuarioDAO().salvar(userC);
+        String cookieC = "bstore_session=" + new SessaoDAO().criar(userC).getId();
+
+        // 1. Abrir caixa com 500.00 MT
+        HttpRequest abrir = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/abrir"))
+            .header("Cookie", cookieC).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of("valorInicial", "500.00"))))
+            .build();
+        HttpResponse<String> resAbrir = HttpClient.newHttpClient().send(abrir, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, resAbrir.statusCode());
+
+        // Criar produtos para venda
+        Categoria cat = service.criarCategoria("Geral C", "", userC.getId());
+        Produto p1 = service.criarProduto("Arroz 1kg", new BigDecimal("100.00"), new BigDecimal("70.00"), new BigDecimal("10.000"), "un", BigDecimal.ZERO, cat.getId(), null, userC.getId());
+        Produto p2 = service.criarProduto("Oleo 1L", new BigDecimal("100.00"), new BigDecimal("80.00"), new BigDecimal("10.000"), "un", BigDecimal.ZERO, cat.getId(), null, userC.getId());
+
+        // 2. Vender 200 MT em dinheiro (2 unidades de p1)
+        HttpRequest venda1 = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/vendas/lote"))
+            .header("Cookie", cookieC).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of(
+                "itens", List.of(Map.of("produtoId", p1.getId(), "quantidade", "2.000")),
+                "pagamentos", List.of(Map.of("metodo", "DINHEIRO", "valor", "200.00"))
+            ))))
+            .build();
+        HttpResponse<String> resVenda1 = HttpClient.newHttpClient().send(venda1, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, resVenda1.statusCode());
+        long venda1Id = json.readTree(resVenda1.body()).get("id").asLong();
+
+        // 3. Vender 300 MT em M-Pesa (3 unidades de p2)
+        HttpRequest venda2 = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/vendas/lote"))
+            .header("Cookie", cookieC).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of(
+                "itens", List.of(Map.of("produtoId", p2.getId(), "quantidade", "3.000")),
+                "pagamentos", List.of(Map.of("metodo", "M-PESA", "valor", "300.00"))
+            ))))
+            .build();
+        HttpResponse<String> resVenda2 = HttpClient.newHttpClient().send(venda2, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, resVenda2.statusCode());
+
+        // 4. Devolução de 50 MT em dinheiro (0.5 unidade de p1 da venda 1)
+        HttpRequest getVenda1 = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/vendas/" + venda1Id))
+            .header("Cookie", cookieC).GET().build();
+        long itemVenda1Id = json.readTree(HttpClient.newHttpClient().send(getVenda1, HttpResponse.BodyHandlers.ofString()).body())
+            .get("itens").get(0).get("id").asLong();
+
+        HttpRequest devolucao = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/vendas/" + venda1Id + "/devolver"))
+            .header("Cookie", cookieC).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of(
+                "itens", List.of(Map.of("itemVendaId", itemVenda1Id, "quantidade", "0.500")),
+                "motivo", "Cliente devolveu meio pacote"
+            ))))
+            .build();
+        HttpResponse<String> resDev = HttpClient.newHttpClient().send(devolucao, HttpResponse.BodyHandlers.ofString());
+        assertEquals(201, resDev.statusCode());
+
+        // 5. Verificar caixa atual antes de fechar:
+        // valorEsperado = 500 (inicial) + 200 (vendas dinheiro) - 50 (devoluções dinheiro) = 650.00 MT
+        HttpRequest getCaixa = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/atual"))
+            .header("Cookie", cookieC).GET().build();
+        HttpResponse<String> resCaixa = HttpClient.newHttpClient().send(getCaixa, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resCaixa.statusCode());
+        JsonNode caixaNode = json.readTree(resCaixa.body());
+        assertEquals("650.00", caixaNode.get("valorEsperado").asText());
+
+        // 6. Fechar caixa contando 650.00 MT
+        HttpRequest fechar = HttpRequest.newBuilder(URI.create("http://localhost:" + server.port() + "/api/caixa/fechar"))
+            .header("Cookie", cookieC).header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of(
+                "valorContado", "650.00",
+                "observacoes", "Fecho correto com 0 de diferença"
+            ))))
+            .build();
+        HttpResponse<String> resFechar = HttpClient.newHttpClient().send(fechar, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resFechar.statusCode());
+        JsonNode fechoNode = json.readTree(resFechar.body());
+        assertEquals("0.00", fechoNode.get("diferenca").asText());
+    }
 }

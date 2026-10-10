@@ -56,7 +56,7 @@ public class SessaoCaixaDAO extends GenericDAO<SessaoCaixa> {
 
     public BigDecimal calcularVendasDinheiro(EntityManager em, Long sessaoId, Long uid) {
         BigDecimal total = em.createQuery(
-                "SELECT COALESCE(SUM(p.valor), 0) FROM PagamentoVenda p " +
+                "SELECT COALESCE(SUM(p.valor - COALESCE(p.troco, 0)), 0) FROM PagamentoVenda p " +
                 "WHERE p.venda.sessaoCaixa.id = :sessaoId " +
                 "AND p.venda.usuarioId = :uid " +
                 "AND p.venda.estado != 'ANULADA' " +

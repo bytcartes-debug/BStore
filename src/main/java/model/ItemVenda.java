@@ -39,6 +39,9 @@ public class ItemVenda {
     @Column(name = "custo_unitario", nullable = false, precision = 19, scale = 2)
     private BigDecimal custoUnitario = BigDecimal.ZERO;
 
+    @Column(name = "custo_conhecido", nullable = false)
+    private Boolean custoConhecido = true;
+
     @Column(name = "total", nullable = false, precision = 19, scale = 2)
     private BigDecimal total;
 
@@ -105,6 +108,10 @@ public class ItemVenda {
 
     public BigDecimal getCustoUnitario() { return custoUnitario; }
     public void setCustoUnitario(BigDecimal custoUnitario) { this.custoUnitario = custoUnitario; }
+
+    public Boolean getCustoConhecido() { return custoConhecido; }
+    public void setCustoConhecido(Boolean custoConhecido) { this.custoConhecido = custoConhecido != null ? custoConhecido : true; }
+    public boolean isCustoConhecido() { return Boolean.TRUE.equals(custoConhecido); }
 
     public BigDecimal getTotal() { return total; }
     public void setTotal(BigDecimal total) { this.total = total; }

@@ -44,7 +44,7 @@ public final class VendaIdempotenteService {
             throw new IllegalArgumentException("Idempotency-Key deve ter entre 8 e 80 letras, números, hífen ou underscore.");
         }
         Map<Long, BigDecimal> quantidades = BarracaService.normalizarCarrinho(itens);
-        String fingerprint = fingerprint(quantidades, pagamentos, clienteId);
+        String fingerprint = fingerprint(itens, pagamentos, clienteId);
         PedidoVendaId id = new PedidoVendaId(usuarioId, chave);
         try {
             return JPAUtil.emTransacao(usuarioId, em -> {
@@ -80,7 +80,17 @@ public final class VendaIdempotenteService {
 
     private boolean chaveDuplicada(Throwable error) {
         for (Throwable cause = error; cause != null; cause = cause.getCause()) {
-            if (cause instanceof SQLException && "23505".equals(((SQLException) cause).getSQLState())) return true;
+            if (cause instanceof SQLException) {
+                SQLException sqlEx = (SQLException) cause;
+                if ("23505".equals(sqlEx.getSQLState())) {
+                    String msg = sqlEx.getMessage();
+                    if (msg == null) msg = "";
+                    String lower = msg.toLowerCase();
+                    if (lower.contains("pedidos_venda") || lower.contains("uq_vendas_uuid") || lower.contains("uuid_cliente") || lower.contains("primary_key_fc")) {
+                        return true;
+                    }
+                }
+            }
         }
         return false;
     }
@@ -90,9 +100,24 @@ public final class VendaIdempotenteService {
         catch (JsonProcessingException e) { throw new IllegalStateException("Não foi possível preparar o resultado da venda.", e); }
     }
 
-    private String fingerprint(Map<Long, BigDecimal> quantidades, List<Map<String, Object>> pagamentos, Long clienteId) {
+    private String fingerprint(List<Map<String, Object>> itens, List<Map<String, Object>> pagamentos, Long clienteId) {
         StringBuilder canonical = new StringBuilder();
-        quantidades.forEach((id, quantidade) -> canonical.append(id).append(':').append(quantidade.setScale(3).toPlainString()).append(';'));
+        if (itens != null) {
+            List<String> linhas = new ArrayList<>();
+            for (Map<String, Object> it : itens) {
+                if (it == null) continue;
+                Object pidObj = it.get("produtoId") != null ? it.get("produtoId") : it.get("id");
+                String pid = pidObj != null ? pidObj.toString() : "0";
+                BigDecimal qtd = BarracaService.decimal(it.get("quantidade"), "quantidade");
+                String descP = it.get("descontoPercentual") != null ? it.get("descontoPercentual").toString().trim() : "0";
+                String descV = it.get("descontoValor") != null ? it.get("descontoValor").toString().trim() : "0";
+                String precoF = it.get("precoFinal") != null ? it.get("precoFinal").toString().trim() : "";
+                String nota = it.get("nota") != null ? it.get("nota").toString().trim() : "";
+                linhas.add(pid + ":" + qtd.setScale(3).toPlainString() + ":dp=" + descP + ":dv=" + descV + ":pf=" + precoF + ":n=" + nota);
+            }
+            java.util.Collections.sort(linhas);
+            for (String l : linhas) canonical.append(l).append(';');
+        }
         if (pagamentos != null) {
             List<String> list = new ArrayList<>();
             for (Map<String, Object> p : pagamentos) {

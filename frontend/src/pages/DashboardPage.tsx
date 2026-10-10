@@ -147,6 +147,9 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
             <span className="today-description">
               {data.lucroUltimos7Dias ? `7 dias: ${formatMoney(data.lucroUltimos7Dias)}` : 'Vendas menos custo'}
             </span>
+            <small style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+              Vendas antigas sem custo não entram no lucro
+            </small>
           </div>
         )}
 

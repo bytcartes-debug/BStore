@@ -28,6 +28,7 @@ import model.Venda;
 import util.JPAUtil;
 
 import javax.persistence.EntityManager;
+import javax.persistence.LockModeType;
 import javax.persistence.PessimisticLockException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -453,12 +454,23 @@ public class BarracaService {
                     .findFirst().orElse(null);
             PagamentoCalc pc = new PagamentoCalc();
             pc.metodoPagamento = mpDinheiro;
-            pc.metodoNome = mpDinheiro != null ? mpDinheiro.getNome() : "DINHEIRO";
+            pc.metodoNome = mpDinheiro != null ? mpDinheiro.getNome() : "Dinheiro";
             pc.metodoTipo = "DINHEIRO";
             pc.valor = total;
             pagamentosProcessados.add(pc);
             somaPagamentos = total;
         } else {
+            class PrePagamento {
+                Map<String, Object> raw;
+                MetodoPagamento mp;
+                String metodoNome;
+                String metodoTipo;
+                boolean isFiado;
+            }
+            List<PrePagamento> preList = new ArrayList<>();
+            BigDecimal somaOutros = BigDecimal.ZERO;
+            PrePagamento fiadoSemValor = null;
+
             for (Map<String, Object> p : pagamentosRaw) {
                 if (p == null) continue;
                 MetodoPagamento mp = null;
@@ -471,49 +483,91 @@ public class BarracaService {
                 } else if (p.get("metodo") != null) {
                     String mStr = p.get("metodo").toString().trim();
                     mp = metodoPagamentoDAO.buscarPorNome(em, mStr, usuarioId);
-                    String mUpper = mStr.toUpperCase();
-                    String fallbackNome = mStr;
-                    switch (mUpper) {
-                        case "MPESA": fallbackNome = "M-Pesa"; break;
-                        case "EMOLA": fallbackNome = "e-Mola"; break;
-                        case "MKESH": fallbackNome = "mKesh"; break;
-                        case "CARTAO": fallbackNome = "Cartão"; break;
-                        case "FIADO": fallbackNome = "A fiado"; break;
-                        case "DINHEIRO": fallbackNome = "Dinheiro"; break;
-                        default: fallbackNome = mStr; break;
+                    if (mp == null) {
+                        String mUpper = mStr.toUpperCase();
+                        String fallbackNome = null;
+                        switch (mUpper) {
+                            case "MPESA": fallbackNome = "M-Pesa"; break;
+                            case "EMOLA": fallbackNome = "e-Mola"; break;
+                            case "MKESH": fallbackNome = "mKesh"; break;
+                            case "CARTAO": fallbackNome = "Cartão"; break;
+                            case "FIADO": fallbackNome = "A fiado"; break;
+                            case "DINHEIRO": fallbackNome = "Dinheiro"; break;
+                            default: fallbackNome = null; break;
+                        }
+                        if (fallbackNome != null) {
+                            mp = metodoPagamentoDAO.buscarPorNome(em, fallbackNome, usuarioId);
+                        }
                     }
-                    mp = metodoPagamentoDAO.buscarPorNome(em, fallbackNome, usuarioId);
-                }
-
-                if (mp != null) {
-                    if (!Boolean.TRUE.equals(mp.getAtivo())) {
-                        throw new IllegalArgumentException("O método de pagamento " + mp.getNome() + " está inactivo e não pode receber novas vendas.");
+                    if (mp == null) {
+                        throw new IllegalArgumentException("Método de pagamento inválido ou não encontrado: " + mStr);
                     }
+                } else {
+                    throw new IllegalArgumentException("Método de pagamento não informado.");
                 }
 
-                String metodoNome = mp != null ? mp.getNome() : (p.get("metodo") != null ? p.get("metodo").toString().trim() : "DINHEIRO");
-                String metodoTipo = mp != null ? mp.getTipo() : (
-                    metodoNome.equalsIgnoreCase("A fiado") || metodoNome.equalsIgnoreCase("FIADO") ? "FIADO" :
-                    metodoNome.equalsIgnoreCase("Dinheiro") || metodoNome.equalsIgnoreCase("DINHEIRO") ? "DINHEIRO" : "DIGITAL"
-                );
-
-                BigDecimal valor = moeda(decimal(p.get("valor"), "valor"));
-                if (valor.compareTo(BigDecimal.ZERO) <= 0) {
-                    throw new IllegalArgumentException("O valor do pagamento deve ser maior que zero.");
+                if (!Boolean.TRUE.equals(mp.getAtivo())) {
+                    throw new IllegalArgumentException("O método de pagamento " + mp.getNome() + " está inactivo e não pode receber novas vendas.");
                 }
 
-                if ("FIADO".equalsIgnoreCase(metodoTipo) || "FIADO".equalsIgnoreCase(metodoNome) || "A fiado".equalsIgnoreCase(metodoNome)) {
+                String metodoNome = mp.getNome();
+                String metodoTipo = mp.getTipo();
+                boolean isFiado = "FIADO".equalsIgnoreCase(metodoTipo) || "A fiado".equalsIgnoreCase(metodoNome);
+
+                PrePagamento prep = new PrePagamento();
+                prep.raw = p;
+                prep.mp = mp;
+                prep.metodoNome = metodoNome;
+                prep.metodoTipo = metodoTipo;
+                prep.isFiado = isFiado;
+                preList.add(prep);
+
+                if (isFiado) {
                     temFiado = true;
+                    Object vObj = p.get("valor");
+                    if (vObj == null || vObj.toString().trim().isEmpty()) {
+                        fiadoSemValor = prep;
+                    } else {
+                        BigDecimal v = moeda(decimal(vObj, "valor"));
+                        if (v.compareTo(BigDecimal.ZERO) <= 0) {
+                            throw new IllegalArgumentException("O valor do pagamento deve ser maior que zero.");
+                        }
+                    }
+                } else {
+                    Object vObj = p.get("valor");
+                    if (vObj == null || vObj.toString().trim().isEmpty()) {
+                        throw new IllegalArgumentException("O valor do pagamento em " + metodoNome + " é obrigatório.");
+                    }
+                    BigDecimal v = moeda(decimal(vObj, "valor"));
+                    if (v.compareTo(BigDecimal.ZERO) <= 0) {
+                        throw new IllegalArgumentException("O valor do pagamento deve ser maior que zero.");
+                    }
+                    somaOutros = somaOutros.add(v);
+                }
+            }
+
+            for (PrePagamento prep : preList) {
+                BigDecimal valor;
+                if (prep.isFiado && prep == fiadoSemValor) {
+                    valor = total.subtract(somaOutros);
+                    if (valor.compareTo(BigDecimal.ZERO) <= 0) {
+                        throw new IllegalArgumentException("O valor a fiado calculado deve ser maior que zero.");
+                    }
+                } else {
+                    valor = moeda(decimal(prep.raw.get("valor"), "valor"));
+                }
+
+                if (prep.isFiado) {
                     totalFiado = totalFiado.add(valor);
                 }
                 somaPagamentos = somaPagamentos.add(valor);
 
                 PagamentoCalc pc = new PagamentoCalc();
-                pc.metodoPagamento = mp;
-                pc.metodoNome = metodoNome;
-                pc.metodoTipo = metodoTipo;
+                pc.metodoPagamento = prep.mp;
+                pc.metodoNome = prep.metodoNome;
+                pc.metodoTipo = prep.metodoTipo;
                 pc.valor = valor;
-                pc.referencia = p.get("referencia") != null ? p.get("referencia").toString().trim() : null;
+                pc.referencia = prep.raw.get("referencia") != null ? prep.raw.get("referencia").toString().trim() : null;
                 pagamentosProcessados.add(pc);
             }
         }
@@ -526,8 +580,8 @@ public class BarracaService {
             if (cliente == null) {
                 throw new RecursoNaoEncontradoException("Cliente não encontrado.");
             }
-            if (somaPagamentos.compareTo(total) < 0) {
-                throw new IllegalArgumentException("A soma dos pagamentos e fiado é inferior ao total da venda.");
+            if (somaPagamentos.compareTo(total) != 0) {
+                throw new IllegalArgumentException("Com fiado, a soma dos pagamentos tem de ser igual ao total.");
             }
         } else {
             if (somaPagamentos.compareTo(total) < 0) {
@@ -536,7 +590,7 @@ public class BarracaService {
         }
 
         BigDecimal troco = BigDecimal.ZERO;
-        if (somaPagamentos.compareTo(total) > 0) {
+        if (!temFiado && somaPagamentos.compareTo(total) > 0) {
             boolean temDinheiro = pagamentosProcessados.stream().anyMatch(p -> "DINHEIRO".equalsIgnoreCase(p.metodoTipo));
             if (!temDinheiro) {
                 throw new IllegalArgumentException("Troco só é permitido para pagamentos em dinheiro.");
@@ -643,12 +697,15 @@ public class BarracaService {
             throw new IllegalArgumentException("O motivo da anulação é obrigatório.");
         }
         return JPAUtil.emTransacao(usuarioId, em -> {
-            Venda venda = em.find(Venda.class, vendaId);
+            Venda venda = em.find(Venda.class, vendaId, LockModeType.PESSIMISTIC_WRITE);
             if (venda == null || !usuarioId.equals(venda.getUsuarioId())) {
                 throw new RecursoNaoEncontradoException("Venda não encontrada.");
             }
             if ("ANULADA".equals(venda.getEstado())) {
                 return venda; // Idempotente
+            }
+            if ("PARCIALMENTE_DEVOLVIDA".equals(venda.getEstado()) || "DEVOLVIDA".equals(venda.getEstado())) {
+                throw new ConflitoException("Não é possível anular uma venda com devoluções registadas.");
             }
             if (!"CONCLUIDA".equals(venda.getEstado())) {
                 throw new IllegalStateException("Esta venda não pode ser anulada (estado actual: " + venda.getEstado() + ").");
@@ -705,8 +762,8 @@ public class BarracaService {
         LocalDate dia = data != null ? data : LocalDate.now();
         BigDecimal totalVendido = vendaDAO.totalVendasPeriodo(dia, dia, usuarioId);
         BigDecimal totalCusto = vendaDAO.totalCustoPeriodo(dia, dia, usuarioId);
-        BigDecimal lucroEstimado = totalVendido.subtract(totalCusto);
-        long numeroVendas = vendaDAO.contarVendasHoje(usuarioId);
+        BigDecimal lucroEstimado = vendaDAO.lucroEstimadoPeriodo(dia, dia, usuarioId);
+        long numeroVendas = vendaDAO.contarVendasDia(dia, usuarioId);
         long vendasAnuladas = vendaDAO.contarVendasAnuladasHoje(usuarioId, dia);
         Map<String, BigDecimal> totaisMetodo = pagamentoVendaDAO.totaisPorMetodo(usuarioId, dia);
         BigDecimal totalFiado = totaisMetodo.getOrDefault("FIADO", BigDecimal.ZERO);
@@ -959,14 +1016,6 @@ public class BarracaService {
                 throw new IllegalStateException("Esta sessão de caixa já está fechada.");
             }
 
-            Long rascunhos = em.createQuery(
-                "SELECT COUNT(v) FROM Venda v WHERE v.usuarioId = :uid AND v.estado IN ('RASCUNHO', 'PENDENTE')", Long.class)
-                .setParameter("uid", usuarioId)
-                .getSingleResult();
-            if (rascunhos > 0) {
-                throw new IllegalStateException("Não é possível fechar o caixa com vendas em rascunho ou pendentes.");
-            }
-
             BigDecimal vendasDinheiro = sessaoCaixaDAO.calcularVendasDinheiro(em, sessao.getId(), usuarioId);
             BigDecimal devolucoesDinheiro = sessaoCaixaDAO.calcularDevolucoesDinheiro(em, sessao.getId(), usuarioId);
             BigDecimal esperado = sessao.getValorInicial().add(vendasDinheiro).subtract(devolucoesDinheiro);
@@ -1015,7 +1064,7 @@ public class BarracaService {
                 }
             }
 
-            Venda venda = em.find(Venda.class, vendaId);
+            Venda venda = em.find(Venda.class, vendaId, LockModeType.PESSIMISTIC_WRITE);
             if (venda == null || !usuarioId.equals(venda.getUsuarioId())) {
                 throw new RecursoNaoEncontradoException("Venda não encontrada.");
             }
@@ -1118,6 +1167,10 @@ public class BarracaService {
 
     public List<Map<String, Object>> listarDevolucoesVenda(Long vendaId, Long usuarioId) {
         return JPAUtil.emTransacao(usuarioId, em -> {
+            Venda venda = vendaDAO.buscarPorId(em, vendaId, usuarioId);
+            if (venda == null) {
+                throw new RecursoNaoEncontradoException("Venda não encontrada.");
+            }
             List<Devolucao> devs = devolucaoDAO.listarPorVenda(em, vendaId, usuarioId);
             List<Map<String, Object>> list = new ArrayList<>();
             for (Devolucao d : devs) {

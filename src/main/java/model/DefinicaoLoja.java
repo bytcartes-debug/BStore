@@ -20,6 +20,9 @@ public class DefinicaoLoja {
     @Column(name = "atualizado_em", nullable = false)
     private LocalDateTime atualizadoEm;
 
+    @Column(name = "ultimo_numero_venda", nullable = false)
+    private Long ultimoNumeroVenda = 0L;
+
     public DefinicaoLoja() {
         this.atualizadoEm = LocalDateTime.now();
     }
@@ -28,6 +31,7 @@ public class DefinicaoLoja {
         this.usuarioId = usuarioId;
         this.controloCaixa = controloCaixa != null ? controloCaixa : false;
         this.nomeLoja = nomeLoja;
+        this.ultimoNumeroVenda = 0L;
         this.atualizadoEm = LocalDateTime.now();
     }
 
@@ -39,6 +43,9 @@ public class DefinicaoLoja {
 
     public String getNomeLoja() { return nomeLoja; }
     public void setNomeLoja(String nomeLoja) { this.nomeLoja = nomeLoja; }
+
+    public Long getUltimoNumeroVenda() { return ultimoNumeroVenda != null ? ultimoNumeroVenda : 0L; }
+    public void setUltimoNumeroVenda(Long ultimoNumeroVenda) { this.ultimoNumeroVenda = ultimoNumeroVenda != null ? ultimoNumeroVenda : 0L; }
 
     public LocalDateTime getAtualizadoEm() { return atualizadoEm; }
     public void setAtualizadoEm(LocalDateTime atualizadoEm) { this.atualizadoEm = atualizadoEm; }

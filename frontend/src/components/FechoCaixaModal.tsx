@@ -395,6 +395,9 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
                   <strong style={{ display: 'block', fontSize: 18, color: '#16a34a' }}>
                     {formatMoney(dados.lucroEstimado)}
                   </strong>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted, #888)', display: 'block', marginTop: 2 }}>
+                    Vendas antigas sem custo não entram no lucro
+                  </span>
                 </div>
 
                 <div className="card" style={{ padding: 12, textAlign: 'center' }}>
