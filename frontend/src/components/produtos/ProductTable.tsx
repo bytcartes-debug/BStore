@@ -1,6 +1,18 @@
-import React from 'react';
-import { AlertTriangle, History, Package, Pencil, RefreshCw, Search, Trash2, Plus } from 'lucide-react';
-import { EmptyState, Spinner } from '../UI';
+import React, { useState } from 'react';
+import {
+  AlertTriangle,
+  ArrowDownLeft,
+  History,
+  MoreVertical,
+  Package,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+} from 'lucide-react';
+import { EmptyState, Modal, Spinner } from '../UI';
 import { decimal, formatMoney, formatQuantity } from '../../utils/decimal';
 import type { Produto } from './types';
 
@@ -13,6 +25,8 @@ interface ProductTableProps {
   onEdit: (produto: Produto) => void;
   onHistorico: (produto: Produto) => void;
   onDelete: (produto: Produto) => void;
+  onEntrada?: (produto: Produto) => void;
+  onAjuste?: (produto: Produto) => void;
 }
 
 export const ProductTable: React.FC<ProductTableProps> = ({
@@ -24,7 +38,10 @@ export const ProductTable: React.FC<ProductTableProps> = ({
   onEdit,
   onHistorico,
   onDelete,
+  onEntrada,
+  onAjuste,
 }) => {
+  const [menuProduct, setMenuProduct] = useState<Produto | null>(null);
   return (
     <div className="card">
       {produtos.length === 0 ? (
@@ -119,7 +136,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                       {p.codigoBarras || 'Não definido'}
                     </td>
                     <td data-label="Ações">
-                      <div className="action-group">
+                      <div className="action-group desktop-actions">
                         <button
                           className="icon-btn"
                           onClick={() => onEdit(p)}
@@ -145,6 +162,18 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                           <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
                         </button>
                       </div>
+
+                      <div className="mobile-actions-trigger">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={() => setMenuProduct(p)}
+                          aria-label={`Mais opções para ${p.nome}`}
+                          title="Opções do produto"
+                        >
+                          <MoreVertical size={16} strokeWidth={2} aria-hidden="true" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -152,6 +181,105 @@ export const ProductTable: React.FC<ProductTableProps> = ({
             </table>
           </div>
         </>
+      )}
+
+      {/* Bottom Sheet / Modal de Ações no Telemóvel */}
+      {menuProduct && (
+        <Modal
+          title={`Opções — ${menuProduct.nome}`}
+          onClose={() => setMenuProduct(null)}
+        >
+          <div className="mobile-menu-options" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', width: '100%', justifyContent: 'flex-start' }}
+              onClick={() => {
+                const prod = menuProduct;
+                setMenuProduct(null);
+                onEdit(prod);
+              }}
+            >
+              <Pencil size={18} strokeWidth={2} />
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: 650, fontSize: 14 }}>Editar produto</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Alterar preço, nome e código</div>
+              </div>
+            </button>
+
+            {onEntrada && (
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', width: '100%', justifyContent: 'flex-start' }}
+                onClick={() => {
+                  const prod = menuProduct;
+                  setMenuProduct(null);
+                  onEntrada(prod);
+                }}
+              >
+                <ArrowDownLeft size={18} strokeWidth={2} style={{ color: '#16a34a' }} />
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontWeight: 650, fontSize: 14 }}>Entrada de stock</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Registar compra e repor inventário</div>
+                </div>
+              </button>
+            )}
+
+            {onAjuste && (
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', width: '100%', justifyContent: 'flex-start' }}
+                onClick={() => {
+                  const prod = menuProduct;
+                  setMenuProduct(null);
+                  onAjuste(prod);
+                }}
+              >
+                <SlidersHorizontal size={18} strokeWidth={2} style={{ color: '#ea580c' }} />
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontWeight: 650, fontSize: 14 }}>Ajuste ou perda</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Corrigir quantidade ou registar quebra</div>
+                </div>
+              </button>
+            )}
+
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', width: '100%', justifyContent: 'flex-start' }}
+              onClick={() => {
+                const prod = menuProduct;
+                setMenuProduct(null);
+                void onHistorico(prod);
+              }}
+            >
+              <History size={18} strokeWidth={2} />
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: 650, fontSize: 14 }}>Histórico de movimentos</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Ver auditoria de entradas e saídas</div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', width: '100%', justifyContent: 'flex-start', color: 'var(--color-danger)' }}
+              onClick={() => {
+                const prod = menuProduct;
+                setMenuProduct(null);
+                onDelete(prod);
+              }}
+            >
+              <Trash2 size={18} strokeWidth={2} />
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: 650, fontSize: 14 }}>Remover ou arquivar</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Retirar produto das vendas activas</div>
+              </div>
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 import { useToast } from '../utils/toast';
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { apiFetch, apiRequest, descarregarFicheiro } from '../utils/api';
 import { useMutation, useResource } from '../utils/useResource';
 import { abrirScanner } from '../utils/scanner';
@@ -48,8 +48,8 @@ const loadProductsData = async (signal: AbortSignal) => {
 
 export default function ProdutosPage() {
   const { data, loading, error, reload } = useResource(loadProductsData);
-  const produtos = data?.produtos || [];
-  const categorias = data?.categorias || [];
+  const produtos = useMemo(() => data?.produtos || [], [data?.produtos]);
+  const categorias = useMemo(() => data?.categorias || [], [data?.categorias]);
 
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
@@ -123,7 +123,7 @@ export default function ProdutosPage() {
 
   const setF = (patch: Partial<typeof form>) => setForm((previous) => ({ ...previous, ...patch }));
 
-  const openNew = () => {
+  const openNew = useCallback(() => {
     setEditing(null);
     setShowDetails(false);
     setForm({ ...FORM_VAZIO, categoriaId: categorias[0]?.id.toString() || '' });
@@ -131,7 +131,30 @@ export default function ProdutosPage() {
     scan.setError(null);
     setOffMsg(null);
     setShowModal(true);
-  };
+  }, [categorias, save, scan]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl instanceof HTMLInputElement ||
+        activeEl instanceof HTMLTextAreaElement ||
+        activeEl instanceof HTMLSelectElement;
+
+      if (!isInput && !showModal && !showEntradaModal && !showAjusteModal && !showInventarioModal && !movimentoProduto) {
+        if (e.key === 'n' || e.key === 'N') {
+          e.preventDefault();
+          openNew();
+        } else if (e.key === '/') {
+          e.preventDefault();
+          const searchInput = document.querySelector<HTMLInputElement>('.toolbar .search-field input');
+          searchInput?.focus();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showModal, showEntradaModal, showAjusteModal, showInventarioModal, movimentoProduto, openNew]);
 
   const openEdit = (p: Produto) => {
     setEditing(p);
@@ -542,9 +565,22 @@ export default function ProdutosPage() {
               remove.setError(null);
               setDeleting(p);
             }}
+            onEntrada={openEntradaPara}
+            onAjuste={openAjustePara}
           />
         )
       )}
+
+      {/* Botão flutuante para telemóvel (+ Novo produto) */}
+      <button
+        type="button"
+        className="mobile-fab"
+        onClick={openNew}
+        aria-label="Novo produto"
+        title="Novo produto"
+      >
+        <Plus size={24} strokeWidth={2.5} aria-hidden="true" />
+      </button>
 
       {/* Modal Adicionar / Editar Produto */}
       {showModal && (

@@ -89,7 +89,7 @@ export function DespesaCaixaModal({ onClose, onDespesaRegistada, sessaoId }: Des
 
   return (
     <Modal title="Saída de Caixa / Despesa da Sessão" onClose={onClose} wide>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(280px, 1.2fr)', gap: 20 }}>
+      <div className="despesa-modal-layout">
         {/* Formulário */}
         <div>
           <h4 style={{ margin: '0 0 12px 0', fontSize: 15, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -176,7 +176,7 @@ export function DespesaCaixaModal({ onClose, onDespesaRegistada, sessaoId }: Des
         </div>
 
         {/* Lista de saídas registadas */}
-        <div style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: 20 }}>
+        <div className="despesa-lista-col">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h4 style={{ margin: 0, fontSize: 15, display: 'flex', alignItems: 'center', gap: 6 }}>
               <Clock size={16} color="var(--text-secondary)" /> Saídas Desta Sessão

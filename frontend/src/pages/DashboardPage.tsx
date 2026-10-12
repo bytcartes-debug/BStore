@@ -11,7 +11,7 @@ import {
   Package,
   Receipt,
   ShoppingCart,
-  Sparkles,
+  Coins,
   Tag,
   TrendingDown,
   TrendingUp,
@@ -22,6 +22,7 @@ import { apiRequest } from '../utils/api';
 import { useResource } from '../utils/useResource';
 import { decimalSeguro, formatMoney, formatQuantity } from '../utils/decimal';
 import { EmptyState, Loading, LoadError, PageHeading } from '../components/UI';
+import { AnimatedNumber } from '../components/ui/AnimatedNumber';
 import type { PageId } from '../App';
 import './DashboardPage.css';
 
@@ -83,7 +84,9 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
   const vendasPorDia = Array.isArray(data.vendasPorDia) ? data.vendasPorDia : [];
   const alertasStock = Array.isArray(data.alertasStock) ? data.alertasStock : [];
   const vendasRecentes = Array.isArray(data.vendasRecentes) ? data.vendasRecentes : [];
-  const produtosMaisVendidos = Array.isArray(data.produtosMaisVendidos) ? data.produtosMaisVendidos : [];
+  const produtosMaisVendidos = Array.isArray(data.produtosMaisVendidos)
+    ? data.produtosMaisVendidos
+    : [];
   const vendasPorMetodo =
     data.vendasPorMetodo && typeof data.vendasPorMetodo === 'object' ? data.vendasPorMetodo : {};
 
@@ -134,20 +137,39 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
           <span className="today-label">
             <Banknote size={17} strokeWidth={2} aria-hidden="true" /> Vendas de Hoje
           </span>
-          <p className="today-value">{formatMoney(data.totalVendasHoje)}</p>
+          <p className="today-value">
+            <AnimatedNumber
+              value={decimalSeguro(data.totalVendasHoje).toNumber()}
+              formatter={(v) => formatMoney(v.toFixed(2))}
+            />
+          </p>
           <span className="today-description">Total registado no dia</span>
         </div>
 
         {data.lucroHoje !== undefined && (
           <div className="today-sales">
             <span className="today-label">
-              <Sparkles size={17} strokeWidth={2} aria-hidden="true" /> Lucro Estimado de Hoje
+              <Coins size={17} strokeWidth={2} aria-hidden="true" /> Lucro Estimado de Hoje
             </span>
-            <p className="today-value">{formatMoney(data.lucroHoje)}</p>
+            <p className="today-value">
+              <AnimatedNumber
+                value={decimalSeguro(data.lucroHoje).toNumber()}
+                formatter={(v) => formatMoney(v.toFixed(2))}
+              />
+            </p>
             <span className="today-description">
-              {data.lucroUltimos7Dias ? `7 dias: ${formatMoney(data.lucroUltimos7Dias)}` : 'Vendas menos custo'}
+              {data.lucroUltimos7Dias
+                ? `7 dias: ${formatMoney(data.lucroUltimos7Dias)}`
+                : 'Vendas menos custo'}
             </span>
-            <small style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+            <small
+              style={{
+                display: 'block',
+                fontSize: '0.72rem',
+                color: 'var(--text-muted)',
+                marginTop: '4px',
+              }}
+            >
               Vendas antigas sem custo não entram no lucro
             </small>
           </div>
@@ -158,7 +180,12 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
             <span className="today-label">
               <Package size={17} strokeWidth={2} aria-hidden="true" /> Valor do Stock a Custo
             </span>
-            <p className="today-value">{formatMoney(data.valorTotalStockCusto)}</p>
+            <p className="today-value">
+              <AnimatedNumber
+                value={decimalSeguro(data.valorTotalStockCusto).toNumber()}
+                formatter={(v) => formatMoney(v.toFixed(2))}
+              />
+            </p>
             <span className="today-description">Capital retido no inventário</span>
           </div>
         )}
@@ -168,7 +195,12 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
             <span className="today-label">
               <TrendingDown size={17} strokeWidth={2} aria-hidden="true" /> Perdas no Mês
             </span>
-            <p className="today-value">{formatMoney(data.perdasMes)}</p>
+            <p className="today-value">
+              <AnimatedNumber
+                value={decimalSeguro(data.perdasMes).toNumber()}
+                formatter={(v) => formatMoney(v.toFixed(2))}
+              />
+            </p>
             <span className="today-description">Ajustes a custo este mês</span>
           </div>
         )}
@@ -177,14 +209,19 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
           {metrics.map(({ label, value, icon: Icon, page }) => (
             <button key={label} className="store-metric" onClick={() => navigate(page)}>
               <span className="metric-label">
-                <span className="metric-emoji" aria-hidden="true">
+                <span className="metric-icon-badge" aria-hidden="true">
                   <Icon size={16} strokeWidth={2} />
                 </span>
                 {label}
               </span>
               <span className="metric-value">
-                {value}
-                <ArrowUpRight size={15} strokeWidth={2} className="metric-arrow" aria-hidden="true" />
+                <AnimatedNumber value={value} />
+                <ArrowUpRight
+                  size={15}
+                  strokeWidth={2}
+                  className="metric-arrow"
+                  aria-hidden="true"
+                />
               </span>
             </button>
           ))}
@@ -196,7 +233,8 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
           <div className="section-header">
             <div>
               <h3 id="sales-chart-title" className="section-title-with-icon">
-                <TrendingUp size={18} strokeWidth={2} aria-hidden="true" /> Vendas dos últimos 7 dias
+                <TrendingUp size={18} strokeWidth={2} aria-hidden="true" /> Vendas dos últimos 7
+                dias
               </h3>
               <p>Total diário em meticais (MT)</p>
             </div>
@@ -331,7 +369,7 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
             </>
           ) : (
             <div className="stock-ok">
-              <span className="stock-ok-emoji" aria-hidden="true">
+              <span className="stock-ok-icon" aria-hidden="true">
                 <CheckCircle2 size={32} strokeWidth={2} />
               </span>
               <h4>Sem alertas de stock</h4>
@@ -353,15 +391,32 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
           <div className="section-header">
             <div>
               <h3 id="payments-title" className="section-title-with-icon">
-                <CreditCard size={18} strokeWidth={2} aria-hidden="true" /> Vendas por Forma de Pagamento (Hoje)
+                <CreditCard size={18} strokeWidth={2} aria-hidden="true" /> Vendas por Forma de
+                Pagamento (Hoje)
               </h3>
               <p>Valores recebidos por canal</p>
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+              gap: 12,
+            }}
+          >
             {Object.entries(vendasPorMetodo).map(([metodo, valor]) => (
-              <div key={metodo} className="card" style={{ padding: 12, textAlign: 'center', background: 'var(--bg-muted, #f8fafc)' }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted, #666)', textTransform: 'uppercase' }}>
+              <div
+                key={metodo}
+                className="card"
+                style={{ padding: 12, textAlign: 'center', background: 'var(--bg-muted, #f8fafc)' }}
+              >
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--text-muted, #666)',
+                    textTransform: 'uppercase',
+                  }}
+                >
                   {metodo}
                 </span>
                 <strong style={{ display: 'block', fontSize: 16, marginTop: 4 }}>
@@ -398,7 +453,9 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
                     <td className="cell-name">
                       <strong>{p.nome}</strong>
                     </td>
-                    <td className="numeric font-mono">{formatQuantity(p.quantidadeTotal || p.quantidade || '0', '')}</td>
+                    <td className="numeric font-mono">
+                      {formatQuantity(p.quantidadeTotal || p.quantidade || '0', '')}
+                    </td>
                     <td className="numeric font-mono" style={{ fontWeight: 600 }}>
                       {formatMoney(p.valorTotal || p.total || '0')}
                     </td>
@@ -410,7 +467,11 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
         </section>
       )}
 
-      <section className="card recent-sales" aria-labelledby="recent-title" style={{ marginTop: 24 }}>
+      <section
+        className="card recent-sales"
+        aria-labelledby="recent-title"
+        style={{ marginTop: 24 }}
+      >
         <div className="section-header">
           <div>
             <h3 id="recent-title" className="section-title-with-icon">

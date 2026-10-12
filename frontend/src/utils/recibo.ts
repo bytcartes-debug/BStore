@@ -100,24 +100,75 @@ export function formatarNumeroWhatsApp(telefone?: string): string {
   return limpo;
 }
 
-export function partilharReciboWhatsApp(recibo: ReciboDados, nomeLoja = 'Flex Stock', telefone?: string) {
+export function partilharReciboWhatsApp(
+  recibo: ReciboDados,
+  nomeLoja = 'BStore',
+  telefone?: string,
+) {
   const texto = gerarTextoRecibo(recibo, nomeLoja);
   const numFormatado = formatarNumeroWhatsApp(telefone);
   const url = numFormatado
     ? `https://wa.me/${numFormatado}?text=${encodeURIComponent(texto)}`
     : `https://wa.me/?text=${encodeURIComponent(texto)}`;
-  window.open(url, '_blank');
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+export async function partilharRecibo(
+  recibo: ReciboDados,
+  nomeLoja = 'BStore',
+): Promise<'compartilhado' | 'copiado' | 'cancelado'> {
+  const texto = gerarTextoRecibo(recibo, nomeLoja);
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    try {
+      await navigator.share({
+        title: `Recibo #${recibo.numero} — ${nomeLoja}`,
+        text: texto,
+      });
+      return 'compartilhado';
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return 'cancelado';
+      }
+    }
+  }
+
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(texto);
+      return 'copiado';
+    } catch {}
+  }
+
+  return 'cancelado';
 }
 
 export function imprimirReciboTexto(
   recibo: ReciboDados,
-  nomeLoja = 'Flex Stock',
+  nomeLoja = 'BStore',
   largura: '58mm' | '80mm' = '58mm',
 ) {
   const texto = gerarTextoRecibo(recibo, nomeLoja);
-  const win = window.open('', '_blank', 'width=420,height=600');
-  if (!win) return;
   const printWidth = largura === '80mm' ? '72mm' : '48mm';
+
+  // Montar elemento no DOM da página para suporte nativo a window.print() sem popup blocker
+  let printArea = document.getElementById('bstore-recibo-print-area');
+  if (!printArea) {
+    printArea = document.createElement('div');
+    printArea.id = 'bstore-recibo-print-area';
+    document.body.appendChild(printArea);
+  }
+  printArea.className = largura === '80mm' ? 'recibo-termico-80' : 'recibo-termico-58';
+  printArea.innerHTML = `<pre class="bstore-recibo-pre">${texto}</pre>`;
+
+  try {
+    window.print();
+    return;
+  } catch {
+    // Caso window.print falhe, fallback para abertura de popup
+  }
+
+  const win = window.open('', '_blank', 'width=420,height=600,noopener,noreferrer');
+  if (!win) return;
   win.document.write(`
     <!DOCTYPE html>
     <html>
@@ -145,7 +196,9 @@ export function imprimirReciboTexto(
   win.document.close();
   win.focus();
   setTimeout(() => {
-    win.print();
-    win.close();
+    try {
+      win.print();
+      win.close();
+    } catch {}
   }, 250);
 }

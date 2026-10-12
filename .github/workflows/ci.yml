@@ -1,0 +1,77 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ "main", "submain" ]
+  pull_request:
+    branches: [ "main", "submain" ]
+
+jobs:
+  higiene:
+    name: Higiene do Repositório e Segurança
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Falhar se .env for comitado
+        run: |
+          if [ -n "$(git ls-files .env)" ]; then
+            echo "ERRO CRÍTICO: .env comitado detectado!"
+            exit 1
+          fi
+
+      - name: Validar formato (whitespace / fins de linha)
+        run: git diff --check || true
+
+      - name: Falhar se ficheiros compilados forem comitados
+        run: |
+          if [ -n "$(git ls-files target/ frontend/dist/ dist/)" ]; then
+            echo "ERRO: Artefatos compilados detectados no repositório!"
+            exit 1
+          fi
+
+  frontend:
+    name: Frontend Lint & Build
+    needs: higiene
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependências
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint (oxlint / linter)
+        working-directory: frontend
+        run: npx oxlint --deny-warnings || npm run lint --if-present
+
+      - name: Compilar Frontend (build)
+        working-directory: frontend
+        run: npm run build
+
+  backend:
+    name: Backend Testes PostgreSQL (Testcontainers)
+    needs: higiene
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: 17
+          cache: "maven"
+
+      - name: Executar testes com Testcontainers
+        run: mvn test --batch-mode

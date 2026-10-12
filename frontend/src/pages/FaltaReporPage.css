@@ -147,3 +147,30 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+@media (max-width: 599.98px) {
+  .falta-repor-header-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  .falta-repor-acoes {
+    width: 100%;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .btn-acao-repor {
+    width: 100%;
+    justify-content: center;
+  }
+  .btn-voltar {
+    width: fit-content;
+  }
+  .repor-busca-input {
+    max-width: 100%;
+  }
+  .repor-tabela.responsive-table td {
+    padding: 6px 0;
+  }
+}
+

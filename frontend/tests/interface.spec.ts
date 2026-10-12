@@ -45,6 +45,7 @@ for (const dark of [false, true]) {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'A sua loja, hoje' })).toBeVisible();
     const check = async () => {
+      await page.waitForTimeout(100);
       const result = await new AxeBuilder({ page })
         .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
         .analyze();
@@ -68,6 +69,7 @@ for (const dark of [false, true]) {
       await page.getByRole('button', { name: 'Fechar janela' }).click();
     }
     await page.getByRole('button', { name: /Abrir perfil de/ }).click();
+    await expect(page.getByRole('heading', { name: 'Perfil e segurança', level: 2 })).toBeVisible();
     await check();
   });
 }

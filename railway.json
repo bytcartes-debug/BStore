@@ -4,7 +4,8 @@
     "builder": "DOCKERFILE"
   },
   "deploy": {
-    "startCommand": "java -Djava.awt.headless=true -jar target/barraca-sistema-1.0.jar",
+    "healthcheckPath": "/api/saude",
+    "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 5
   }

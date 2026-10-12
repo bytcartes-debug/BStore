@@ -150,44 +150,64 @@ export default function CategoriasPage() {
                 <Spinner size="small" /> A atualizar categorias…
               </p>
             )}
-            <div className="category-grid">
-              {filtered.map((cat) => (
-                <article key={cat.id} className="card category-card">
-                  <div className="category-icon">
-                    <CategoryIcon value={cat.icone || 'tag'} size={28} />
-                  </div>
-                  <div className="category-details">
-                    <h3>{cat.nome}</h3>
-                    <p className="category-description">{cat.descricao || 'Sem descrição'}</p>
-                  </div>
-                  <div className="category-footer">
-                    <span className="category-count">
-                      {cat.totalProdutos !== undefined
-                        ? `${cat.totalProdutos} produto${cat.totalProdutos === 1 ? '' : 's'}`
-                        : 'Categoria de produtos'}
-                    </span>
-                    <div className="action-group">
-                      <button
-                        className="icon-btn"
-                        title={`Editar ${cat.nome}`}
-                        aria-label={`Editar categoria ${cat.nome}`}
-                        onClick={() => openEdit(cat)}
-                      >
-                        <Pencil size={15} strokeWidth={2} aria-hidden="true" />
-                      </button>
-                      <button
-                        className="icon-btn delete"
-                        title={`Remover ${cat.nome}`}
-                        aria-label={`Remover categoria ${cat.nome}`}
-                        disabled={inspect.pending}
-                        onClick={() => inspectDelete(cat)}
-                      >
-                        <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              ))}
+            <div className="card">
+              <div className="table-wrapper">
+                <table className="responsive-table">
+                  <caption className="sr-only">Lista de categorias de produtos</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col" style={{ width: 56 }}>Ícone</th>
+                      <th scope="col">Categoria</th>
+                      <th scope="col">Descrição</th>
+                      <th scope="col" className="numeric">Produtos</th>
+                      <th scope="col" style={{ width: 100 }}>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((cat) => (
+                      <tr key={cat.id}>
+                        <td data-label="Ícone" className="cell-icon">
+                          <div className="category-icon">
+                            <CategoryIcon value={cat.icone || 'tag'} size={24} />
+                          </div>
+                        </td>
+                        <td data-label="Categoria" className="cell-name">
+                          <strong>{cat.nome}</strong>
+                        </td>
+                        <td data-label="Descrição" className="cell-secondary">
+                          {cat.descricao || 'Sem descrição'}
+                        </td>
+                        <td data-label="Produtos" className="numeric">
+                          {cat.totalProdutos !== undefined
+                            ? `${cat.totalProdutos} produto${cat.totalProdutos === 1 ? '' : 's'}`
+                            : '0 produtos'}
+                        </td>
+                        <td data-label="Ações">
+                          <div className="action-group">
+                            <button
+                              className="icon-btn"
+                              title={`Editar ${cat.nome}`}
+                              aria-label={`Editar categoria ${cat.nome}`}
+                              onClick={() => openEdit(cat)}
+                            >
+                              <Pencil size={15} strokeWidth={2} aria-hidden="true" />
+                            </button>
+                            <button
+                              className="icon-btn delete"
+                              title={`Remover ${cat.nome}`}
+                              aria-label={`Remover categoria ${cat.nome}`}
+                              disabled={inspect.pending}
+                              onClick={() => inspectDelete(cat)}
+                            >
+                              <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </>
         ))

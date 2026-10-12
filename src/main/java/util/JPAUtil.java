@@ -18,6 +18,10 @@ public final class JPAUtil {
      */
     private static boolean isPostgres = false;
 
+    public static boolean isPostgres() {
+        return isPostgres;
+    }
+
     /**
      * Contexto de utilizador por thread — injectado pelo filtro de autenticação da API
      * e lido em cada criação de EntityManager para configurar o RLS via set_config.
@@ -48,9 +52,11 @@ public final class JPAUtil {
             return;
         }
 
+        DatabaseConfig migrationConfig = migrationDatabaseConfig();
+        executarMigracoes(migrationConfig);
+
         DatabaseConfig config = databaseConfig();
         isPostgres = config.driver.contains("postgresql");
-        executarMigracoes(config);
 
         Map<String, String> props = new HashMap<>();
         props.put("javax.persistence.jdbc.url", config.url);
@@ -58,37 +64,37 @@ public final class JPAUtil {
         props.put("javax.persistence.jdbc.user", config.user);
         props.put("javax.persistence.jdbc.password", config.password);
         props.put("hibernate.dialect", config.dialect);
+        props.put("hibernate.jdbc.time_zone", "Africa/Maputo");
         props.put("hibernate.hbm2ddl.auto", "validate");
         props.put("hibernate.show_sql", "false");
         props.put("hibernate.format_sql", "false");
+        props.put("hibernate.connection.provider_class", "org.hibernate.hikaricp.internal.HikariCPConnectionProvider");
+        props.put("hibernate.hikari.maximumPoolSize", getEnvOrProperty("DB_POOL_MAX_SIZE") != null ? getEnvOrProperty("DB_POOL_MAX_SIZE") : "10");
+        props.put("hibernate.hikari.minimumIdle", getEnvOrProperty("DB_POOL_MIN_IDLE") != null ? getEnvOrProperty("DB_POOL_MIN_IDLE") : "2");
+        props.put("hibernate.hikari.idleTimeout", "600000");
+        props.put("hibernate.hikari.connectionTimeout", "30000");
+        props.put("hibernate.hikari.maxLifetime", "1800000");
 
         emf = Persistence.createEntityManagerFactory("barracaPU", props);
     }
 
     /**
-     * Cria um EntityManager e injeta o ID do utilizador actual no contexto PostgreSQL
-     * para que as políticas de Row Level Security (RLS) sejam aplicadas correctamente.
-     *
-     * Para H2 (desenvolvimento local), o set_config não é executado.
+     * Cria um EntityManager para operações com a base de dados PostgreSQL.
      */
     public static EntityManager getEntityManager() {
         if (emf == null || !emf.isOpen()) {
             inicializar();
         }
-        EntityManager em = emf.createEntityManager();
+        return emf.createEntityManager();
+    }
 
+    public static void aplicarContextoTransacao(EntityManager em, Long usuarioId) {
         if (isPostgres) {
-            Long userId = CURRENT_USER_ID.get();
-            // Definir (ou limpar) o contexto do utilizador para esta ligação.
-            // "" como valor faz com que bstore_current_user_id() retorne NULL
-            // e as políticas RLS bloqueiem acesso a dados de outros utilizadores.
-            String uid = userId != null ? userId.toString() : "";
-            em.createNativeQuery("SELECT set_config('app.current_user_id', :uid, false)")
+            String uid = usuarioId != null ? usuarioId.toString() : (CURRENT_USER_ID.get() != null ? CURRENT_USER_ID.get().toString() : "");
+            em.createNativeQuery("SELECT set_config('app.current_user_id', :uid, true)")
                 .setParameter("uid", uid)
                 .getSingleResult();
         }
-
-        return em;
     }
 
     public static <T> T emTransacao(Long usuarioId, java.util.function.Function<EntityManager, T> operacao) {
@@ -96,11 +102,7 @@ public final class JPAUtil {
         EntityManager em = emf.createEntityManager();
         try {
             em.getTransaction().begin();
-            if (isPostgres) {
-                em.createNativeQuery("SELECT set_config('app.current_user_id', :uid, true)")
-                    .setParameter("uid", usuarioId == null ? "" : usuarioId.toString())
-                    .getSingleResult();
-            }
+            aplicarContextoTransacao(em, usuarioId);
             T resultado = operacao.apply(em);
             em.getTransaction().commit();
             return resultado;
@@ -119,36 +121,16 @@ public final class JPAUtil {
     }
 
     private static DatabaseConfig databaseConfig() {
-        String rawUrl = System.getenv("DATABASE_URL");
-        String user = emptyToNull(System.getenv("DB_USER"));
-        String password = emptyToNull(System.getenv("DB_PASSWORD"));
+        String rawUrl = getEnvOrProperty("DATABASE_URL");
+        String user = emptyToNull(getEnvOrProperty("DB_USER"));
+        String password = emptyToNull(getEnvOrProperty("DB_PASSWORD"));
 
         if (rawUrl == null || rawUrl.isBlank()) {
-            System.out.println("[DB] Usando banco H2 local.");
-            return new DatabaseConfig(
-                "jdbc:h2:./barraca-db;AUTO_SERVER=TRUE",
-                "org.h2.Driver",
-                "sa",
-                "",
-                "org.hibernate.dialect.H2Dialect",
-                "classpath:db/migration/h2"
-            );
-        }
-
-        if (rawUrl.startsWith("jdbc:h2:")) {
-            System.out.println("[DB] Usando banco H2 configurado.");
-            return new DatabaseConfig(
-                rawUrl,
-                "org.h2.Driver",
-                user != null ? user : "sa",
-                password != null ? password : "",
-                "org.hibernate.dialect.H2Dialect",
-                "classpath:db/migration/h2"
-            );
+            throw new IllegalStateException("DATABASE_URL não configurada no .env ou ambiente. O sistema exige conexão PostgreSQL.");
         }
 
         String jdbcUrl = postgresJdbcUrl(rawUrl);
-        if (!jdbcUrl.contains("sslmode") && !jdbcUrl.contains("ssl=") && !jdbcUrl.contains(".internal")) {
+        if (!jdbcUrl.contains("sslmode") && !jdbcUrl.contains("ssl=") && !jdbcUrl.contains(".internal") && !jdbcUrl.contains("localhost") && !jdbcUrl.contains("127.0.0.1")) {
             jdbcUrl += (jdbcUrl.contains("?") ? "&" : "?") + "sslmode=require";
         }
         // Supabase connection pooler não suporta prepared statements do lado do servidor
@@ -164,7 +146,7 @@ public final class JPAUtil {
             throw new IllegalStateException("DB_USER é obrigatório para PostgreSQL quando DATABASE_URL não contém utilizador.");
         }
 
-        System.out.println("[DB] Conectando ao PostgreSQL: " + jdbcUrl.replaceAll("password=[^&]*", "password=***"));
+        System.out.println("[DB] Conectando exclusivamente ao PostgreSQL: " + jdbcUrl.replaceAll(":[^:@]+@", ":***@").replaceAll("password=[^&]*", "password=***"));
         return new DatabaseConfig(
             jdbcUrl,
             "org.postgresql.Driver",
@@ -173,6 +155,45 @@ public final class JPAUtil {
             "org.hibernate.dialect.PostgreSQLDialect",
             "classpath:db/migration/postgresql"
         );
+    }
+
+    private static DatabaseConfig migrationDatabaseConfig() {
+        String rawUrl = getEnvOrProperty("MIGRATION_DB_URL");
+        if (rawUrl == null || rawUrl.isBlank()) {
+            return databaseConfig();
+        }
+        String user = emptyToNull(getEnvOrProperty("MIGRATION_DB_USER"));
+        String password = emptyToNull(getEnvOrProperty("MIGRATION_DB_PASSWORD"));
+
+        String jdbcUrl = postgresJdbcUrl(rawUrl);
+        if (!jdbcUrl.contains("sslmode") && !jdbcUrl.contains("ssl=") && !jdbcUrl.contains(".internal") && !jdbcUrl.contains("localhost") && !jdbcUrl.contains("127.0.0.1")) {
+            jdbcUrl += (jdbcUrl.contains("?") ? "&" : "?") + "sslmode=require";
+        }
+        if (user == null || password == null) {
+            Credentials credentials = credentialsFromUrl(rawUrl);
+            if (user == null) user = credentials.user;
+            if (password == null) password = credentials.password;
+        }
+        if (user == null) {
+            user = "postgres";
+        }
+        System.out.println("[DB] Executando migrações como " + user + " em: " + jdbcUrl.replaceAll(":[^:@]+@", ":***@").replaceAll("password=[^&]*", "password=***"));
+        return new DatabaseConfig(
+            jdbcUrl,
+            "org.postgresql.Driver",
+            user,
+            password != null ? password : "",
+            "org.hibernate.dialect.PostgreSQLDialect",
+            "classpath:db/migration/postgresql"
+        );
+    }
+
+    private static String getEnvOrProperty(String key) {
+        String prop = System.getProperty(key);
+        if (prop != null && !prop.isBlank()) {
+            return prop;
+        }
+        return EnvUtil.get(key);
     }
 
     private static void executarMigracoes(DatabaseConfig config) {
@@ -196,7 +217,7 @@ public final class JPAUtil {
             int at = value.indexOf('@');
             return "jdbc:postgresql://" + (at >= 0 ? value.substring(at + 1) : value);
         }
-        throw new IllegalStateException("DATABASE_URL deve usar jdbc:postgresql:, postgres://, postgresql:// ou jdbc:h2:.");
+        throw new IllegalStateException("DATABASE_URL deve ser uma URL PostgreSQL (ex: postgresql:// ou jdbc:postgresql:).");
     }
 
     private static Credentials credentialsFromUrl(String rawUrl) {

@@ -64,14 +64,21 @@ public class Venda {
     @OneToMany(mappedBy = "venda", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<PagamentoVenda> pagamentos = new ArrayList<>();
 
+    @PrePersist
+    public void prePersist() {
+        if (this.criadaEm == null) {
+            this.criadaEm = util.Fuso.agora();
+        }
+    }
+
     public Venda() {
-        this.criadaEm = LocalDateTime.now();
+        this.criadaEm = util.Fuso.agora();
     }
 
     public Venda(Long usuarioId, Long numero, LocalDateTime criadaEm, BigDecimal total, BigDecimal totalCusto, String estado, Long clienteId, String observacao, Long criadoPor) {
         this.usuarioId = usuarioId;
         this.numero = numero;
-        this.criadaEm = criadaEm != null ? criadaEm : LocalDateTime.now();
+        this.criadaEm = criadaEm != null ? criadaEm : util.Fuso.agora();
         this.total = total;
         this.totalCusto = totalCusto != null ? totalCusto : BigDecimal.ZERO;
         this.estado = estado != null ? estado : "CONCLUIDA";
@@ -95,7 +102,7 @@ public class Venda {
     public LocalDateTime getCriadaEm() { return criadaEm; }
     public void setCriadaEm(LocalDateTime criadaEm) { this.criadaEm = criadaEm; }
 
-    public LocalDate getDataVenda() { return criadaEm != null ? criadaEm.toLocalDate() : LocalDate.now(); }
+    public LocalDate getDataVenda() { return criadaEm != null ? criadaEm.toLocalDate() : util.Fuso.hoje(); }
 
     public BigDecimal getTotal() { return total; }
     public void setTotal(BigDecimal total) { this.total = total; }

@@ -20,7 +20,14 @@ public class Devedor {
 
     private String descricao;
 
-    private LocalDate data = LocalDate.now();
+    private LocalDate data;
+
+    @PrePersist
+    public void prePersist() {
+        if (this.data == null) {
+            this.data = util.Fuso.hoje();
+        }
+    }
 
     @Column(name = "usuario_id")
     private Long usuarioId;
@@ -28,7 +35,9 @@ public class Devedor {
     @Column(name = "venda_id")
     private Long vendaId;
 
-    public Devedor() {}
+    public Devedor() {
+        this.data = util.Fuso.hoje();
+    }
 
     public Long getId()          { return id; }
     public String getNome()      { return nome; }

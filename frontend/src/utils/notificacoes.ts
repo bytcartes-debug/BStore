@@ -3,10 +3,16 @@ import { apiFetch } from './api';
 import { formatMoney } from './decimal';
 import type { DecimalValue } from './decimal';
 
-// Pedir permissão ao utilizador (chamar 1x no arranque)
-export async function pedirPermissaoNotificacoes() {
-  const { display } = await LocalNotifications.requestPermissions();
-  return display === 'granted';
+// Pedir permissão ao utilizador apenas quando um alerta for emitido
+export async function pedirPermissaoNotificacoes(): Promise<boolean> {
+  try {
+    const status = await LocalNotifications.checkPermissions();
+    if (status.display === 'granted') return true;
+    const { display } = await LocalNotifications.requestPermissions();
+    return display === 'granted';
+  } catch {
+    return false;
+  }
 }
 
 // Verifica stock baixo e dispara notificações
@@ -17,6 +23,9 @@ export async function verificarStockBaixo() {
 
     const baixo = produtos.filter(p => p.stock <= p.stockMinimo);
     if (baixo.length === 0) return;
+
+    const temPermissao = await pedirPermissaoNotificacoes();
+    if (!temPermissao) return;
 
     // Cancela notificações de stock anteriores para não repetir
     const pendentes = await LocalNotifications.getPending();

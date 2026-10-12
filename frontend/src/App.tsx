@@ -3,22 +3,32 @@ import { AlertTriangle } from 'lucide-react';
 import './index.css';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
+import BottomNav from './components/BottomNav';
 import LoginPage from './pages/LoginPage';
-const DashboardPage = lazy(() => import('./pages/DashboardPage'));
-import CategoriasPage from './pages/CategoriasPage';
-import ProdutosPage from './pages/ProdutosPage';
 import VendasPage from './pages/VendasPage';
-import DevedoresPage from './pages/DevedoresPage';
-import UsuariosPage from './pages/UsuariosPage';
-import PerfilSegurancaPage from './pages/PerfilSegurancaPage';
-import FaltaReporPage from './pages/FaltaReporPage';
-import ClienteDisplayPage from './pages/ClienteDisplayPage';
-import { pedirPermissaoNotificacoes, verificarStockBaixo } from './utils/notificacoes';
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const CategoriasPage = lazy(() => import('./pages/CategoriasPage'));
+const ProdutosPage = lazy(() => import('./pages/ProdutosPage'));
+const DevedoresPage = lazy(() => import('./pages/DevedoresPage'));
+const UsuariosPage = lazy(() => import('./pages/UsuariosPage'));
+const PerfilSegurancaPage = lazy(() => import('./pages/PerfilSegurancaPage'));
+const FaltaReporPage = lazy(() => import('./pages/FaltaReporPage'));
+const ClienteDisplayPage = lazy(() => import('./pages/ClienteDisplayPage'));
+import { verificarStockBaixo } from './utils/notificacoes';
 import { apiFetch, apiRequest } from './utils/api';
 import { limparDadosLocais } from './utils/offlineQueue';
 import { Loading, LoadError, ToastProvider, Notice } from './components/UI';
 import PageErrorBoundary from './components/PageErrorBoundary';
 import { CameraScannerHost } from './components/CameraScannerHost';
+import { usePwaInstall } from './utils/usePwaInstall';
+import { IosInstallBanner } from './components/IosInstallBanner';
+import { useToast } from './utils/toast';
+import {
+  setupNativeAppPlatform,
+  setNativeStatusBarTheme,
+  setKeepScreenAwake,
+  setupAndroidBackButton,
+} from './utils/nativeApp';
 
 export type PageId =
   | 'dashboard'
@@ -46,6 +56,8 @@ function AppContent() {
   const [isDark, setIsDark] = useState(() => localStorage.getItem('bstore:theme') === 'dark');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
+  const toast = useToast();
+  const { canInstall, showIosGuide, promptInstall, dismissIosGuide } = usePwaInstall();
 
   const checkSession = useCallback(async (signal?: AbortSignal) => {
     setLoadingSession(true);
@@ -92,12 +104,69 @@ function AppContent() {
   }, [checkSession]);
 
   useEffect(() => {
+    void setupNativeAppPlatform(isDark);
+  }, [isDark]);
+
+  useEffect(() => {
     document.body.classList.toggle('dark-theme', isDark);
     localStorage.setItem('bstore:theme', isDark ? 'dark' : 'light');
+    void setNativeStatusBarTheme(isDark);
   }, [isDark]);
+
+  // Manter ecrã ativo exclusivamente nas páginas de Vendas
   useEffect(() => {
-    if (user) void pedirPermissaoNotificacoes().catch(() => {});
-  }, [user]);
+    const awake = currentPage === 'vendas';
+    void setKeepScreenAwake(awake);
+    return () => {
+      void setKeepScreenAwake(false);
+    };
+  }, [currentPage]);
+
+  // Registar controlo nativo do botão Voltar do Android
+  useEffect(() => {
+    const unregister = setupAndroidBackButton({
+      hasOpenModal: () =>
+        Boolean(document.querySelector('dialog[open], .modal-backdrop, .scanner-modal-content')),
+      closeActiveModal: () => {
+        const dialog = document.querySelector<HTMLDialogElement>('dialog[open]');
+        if (dialog) {
+          const cancelBtn = dialog.querySelector<HTMLButtonElement>(
+            'button.modal-close-btn, button[aria-label="Fechar"]',
+          );
+          if (cancelBtn) {
+            cancelBtn.click();
+            return true;
+          }
+          dialog.close();
+          return true;
+        }
+        const modalBackdrop = document.querySelector<HTMLElement>('.modal-backdrop');
+        if (modalBackdrop) {
+          const closeBtn = modalBackdrop.querySelector<HTMLButtonElement>(
+            'button.icon-btn, button[aria-label="Fechar"]',
+          );
+          if (closeBtn) {
+            closeBtn.click();
+            return true;
+          }
+        }
+        return false;
+      },
+      isPaymentInProgress: () => {
+        return (
+          currentPage === 'vendas' &&
+          Boolean(document.querySelector('dialog[open], .modal-backdrop')) &&
+          Boolean(window.history.state?.bstorePagamento)
+        );
+      },
+      isRootPage: () => currentPage === 'dashboard',
+      navigateToRoot: () => setCurrentPage('dashboard'),
+      showToast: (msg) => toast(msg),
+    });
+
+    return () => unregister();
+  }, [currentPage, toast]);
+
   useEffect(() => {
     if (user && currentPage === 'dashboard') void verificarStockBaixo();
   }, [user, currentPage]);
@@ -133,7 +202,7 @@ function AppContent() {
       case 'produtos':
         return <ProdutosPage />;
       case 'vendas':
-        return <VendasPage />;
+        return <VendasPage currentUser={user} />;
       case 'devedores':
         return <DevedoresPage />;
       case 'usuarios':
@@ -194,21 +263,36 @@ function AppContent() {
           onMenuClick={() => setSidebarOpen(true)}
           menuOpen={sidebarOpen}
           onProfileClick={() => navigate('perfil')}
+          canInstall={canInstall}
+          onInstall={promptInstall}
         />
+        {showIosGuide && <IosInstallBanner onDismiss={dismissIosGuide} />}
         <main id="main-content" ref={mainRef} tabIndex={-1} className="page-content">
           {logoutError && <Notice>{logoutError}</Notice>}
           <PageErrorBoundary key={currentPage}>
-            <Suspense fallback={<Loading />}>{renderPage()}</Suspense>
+            <div key={currentPage} className="page-view-animated">
+              <Suspense fallback={<Loading />}>{renderPage()}</Suspense>
+            </div>
           </PageErrorBoundary>
         </main>
       </div>
+      <BottomNav
+        currentPage={currentPage}
+        setCurrentPage={navigate}
+        onOpenMore={() => setSidebarOpen(true)}
+        menuOpen={sidebarOpen}
+      />
     </div>
   );
 }
 
 export default function App() {
   if (typeof window !== 'undefined' && window.location.pathname === '/cliente') {
-    return <ClienteDisplayPage />;
+    return (
+      <Suspense fallback={<Loading fullScreen label="A carregar ecrã do cliente..." />}>
+        <ClienteDisplayPage />
+      </Suspense>
+    );
   }
   return (
     <ToastProvider>

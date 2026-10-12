@@ -23,8 +23,14 @@ public class DefinicaoLoja {
     @Column(name = "ultimo_numero_venda", nullable = false)
     private Long ultimoNumeroVenda = 0L;
 
+    @PrePersist
+    @PreUpdate
+    public void prePersist() {
+        this.atualizadoEm = util.Fuso.agora();
+    }
+
     public DefinicaoLoja() {
-        this.atualizadoEm = LocalDateTime.now();
+        this.atualizadoEm = util.Fuso.agora();
     }
 
     public DefinicaoLoja(Long usuarioId, Boolean controloCaixa, String nomeLoja) {
@@ -32,7 +38,7 @@ public class DefinicaoLoja {
         this.controloCaixa = controloCaixa != null ? controloCaixa : false;
         this.nomeLoja = nomeLoja;
         this.ultimoNumeroVenda = 0L;
-        this.atualizadoEm = LocalDateTime.now();
+        this.atualizadoEm = util.Fuso.agora();
     }
 
     public Long getUsuarioId() { return usuarioId; }

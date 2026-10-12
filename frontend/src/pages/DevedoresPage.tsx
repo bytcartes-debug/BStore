@@ -256,7 +256,7 @@ export default function DevedoresPage() {
                           <td data-label="Nome" className="cell-name">
                             <strong>{item.nome}</strong>
                             {item.descricao && (
-                              <div style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>
+                              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                                 {item.descricao}
                               </div>
                             )}
@@ -265,18 +265,34 @@ export default function DevedoresPage() {
                             <strong style={{ color: isQuitado ? 'var(--color-brand)' : 'var(--color-danger)' }}>
                               {formatMoney(saldo)}
                             </strong>
-                            {isQuitado && (
+                            {isQuitado ? (
                               <span
+                                className="badge badge-success"
                                 style={{
                                   marginLeft: 6,
-                                  fontSize: 12,
-                                  color: 'var(--color-brand)',
+                                  fontSize: 11,
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   gap: 4,
                                 }}
                               >
-                                <CheckCircle2 size={12} strokeWidth={2} aria-hidden="true" /> Pago
+                                <CheckCircle2 size={12} strokeWidth={2} aria-hidden="true" /> Quitado
+                              </span>
+                            ) : (
+                              <span
+                                className="badge"
+                                style={{
+                                  marginLeft: 6,
+                                  fontSize: 11,
+                                  background: '#fee2e2',
+                                  color: '#991b1b',
+                                  border: '1px solid #fca5a5',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                }}
+                              >
+                                Em atraso
                               </span>
                             )}
                           </td>
@@ -411,7 +427,20 @@ export default function DevedoresPage() {
             </div>
 
             <fieldset disabled={payment.pending}>
-              <Field id="payment-amount" label="Valor a pagar (MT) *">
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label htmlFor="payment-amount" className="field-label" style={{ margin: 0 }}>
+                    Valor a pagar (MT) *
+                  </label>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ fontSize: 12, padding: '3px 8px', color: 'var(--color-brand)' }}
+                    onClick={() => setAmortizacaoValor(selectedDevedor.saldo ?? selectedDevedor.divida)}
+                  >
+                    Pagar tudo ({formatMoney(selectedDevedor.saldo ?? selectedDevedor.divida)})
+                  </button>
+                </div>
                 <input
                   id="payment-amount"
                   type="number"
@@ -423,8 +452,47 @@ export default function DevedoresPage() {
                   onChange={(e) => setAmortizacaoValor(e.target.value)}
                   required
                   placeholder="0,00"
+                  style={{ fontSize: 18, fontWeight: 600, padding: 10 }}
                 />
-              </Field>
+
+                <div className="pos-keypad-container" style={{ marginTop: 10 }}>
+                  <div className="pos-keypad">
+                    {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+                      <button
+                        key={digit}
+                        type="button"
+                        className="pos-keypad-btn"
+                        onClick={() => setAmortizacaoValor((prev) => (prev === '0' ? digit : prev + digit))}
+                      >
+                        {digit}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className="pos-keypad-btn"
+                      onClick={() =>
+                        setAmortizacaoValor((prev) => (!prev.includes('.') ? (prev ? prev + '.' : '0.') : prev))
+                      }
+                    >
+                      ,
+                    </button>
+                    <button
+                      type="button"
+                      className="pos-keypad-btn"
+                      onClick={() => setAmortizacaoValor((prev) => (prev ? prev + '0' : '0'))}
+                    >
+                      0
+                    </button>
+                    <button
+                      type="button"
+                      className="pos-keypad-btn action-clear"
+                      onClick={() => setAmortizacaoValor((prev) => prev.slice(0, -1))}
+                    >
+                      ⌫
+                    </button>
+                  </div>
+                </div>
+              </div>
 
               <Field id="payment-method" label="Forma de pagamento *">
                 <select

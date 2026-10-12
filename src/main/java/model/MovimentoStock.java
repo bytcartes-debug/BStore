@@ -43,7 +43,16 @@ public class MovimentoStock {
     @Column(name = "criado_por")
     private Long criadoPor;
 
-    public MovimentoStock() {}
+    @PrePersist
+    public void prePersist() {
+        if (this.criadoEm == null) {
+            this.criadoEm = util.Fuso.agora();
+        }
+    }
+
+    public MovimentoStock() {
+        this.criadoEm = util.Fuso.agora();
+    }
 
     public MovimentoStock(Long usuarioId, Produto produto, String tipo, BigDecimal quantidade,
                           BigDecimal custoUnitario, String motivo, String referenciaTipo,
@@ -57,7 +66,7 @@ public class MovimentoStock {
         this.referenciaTipo = referenciaTipo;
         this.referenciaId = referenciaId;
         this.criadoPor = criadoPor;
-        this.criadoEm = LocalDateTime.now();
+        this.criadoEm = util.Fuso.agora();
     }
 
     public Long getId() { return id; }

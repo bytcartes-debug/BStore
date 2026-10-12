@@ -33,7 +33,7 @@ public class DefinicaoLojaDAO extends GenericDAO<DefinicaoLoja> {
             if (nomeLoja != null) {
                 def.setNomeLoja(nomeLoja.trim());
             }
-            def.setAtualizadoEm(LocalDateTime.now());
+            def.setAtualizadoEm(util.Fuso.agora());
             return em.merge(def);
         });
     }

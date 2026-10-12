@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import './ClienteDisplayPage.css';
+import { setKeepScreenAwake } from '../utils/nativeApp';
 
 interface DisplayItem {
   nome: string;
@@ -31,6 +32,13 @@ export default function ClienteDisplayPage() {
     updateTime();
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    void setKeepScreenAwake(true);
+    return () => {
+      void setKeepScreenAwake(false);
+    };
   }, []);
 
   useEffect(() => {

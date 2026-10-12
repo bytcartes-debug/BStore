@@ -39,8 +39,15 @@ public class Devolucao {
     @OneToMany(mappedBy = "devolucao", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<ItemDevolucao> itens = new ArrayList<>();
 
+    @PrePersist
+    public void prePersist() {
+        if (this.criadaEm == null) {
+            this.criadaEm = util.Fuso.agora();
+        }
+    }
+
     public Devolucao() {
-        this.criadaEm = LocalDateTime.now();
+        this.criadaEm = util.Fuso.agora();
     }
 
     public Devolucao(Long usuarioId, Venda venda, BigDecimal total, String motivo, Long criadoPor) {
@@ -54,7 +61,7 @@ public class Devolucao {
         this.motivo = motivo;
         this.criadoPor = criadoPor;
         this.uuidCliente = uuidCliente;
-        this.criadaEm = LocalDateTime.now();
+        this.criadaEm = util.Fuso.agora();
     }
 
     public Long getId() { return id; }

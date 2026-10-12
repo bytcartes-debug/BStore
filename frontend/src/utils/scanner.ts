@@ -67,10 +67,30 @@ export const pedirPermissaoCamara = async (): Promise<boolean> => {
  */
 export const abrirScanner = async (): Promise<string | null> => {
   if (isNative()) {
+    // 1. Pedir permissão de câmara apenas no momento do clique
     const temPermissao = await pedirPermissaoCamara();
     if (!temPermissao) {
-      alert('Permissão de câmara negada. Vá às definições do dispositivo para ativar.');
+      const abrirDef = window.confirm(
+        'Permissão de câmara recusada. Deseja abrir as definições da aplicação no telemóvel para autorizar a câmara?',
+      );
+      if (abrirDef) {
+        try {
+          await BarcodeScanner.openSettings();
+        } catch {
+          // Ignorar erro ao abrir definições
+        }
+      }
       return null;
+    }
+
+    // 2. Verificar se o módulo Google ML Kit está pronto ou precisa de descarregar
+    try {
+      const { available } = await BarcodeScanner.isGoogleBarcodeScannerModuleAvailable();
+      if (!available) {
+        await BarcodeScanner.installGoogleBarcodeScannerModule();
+      }
+    } catch {
+      // Em alguns dispositivos sem Google Play Services ou emuladores, prosseguir diretamente
     }
 
     try {

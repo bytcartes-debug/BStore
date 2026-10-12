@@ -63,6 +63,13 @@ public class ItemVenda {
         this(venda, produto, quantidade, precoUnitario, BigDecimal.ZERO, BigDecimal.ZERO, precoUnitario, custoUnitario, observacao, null, usuarioId);
     }
 
+    @PrePersist
+    public void prePersist() {
+        if (this.dataVenda == null) {
+            this.dataVenda = venda != null && venda.getCriadaEm() != null ? venda.getCriadaEm().toLocalDate() : util.Fuso.hoje();
+        }
+    }
+
     public ItemVenda(Venda venda, Produto produto, BigDecimal quantidade, BigDecimal precoUnitario, BigDecimal descontoPercentual, BigDecimal descontoValor, BigDecimal precoFinal, BigDecimal custoUnitario, String observacao, String nota, Long usuarioId) {
         this.venda = venda;
         this.produto = produto;
@@ -73,7 +80,7 @@ public class ItemVenda {
         this.precoFinal = precoFinal != null ? precoFinal : precoUnitario;
         this.custoUnitario = custoUnitario != null ? custoUnitario : BigDecimal.ZERO;
         this.total = quantidade.multiply(this.precoFinal).setScale(2, RoundingMode.HALF_UP);
-        this.dataVenda = venda != null && venda.getCriadaEm() != null ? venda.getCriadaEm().toLocalDate() : LocalDate.now();
+        this.dataVenda = venda != null && venda.getCriadaEm() != null ? venda.getCriadaEm().toLocalDate() : util.Fuso.hoje();
         this.observacao = observacao;
         this.nota = nota;
         this.usuarioId = usuarioId;

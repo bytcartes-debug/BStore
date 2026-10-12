@@ -29,8 +29,15 @@ public class MetodoPagamento {
     @Column(name = "criado_em", nullable = false)
     private LocalDateTime criadoEm;
 
+    @PrePersist
+    public void prePersist() {
+        if (this.criadoEm == null) {
+            this.criadoEm = util.Fuso.agora();
+        }
+    }
+
     public MetodoPagamento() {
-        this.criadoEm = LocalDateTime.now();
+        this.criadoEm = util.Fuso.agora();
     }
 
     public MetodoPagamento(Long usuarioId, String nome, String tipo, Boolean ativo, Integer ordem) {
@@ -39,7 +46,7 @@ public class MetodoPagamento {
         this.tipo = tipo;
         this.ativo = ativo != null ? ativo : true;
         this.ordem = ordem != null ? ordem : 0;
-        this.criadoEm = LocalDateTime.now();
+        this.criadoEm = util.Fuso.agora();
     }
 
     public Long getId() { return id; }

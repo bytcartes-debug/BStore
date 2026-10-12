@@ -14,6 +14,7 @@ frontend/.capacitor/
 frontend/dist/
 frontend/test-results/
 frontend/playwright-report/
+frontend/stats.html
 src/main/resources/public/assets/
 src/main/resources/public/index.html
 

@@ -1,5 +1,6 @@
 // BStore Service Worker - Network First with Cache Fallback
-const CACHE_NAME = 'bstore-cache-v1';
+const CACHE_VERSION = '__SW_BUILD_HASH__';
+const CACHE_NAME = `bstore-cache-${CACHE_VERSION}`;
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -7,20 +8,31 @@ self.addEventListener('install', () => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) return caches.delete(key);
-        })
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys.map((key) => {
+            if (key !== CACHE_NAME) {
+              return caches.delete(key);
+            }
+          }),
+        ),
       )
-    ).then(() => self.clients.claim())
+      .then(() => self.clients.claim()),
   );
 });
 
 self.addEventListener('fetch', (event) => {
   const request = event.request;
-  // Ignora requisições de API para não cachear dados transacionais de forma descontrolada
-  if (request.url.includes('/api/')) {
+  const url = request.url;
+
+  // Nunca guardar em cache /api nem autenticação
+  if (
+    url.includes('/api/') ||
+    url.includes('/auth') ||
+    request.headers.get('Authorization')
+  ) {
     return;
   }
 
@@ -49,6 +61,6 @@ self.addEventListener('fetch', (event) => {
           return caches.match('/');
         }
         return new Response('Sem conexão', { status: 503, statusText: 'Offline' });
-      })
+      }),
   );
 });

@@ -27,33 +27,57 @@ Tecnologias
 - Capacitor — transformação da aplicação Web em aplicação Android
 - Android — plataforma móvel
 - HTML/CSS/JavaScript — interface
-- Render.com — hospedagem da aplicação/API
+- Railway — hospedagem de produção (Dockerfile multi-stage)
 
 ---
 
 Estrutura do Projecto
 
-bstore/
-├── android/                  ← Projecto Android/Capacitor
-├── public/                   ← Ficheiros públicos
-├── src/
-│   ├── components/           ← Componentes da interface
-│   ├── pages/                ← Páginas da aplicação
-│   ├── services/             ← Comunicação com a API
-│   ├── types/                ← Tipos e interfaces TypeScript
-│   └── App.tsx               ← Aplicação principal
-│
-├── server/
-│   └── src/main/java/
-│       ├── controller/       ← Endpoints/API
-│       ├── model/            ← Entidades/modelos
-│       ├── service/          ← Regras de negócio
-│       ├── repository/       ← Acesso à base de dados
-│       └── config/           ← Configurações
-│
-├── pom.xml                   ← Configuração Maven
-├── package.json              ← Dependências do frontend
-└── vite.config.ts            ← Configuração Vite
+BStore/
+├── frontend/                     ← Aplicação Web & Mobile (React, TypeScript, Vite, Tailwind)
+│   ├── src/                      ← Código-fonte da interface (páginas, componentes, hooks, utils)
+│   ├── tests/                    ← Testes de interface e fluxo Playwright
+│   ├── package.json              ← Dependências do frontend
+│   └── vite.config.ts            ← Configuração Vite
+├── src/main/java/
+│   ├── api/                      ← Servidor Javalin, segurança, filtros RLS e helpers (<150 linhas)
+│   │   └── routes/               ← Classes de rotas modulares (<300 linhas cada)
+│   │       ├── AuthRoutes.java
+│   │       ├── CaixaRoutes.java
+│   │       ├── CategoriaRoutes.java
+│   │       ├── ConfiguracaoRoutes.java
+│   │       ├── DashboardRoutes.java
+│   │       ├── DevedorRoutes.java
+│   │       ├── ProdutoRoutes.java
+│   │       └── VendaRoutes.java
+│   ├── dao/                      ← Camada de persistência JPA/Hibernate
+│   ├── model/                    ← Entidades JPA mapeadas para PostgreSQL
+│   ├── service/                  ← Serviços especializados por domínio (<400 linhas cada)
+│   │   ├── BarracaService.java   ← Fachada unificada de compatibilidade
+│   │   ├── CaixaService.java
+│   │   ├── CategoriaService.java
+│   │   ├── ConfiguracaoService.java
+│   │   ├── DashboardService.java
+│   │   ├── DevedorService.java
+│   │   ├── DevolucaoService.java
+│   │   ├── MetodoPagamentoService.java
+│   │   ├── ProcessadorVendaLote.java
+│   │   ├── ProdutoService.java
+│   │   ├── RateLimiterLogin.java
+│   │   ├── RelatorioService.java
+│   │   ├── StockService.java
+│   │   ├── VendaIdempotenteService.java
+│   │   ├── VendaLoteResultado.java
+│   │   └── VendaService.java
+│   └── util/                     ← Utilitários (Fuso Africa/Maputo, CsvUtil, JPAUtil, EnvUtil)
+├── src/main/resources/
+│   ├── META-INF/persistence.xml  ← Configuração JPA/Hibernate para PostgreSQL
+│   └── db/migration/postgresql/  ← Migrações Flyway versionadas (V1 a V12)
+├── src/test/java/                ← Testes de integração (PostgreSQL com Testcontainers) e unidade
+├── Dockerfile                    ← Build multi-stage (Node 20 + Maven Java 21 + JRE Eclipse Temurin)
+├── railway.json                  ← Configuração de deploy no Railway (healthcheck /api/saude)
+├── .gitattributes                ← Normalização eol=lf para repositório limpo
+└── pom.xml                       ← Configuração e dependências Maven do backend
 
 ---
 
@@ -84,23 +108,56 @@ Como Compilar e Executar
 
 Pré-requisitos
 
-- Java 11 ou superior
-- Maven
-- Node.js e npm
-- Android Studio, para gerar a aplicação Android
-- PostgreSQL
-- Ligação à Internet
+- Java 17 ou 21
+- Maven 3.8+
+- Node.js 20 e npm
+- Docker Desktop (opcional para testes Testcontainers e PostgreSQL local)
+- PostgreSQL 15+ ou Supabase
+- Fuso horário oficial: Africa/Maputo (UTC+2) em todas as camadas
 
-Executar o Backend
+Configuração de Ambiente Local (.env)
 
-# Entrar na pasta do servidor
-cd server
+Crie ou configure o seu ficheiro .env na raiz (nunca comitar este ficheiro):
 
-# Compilar
-mvn clean package
+APP_TIMEZONE=Africa/Maputo
+DATABASE_URL=postgresql://localhost:5432/bstore
+DB_USER=bstore_app
+DB_PASSWORD=sua_senha
+MIGRATION_DB_URL=postgresql://localhost:5432/bstore
+MIGRATION_DB_USER=postgres
+MIGRATION_DB_PASSWORD=sua_senha_admin
+DB_POOL_MAX_SIZE=5
+DB_POOL_MIN_IDLE=2
+SESSION_COOKIE_SECURE=false
+CORS_ALLOWED_ORIGIN=http://localhost:5173
 
-# Executar
-java -jar target/bstore-server.jar
+Executar com PostgreSQL local via Docker (opcional)
+
+docker run --name bstore-postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=bstore -p 5432:5432 -d postgres:16-alpine
+
+Executar o Backend em Desenvolvimento
+
+mvn clean compile exec:java -Dexec.mainClass="api.Main"
+
+Ou compilar e rodar o pacote jar:
+
+mvn clean package -DskipTests
+java -Duser.timezone=Africa/Maputo -jar target/barraca-sistema-1.0.jar
+
+Como Correr os Testes
+
+Pré-requisitos dos testes:
+- Docker Desktop em execução (para o Testcontainers provisionar o PostgreSQL 16 automaticamente).
+- Caso o Docker não esteja disponível no ambiente, os testes de integração avisam e são ignorados com segurança (Assumptions do JUnit 5), sem nunca recorrer a bases em memória legadas (H2 eliminado).
+
+Comando de testes do backend:
+mvn test
+
+Comando de testes do frontend:
+cd frontend
+npx oxlint
+npm run build
+npx playwright test tests/dataHora.spec.ts tests/vendasEspera.spec.ts
 
 Executar o Frontend
 
@@ -342,66 +399,52 @@ O sistema procura facilitar principalmente:
 - Controlo de dívidas
 - Identificação de produtos por código de barras
 - Consulta das informações do negócio
-- Utilização através de dispositivos móveisSe isto for para entregar como documentação do Projecto 3 de Engenharia de Software, eu também posso adaptar para ficar com o mesmo nível/formato académico do exemplo do ISCIM, incluindo Requisitos Funcionais, Requisitos Não Funcionais, Casos de Uso, arquitectura, base de dados e descrição de cada módulo.    ├── ui/             ← Interface gráfica Swing
-    │   ├── App.java    ← Ponto de entrada
-    │   ├── MainFrame.java
-    │   ├── Cores.java
-    │   └── panels/     ← Painéis da aplicação
-    └── util/           ← JPAUtil (gestão EntityManagerFactory)
-```
+---
 
-## Como Compilar e Executar
+Deploy no Railway
+=================
 
-### Pré-requisitos
-- Java 11 ou superior instalado
-- Maven 3.6 ou superior instalado
-- Ligação à internet (para descarregar dependências na primeira vez)
+O BStore utiliza o Dockerfile multi-stage na raiz do repositório como fonte única de verdade para construção e arranque da imagem em produção.
 
-### Passos
+1. Configuração do Serviço no Railway
+- Crie um novo projecto ou serviço apontando para o repositório GitHub.
+- O Railway detecta automaticamente o railway.json com builder DOCKERFILE.
+- O healthcheck está configurado para o endpoint /api/saude com timeout de 30 segundos.
 
-```bash
-# 1. Entrar na pasta do projecto
-cd barraca-projeto3
+2. Variáveis de Ambiente Obrigatórias
+No painel do Railway (Settings → Variables), configure as seguintes variáveis (nunca comitar valores reais):
 
-# 2. Compilar e empacotar (cria um JAR executável com todas as dependências)
-mvn package -DskipTests
+- MIGRATION_DB_URL: URL PostgreSQL directa (porta 5432) usada pelo Flyway para aplicar migrações estruturais.
+  Exemplo: postgresql://postgres:SENHA@db.SEU_REF.supabase.co:5432/postgres
+- MIGRATION_DB_USER: utilizador dono da base de dados (ex: postgres).
+- MIGRATION_DB_PASSWORD: senha do utilizador postgres.
 
-# 3. Executar
-java -jar target/barraca-sistema-1.0-shaded.jar
-```
+- DATABASE_URL: URL do Transaction Pooler do Supabase (porta 6543) com o papel restrito bstore_app.
+  Exemplo: postgresql://bstore_app:SENHA@SEU_POOLER_HOST:6543/postgres?sslmode=require&prepareThreshold=0
+- DB_USER: bstore_app
+- DB_PASSWORD: senha do papel restrito bstore_app.
 
-### Alternativa (só compilar)
-```bash
-mvn compile
-mvn exec:java -Dexec.mainClass="ui.App"
-```
+- DB_POOL_MAX_SIZE: tamanho máximo do pool HikariCP (recomendado: 5 a 10 para respeitar limites do Supabase).
+- DB_POOL_MIN_IDLE: conexões mínimas em espera (recomendado: 2).
+- APP_TIMEZONE: Africa/Maputo
+- PORT: porta injectada pelo Railway (por defeito 8080).
+- SESSION_COOKIE_SECURE: true (para forçar o envio de cookies de sessão apenas por HTTPS).
 
-## Funcionalidades
+3. Compatibilidade com Transaction Pooler (PgBouncer)
+- O parâmetro prepareThreshold=0 é configurado na ligação para evitar conflitos de prepared statements no pooler do Supabase na porta 6543 (transaction mode).
+- As definições de utilizador corrente para Row Level Security (RLS) utilizam set_config('app.current_user_id', ..., true), garantindo escopo estrito à transacção corrente sem vazamento entre clientes do pool.
 
-### Dashboard
-- Resumo do dia: total de vendas, número de transacções
-- Contador de produtos registados
-- Alertas de produtos com stock baixo
+4. Papel Restrito bstore_app e Isolamento com Row Level Security (RLS)
+- O BStore opera sob o princípio do menor privilégio: a aplicação em tempo de execução conecta-se exclusivamente com o utilizador `bstore_app`.
+- O utilizador `bstore_app` NÃO possui permissões de DDL (não cria nem altera tabelas) e não faz bypass de RLS.
+- As migrações de schema (DDL) são executadas no arranque pela conexão isolada de migração (porta direta 5432) com privilégios de administrador (ex: postgres).
+- Todas as tabelas sensíveis de dados possuem Row Level Security (RLS) activo e políticas que garantem que cada loja/utilizador apenas lê e grava os seus próprios dados:
+  `usuario_id = NULLIF(current_setting('app.current_user_id', true), '')::bigint`
+- A migração `V12__rls_papel_restrito_e_seguranca.sql` garante a criação condicional do papel `bstore_app`, atribuição de permissões CRUD nas tabelas e sequências, e aplicação das políticas de RLS.
 
-### Gestão de Categorias
-- Criar, editar e eliminar categorias
-- Pesquisa por nome
-- Validação: não permite eliminar categoria com produtos associados
-
-### Gestão de Produtos
-- Registo completo de produtos (nome, preço, stock, unidade, categoria)
-- Definição de stock mínimo para alertas automáticos
-- Destaque visual para produtos em alerta (linha amarelada)
-- Pesquisa por nome
-
-### Registo de Vendas
-- Selecção de produto com cálculo automático do total
-- Desconto automático do stock após venda
-- Validação de stock antes de confirmar a venda
-- Filtro por período de datas
-- Relatório com total do período
-
-## Base de Dados
-
-O ficheiro `barraca-db.mv.db` é criado automaticamente na pasta onde
-o programa é executado. Os dados persistem entre sessões.
+5. Procedimento de Rollback
+- Se uma versão apresentar anomalias após deploy:
+  a) No painel do Railway, aceda a "Deployments".
+  b) Localize o deployment anterior estável.
+  c) Clique nos três pontos (...) e seleccione "Rollback to this deployment".
+- Caso a reversão envolva migrações de base de dados, execute os scripts de reversão correspondentes na consola SQL do Supabase.

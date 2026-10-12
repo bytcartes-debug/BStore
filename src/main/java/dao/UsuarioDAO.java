@@ -16,6 +16,25 @@ public class UsuarioDAO extends GenericDAO<Usuario> {
         EntityManager em = getEM();
         try {
             em.getTransaction().begin();
+            if (util.JPAUtil.isPostgres()) {
+                try {
+                    Number novoId = (Number) em.createNativeQuery(
+                        "SELECT bstore_criar_usuario(:nome, :email, :hash, :role, :exp, :dias)")
+                        .setParameter("nome", objeto.getNome())
+                        .setParameter("email", objeto.getEmail())
+                        .setParameter("hash", objeto.getPasswordHash())
+                        .setParameter("role", objeto.getRole())
+                        .setParameter("exp", objeto.getDataExpiracao() != null ? java.sql.Date.valueOf(objeto.getDataExpiracao()) : null)
+                        .setParameter("dias", objeto.getDiasAcesso())
+                        .getSingleResult();
+                    objeto.setId(novoId.longValue());
+                    em.getTransaction().commit();
+                    return objeto;
+                } catch (Exception e) {
+                    if (em.getTransaction().isActive()) em.getTransaction().rollback();
+                    em.getTransaction().begin();
+                }
+            }
             em.persist(objeto);
             em.persist(new model.DefinicaoLoja(objeto.getId(), false, objeto.getNome()));
             em.getTransaction().commit();
@@ -39,8 +58,39 @@ public class UsuarioDAO extends GenericDAO<Usuario> {
     }
 
     public Usuario buscarPorEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
         EntityManager em = getEM();
         try {
+            if (util.JPAUtil.isPostgres()) {
+                try {
+                    @SuppressWarnings("unchecked")
+                    List<Object[]> rows = em.createNativeQuery(
+                        "SELECT id, nome, email, password_hash, role, data_expiracao, dias_acesso FROM bstore_buscar_usuario_login(:email)")
+                        .setParameter("email", email.trim())
+                        .getResultList();
+                    if (!rows.isEmpty()) {
+                        Object[] row = rows.get(0);
+                        Usuario u = new Usuario();
+                        u.setId(((Number) row[0]).longValue());
+                        u.setNome((String) row[1]);
+                        u.setEmail((String) row[2]);
+                        u.setPasswordHash((String) row[3]);
+                        u.setRole((String) row[4]);
+                        if (row[5] != null) {
+                            u.setDataExpiracao(row[5] instanceof java.sql.Date ? ((java.sql.Date) row[5]).toLocalDate() : java.time.LocalDate.parse(row[5].toString()));
+                        }
+                        if (row[6] != null) {
+                            u.setDiasAcesso(((Number) row[6]).intValue());
+                        }
+                        return u;
+                    }
+                    return null;
+                } catch (Exception ignored) {
+                    // Fallback para query JPA se a função não estiver disponível
+                }
+            }
             List<Usuario> result = em.createQuery(
                 "SELECT u FROM Usuario u WHERE LOWER(u.email) = :email", Usuario.class)
                 .setParameter("email", email.toLowerCase().trim())

@@ -1,0 +1,154 @@
+.ios-install-banner {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--color-brand);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 12px 16px 16px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  animation: bstore-ios-banner-in 0.25s ease-out forwards;
+}
+
+@keyframes bstore-ios-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ios-install-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.ios-install-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ios-install-title {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.ios-install-badge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(23, 99, 79, 0.12);
+  color: var(--color-brand);
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.ios-install-close-btn {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.ios-install-close-btn:hover {
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+}
+
+.ios-install-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.ios-install-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 14px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ios-install-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.step-num {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--color-brand);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.step-text {
+  flex: 1;
+}
+
+.step-inline-icon {
+  display: inline-block;
+  vertical-align: -2px;
+  color: var(--color-brand);
+}
+
+.ios-install-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.ios-install-btn-dismiss {
+  font-size: 13px;
+  min-height: 36px;
+  padding: 6px 14px;
+}
+
+.ios-install-btn-ok {
+  font-size: 13px;
+  min-height: 36px;
+  padding: 6px 16px;
+}
+
+@media (max-width: 480px) {
+  .ios-install-banner {
+    margin: 8px 10px 12px;
+    padding: 12px;
+  }
+  .ios-install-actions {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+  .ios-install-btn-dismiss,
+  .ios-install-btn-ok {
+    width: 100%;
+    justify-content: center;
+  }
+}

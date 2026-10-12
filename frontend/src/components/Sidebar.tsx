@@ -74,7 +74,7 @@ export default function Sidebar({
             aria-current={currentPage === id ? 'page' : undefined}
             onClick={() => setCurrentPage(id)}
           >
-            <span className="sidebar-emoji sidebar-icon" aria-hidden="true">
+            <span className="sidebar-icon" aria-hidden="true">
               <Icon size={19} strokeWidth={currentPage === id ? 2.4 : 2} />
             </span>
             <span>{label}</span>
@@ -89,7 +89,7 @@ export default function Sidebar({
               aria-current={currentPage === 'usuarios' ? 'page' : undefined}
               onClick={() => setCurrentPage('usuarios')}
             >
-              <span className="sidebar-emoji sidebar-icon" aria-hidden="true">
+              <span className="sidebar-icon" aria-hidden="true">
                 <UserCog size={19} strokeWidth={currentPage === 'usuarios' ? 2.4 : 2} />
               </span>
               <span>Utilizadores</span>
@@ -104,7 +104,7 @@ export default function Sidebar({
           aria-current={currentPage === 'perfil' ? 'page' : undefined}
           onClick={() => setCurrentPage('perfil')}
         >
-          <span className="sidebar-emoji sidebar-icon" aria-hidden="true">
+          <span className="sidebar-icon" aria-hidden="true">
             <ShieldCheck size={19} strokeWidth={currentPage === 'perfil' ? 2.4 : 2} />
           </span>
           <span>Perfil & Segurança</span>

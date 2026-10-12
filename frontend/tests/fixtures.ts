@@ -86,6 +86,11 @@ export const dashboard = {
 };
 
 export async function mockApi(page: Page, role = 'superuser') {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('bstore:hide-ios-install-guide', 'true');
+    } catch {}
+  });
   // Nenhum pedido desta suite chega ao backend, incluindo pedidos de escrita.
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -157,7 +162,12 @@ export async function mockApi(page: Page, role = 'superuser') {
 
 export async function navigate(page: Page, name: string) {
   const mobile = (page.viewportSize()?.width || 1440) < 768;
-  if (mobile) await page.getByRole('button', { name: 'Abrir menu', exact: true }).click();
+  if (mobile) {
+    const menuBtn = page.getByRole('button', { name: 'Abrir menu', exact: true });
+    if (await menuBtn.isVisible()) {
+      await menuBtn.click();
+    }
+  }
   await page
     .getByRole('navigation', { name: 'Navegação principal' })
     .getByRole('button', { name: new RegExp(`^${name}`, 'i') })

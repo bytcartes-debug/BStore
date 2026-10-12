@@ -62,14 +62,14 @@ public class Usuario {
         if ("superuser".equals(role) || dataExpiracao == null) {
             return false;
         }
-        return LocalDate.now().isAfter(dataExpiracao);
+        return util.Fuso.hoje().isAfter(dataExpiracao);
     }
 
     public long diasRestantes() {
         if ("superuser".equals(role) || dataExpiracao == null) {
             return -1L;
         }
-        return Math.max(ChronoUnit.DAYS.between(LocalDate.now(), dataExpiracao), 0);
+        return Math.max(ChronoUnit.DAYS.between(util.Fuso.hoje(), dataExpiracao), 0);
     }
 
     public void aplicarDiasAcesso(int dias) {
@@ -77,7 +77,7 @@ public class Usuario {
             throw new IllegalArgumentException("Os dias de acesso não podem ser negativos.");
         }
         this.diasAcesso = dias;
-        this.dataExpiracao = dias > 0 ? LocalDate.now().plusDays(dias) : null;
+        this.dataExpiracao = dias > 0 ? util.Fuso.hoje().plusDays(dias) : null;
     }
 
     private static String hashLegado(String senha) {

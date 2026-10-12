@@ -153,6 +153,14 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
 
         setIsReady(true);
 
+        // Garantir que no Safari iOS o vídeo não abre em ecrã inteiro e não bloqueia áudio
+        const videoEl = document.querySelector<HTMLVideoElement>(`#${containerId} video`);
+        if (videoEl) {
+          videoEl.setAttribute('playsinline', 'true');
+          videoEl.setAttribute('webkit-playsinline', 'true');
+          videoEl.muted = true;
+        }
+
         // Verificar suporte a lanterna
         try {
           const track = scanner.getRunningTrackCameraCapabilities();
@@ -167,7 +175,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
         const strErr = String(err);
         if (strErr.includes('NotAllowedError') || strErr.includes('Permission')) {
           setErrorMsg(
-            'Permissão de câmara negada. Permita o acesso à câmara no navegador ou introduza o código manualmente.',
+            'Permissão de câmara recusada. No Safari iOS: aceda a Definições > Safari > Câmara e selecione "Permitir". Pode também introduzir o código manualmente.',
           );
         } else if (strErr.includes('NotFoundError') || strErr.includes('DevicesNotFoundError')) {
           setErrorMsg(

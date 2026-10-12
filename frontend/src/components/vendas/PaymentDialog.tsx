@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import type Decimal from 'decimal.js';
-import { Check, CreditCard, Plus, Trash2, User } from 'lucide-react';
+import { Check, CreditCard, Delete, Plus, Trash2, User } from 'lucide-react';
 import { Field, Notice, Spinner } from '../UI';
 import { decimalSeguro, formatMoney } from '../../utils/decimal';
 import type { Devedor, LinhaPagamento, MetodoPagamentoConfig } from './types';
@@ -32,7 +32,7 @@ interface PaymentDialogProps {
   isSaving: boolean;
 }
 
-export const PaymentDialog: React.FC<PaymentDialogProps> = ({
+const PaymentDialogComponent: React.FC<PaymentDialogProps> = ({
   total,
   metodosDisponiveis,
   pagamentos,
@@ -58,51 +58,106 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
   canSubmit,
   isSaving,
 }) => {
+  // Atalhos de teclado no PC: números 1 a 5 escolhem método de pagamento
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (
+        activeEl instanceof HTMLInputElement &&
+        (activeEl.type === 'text' || activeEl.id === 'sale-obs')
+      ) {
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancel();
+        return;
+      }
+      const num = parseInt(e.key, 10);
+      if (!isNaN(num) && num >= 1 && num <= metodosDisponiveis.length) {
+        const metodoEscolhido = metodosDisponiveis[num - 1];
+        if (metodoEscolhido) {
+          e.preventDefault();
+          onSelecionarMetodoPrincipal(metodoEscolhido);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [metodosDisponiveis, onSelecionarMetodoPrincipal, onCancel]);
+
+  // Teclado tátil na página para a linha de pagamento principal
+  const handleKeypadPress = (key: string) => {
+    const targetLine = pagamentos[0];
+    if (!targetLine || targetLine.metodo === 'FIADO') return;
+    const currentVal = targetLine.valor || '';
+
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(30);
+      } catch {}
+    }
+
+    if (key === 'CLEAR') {
+      onUpdateLinhaPagamento(targetLine.id, 'valor', '');
+    } else if (key === 'BACKSPACE') {
+      onUpdateLinhaPagamento(targetLine.id, 'valor', currentVal.slice(0, -1));
+    } else if (key === '.') {
+      if (!currentVal.includes('.')) {
+        onUpdateLinhaPagamento(targetLine.id, 'valor', currentVal ? `${currentVal}.` : '0.');
+      }
+    } else {
+      const nextVal = currentVal === '0' ? key : `${currentVal}${key}`;
+      onUpdateLinhaPagamento(targetLine.id, 'valor', nextVal);
+    }
+  };
+
   return (
     <div
       style={{
-        marginTop: 24,
+        marginTop: 20,
         borderTop: '2px solid var(--border-color)',
         paddingTop: 16,
       }}
     >
-      {/* Total em destaque grande */}
+      {/* TOTAL DO CARRINHO EM DESTAQUE */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'baseline',
           marginBottom: 16,
-          padding: '12px 16px',
-          borderRadius: 8,
+          padding: '14px 18px',
+          borderRadius: 10,
           background: 'var(--bg-subtle)',
+          border: '1px solid var(--border-color)',
         }}
+        aria-live="polite"
       >
-        <span style={{ fontSize: 15, fontWeight: 600 }}>Total do Carrinho:</span>
+        <span style={{ fontSize: 16, fontWeight: 650 }}>Total do Carrinho:</span>
         <strong
           style={{
-            fontSize: 32,
+            fontSize: 'clamp(28px, 4vw, 36px)',
             color: 'var(--color-brand)',
             letterSpacing: '-0.5px',
           }}
+          aria-live="polite"
         >
           {formatMoney(total)}
         </strong>
       </div>
 
       {/* BOTÕES TOUCH DE MÉTODOS ACTIVOS */}
-      <span
-        style={{
-          display: 'block',
-          fontSize: 13,
-          fontWeight: 600,
-          marginBottom: 8,
-        }}
-      >
-        Forma de pagamento rápida:
-      </span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>
+          Forma de pagamento rápida:
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+          (Atalhos 1 a {metodosDisponiveis.length} no teclado)
+        </span>
+      </div>
       <div className="payment-methods-grid">
-        {metodosDisponiveis.map((m) => {
+        {metodosDisponiveis.map((m, idx) => {
           const isSelected =
             pagamentos[0]?.metodo.toUpperCase() === m.nome.toUpperCase() ||
             (m.tipo === 'FIADO' && pagamentos[0]?.metodo.toUpperCase() === 'FIADO');
@@ -112,9 +167,11 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
               type="button"
               className={`payment-method-tile ${isSelected ? 'selected' : ''}`}
               onClick={() => onSelecionarMetodoPrincipal(m)}
+              aria-pressed={isSelected}
             >
               <CreditCard size={18} />
               <span>{m.nome}</span>
+              <span className="tile-shortcut" aria-hidden="true">[{idx + 1}]</span>
             </button>
           );
         })}
@@ -122,7 +179,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
 
       {/* ATALHOS DE NOTAS PARA DINHEIRO */}
       {temDinheiro && (
-        <div>
+        <div style={{ marginBottom: 14 }}>
           <span
             style={{
               display: 'block',
@@ -157,7 +214,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
         </div>
       )}
 
-      {/* LINHAS DE PAGAMENTO DETALHADAS (DIVIDIR PAGAMENTO) */}
+      {/* LINHAS DE PAGAMENTO DETALHADAS */}
       <div
         style={{
           display: 'flex',
@@ -206,6 +263,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
                 type="number"
                 step="0.01"
                 min="0.01"
+                inputMode="decimal"
                 readOnly={p.metodo === 'FIADO'}
                 value={
                   p.metodo === 'FIADO'
@@ -254,8 +312,8 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
                   }
                   style={{
                     width: '100%',
-                    padding: '6px 8px',
-                    fontSize: 12,
+                    padding: '8px 10px',
+                    fontSize: 13,
                     borderRadius: 6,
                     border: '1px solid var(--border-color)',
                   }}
@@ -265,6 +323,47 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
           </div>
         ))}
       </div>
+
+      {/* TECLADO NUMÉRICO TÁTIL INTEGRADO NA PÁGINA */}
+      {pagamentos[0]?.metodo !== 'FIADO' && (
+        <div className="pos-keypad-container" aria-label="Teclado numérico da página">
+          <div className="pos-keypad">
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+              <button
+                key={digit}
+                type="button"
+                className="pos-keypad-btn"
+                onClick={() => handleKeypadPress(digit)}
+              >
+                {digit}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="pos-keypad-btn"
+              onClick={() => handleKeypadPress('.')}
+            >
+              ,
+            </button>
+            <button
+              type="button"
+              className="pos-keypad-btn"
+              onClick={() => handleKeypadPress('0')}
+            >
+              0
+            </button>
+            <button
+              type="button"
+              className="pos-keypad-btn action-clear"
+              onClick={() => handleKeypadPress('BACKSPACE')}
+              title="Apagar último caractere"
+              aria-label="Apagar dígito"
+            >
+              <Delete size={20} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* CAMPO DE CLIENTE CASO TENHA FIADO */}
       {temFiado && (
@@ -283,7 +382,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
               display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
-              fontWeight: 600,
+              fontWeight: 650,
               marginBottom: 6,
             }}
           >
@@ -297,9 +396,10 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
               onChange={(e) => onClienteIdChange(e.target.value)}
               style={{
                 flex: 1,
-                padding: 8,
+                padding: 10,
                 borderRadius: 6,
                 border: '1px solid var(--input-border)',
+                fontSize: 14,
               }}
               required
             >
@@ -334,9 +434,10 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
                 onChange={(e) => onNovoClienteNomeChange(e.target.value)}
                 style={{
                   flex: 1,
-                  padding: 8,
+                  padding: 10,
                   borderRadius: 6,
                   border: '1px solid var(--input-border)',
+                  fontSize: 14,
                 }}
               />
               <button
@@ -353,7 +454,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
       )}
 
       {/* RESUMO DE VALORES E TROCO EM TEMPO REAL */}
-      <div style={{ marginTop: 16 }}>
+      <div style={{ marginTop: 16 }} aria-live="polite">
         {trocoCalculado.gt(0) && (
           <Notice kind="success">
             Troco a devolver ao cliente: <strong>{formatMoney(trocoCalculado)}</strong>
@@ -366,6 +467,7 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
         )}
       </div>
 
+      {/* OBSERVAÇÃO */}
       <div style={{ marginTop: 16 }}>
         <label
           htmlFor="sale-obs"
@@ -386,22 +488,24 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
           placeholder="Ex: Entrega ao domicílio, cliente regular..."
           style={{
             width: '100%',
-            padding: 8,
+            padding: 10,
             borderRadius: 6,
-            border: '1px solid var(--border-color, #ccc)',
+            border: '1px solid var(--border-color)',
+            fontSize: 14,
           }}
         />
       </div>
 
-      <div className="modal-actions" style={{ marginTop: 24 }}>
-        <button type="button" className="btn-secondary" onClick={onCancel}>
+      {/* BOTÕES DE CONFIRMAÇÃO FIXOS E ACESSÍVEIS */}
+      <div className="modal-actions" style={{ marginTop: 24, gap: 12 }}>
+        <button type="button" className="btn-secondary" onClick={onCancel} style={{ minHeight: 48, fontSize: 15 }}>
           Cancelar
         </button>
         <button
           className="btn-primary"
           type="submit"
           disabled={!canSubmit || isSaving}
-          style={{ minHeight: 48, fontSize: 16 }}
+          style={{ minHeight: 48, fontSize: 16, flex: 1 }}
         >
           {isSaving ? (
             <Spinner size="small" />
@@ -414,3 +518,6 @@ export const PaymentDialog: React.FC<PaymentDialogProps> = ({
     </div>
   );
 };
+
+export const PaymentDialog = React.memo(PaymentDialogComponent);
+

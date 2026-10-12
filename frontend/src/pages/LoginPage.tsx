@@ -1,8 +1,92 @@
 import { useRef, useState } from 'react';
-import { Store, Receipt, Package, Users, Eye, EyeOff, LogIn } from 'lucide-react';
+import {
+  Store,
+  Eye,
+  EyeOff,
+  LogIn,
+  Zap,
+  ShieldCheck,
+  Coins,
+  PackageCheck,
+  TrendingUp,
+  Smartphone,
+  Activity,
+  Receipt,
+  Radio,
+  Lock,
+} from 'lucide-react';
 import type { UserSession } from '../App';
 import { Field, Notice, Spinner } from '../components/UI';
+import { AITypewriter, type AIPhrase } from '../components/ui/AITypewriter';
 import './LoginPage.css';
+
+const AI_STREAM_PHRASES: AIPhrase[] = [
+  {
+    id: 'vendas',
+    category: 'Vendas & Balcão',
+    command: 'bstore.terminal.processar_venda()',
+    text: 'Registo de venda em 3 segundos. Leitura de código de barras pela câmara, cálculo instantâneo de troco e impressão de comprovativo térmico.',
+    metricLabel: 'Atendimento 3x mais veloz',
+    metricIcon: Zap,
+    color: '#34d399',
+  },
+  {
+    id: 'caixa',
+    category: 'Auditoria de Caixa',
+    command: 'bstore.caixa.fecho_cego()',
+    text: 'Controlo rigoroso da gaveta. Apuração de quebra de caixa na contagem física, registo de despesas e envio automático do relatório ao proprietário.',
+    metricLabel: '100% de conciliação de gaveta',
+    metricIcon: ShieldCheck,
+    color: '#60a5fa',
+  },
+  {
+    id: 'fiado',
+    category: 'Fiado & Devedores',
+    command: 'bstore.clientes.auditar_devedores()',
+    text: 'Fim dos cadernos de papel e cobranças esquecidas. Histórico individual de compras a prazo, limites de crédito e registo de amortizações parciais.',
+    metricLabel: 'Zero dívidas perdidas',
+    metricIcon: Coins,
+    color: '#fbbf24',
+  },
+  {
+    id: 'stock',
+    category: 'Gestão de Inventário',
+    command: 'bstore.stock.analisar_ruptura()',
+    text: 'Monitorização contínua de saldo em tempo real. Alertas preditivos antes de produtos esgotarem na prateleira e identificação de itens em falta.',
+    metricLabel: 'Reposição precisa no tempo certo',
+    metricIcon: PackageCheck,
+    color: '#a78bfa',
+  },
+  {
+    id: 'lucro',
+    category: 'Lucro Líquido Real',
+    command: 'bstore.dre.apurar_margem()',
+    text: 'Visão financeira de ponta a ponta. Cruzamento automático do faturamento bruto contra o custo das mercadorias vendidas e saídas operacionais.',
+    metricLabel: 'Lucro real apurado ao vivo',
+    metricIcon: TrendingUp,
+    color: '#f472b6',
+  },
+  {
+    id: 'mobilidade',
+    category: 'Multi-Dispositivo',
+    command: 'bstore.rede.sincronizar_dispositivos()',
+    text: 'A sua loja sincronizada no telemóvel Android, tablet ou computador do balcão. Sem configurações complexas e com alta disponibilidade.',
+    metricLabel: 'Acesso seguro em qualquer lugar',
+    metricIcon: Smartphone,
+    color: '#38bdf8',
+  },
+];
+
+const TICKER_ITEMS = [
+  'VENDAS EM 3 SEGUNDOS',
+  'FECHO DE CAIXA AUDITADO',
+  'COMPROVATIVOS TÉRMICOS',
+  'GESTÃO DE FIADO & CLIENTES',
+  'SCANNER DE CÓDIGO DE BARRAS',
+  'CONTROLO DE STOCK EM TEMPO REAL',
+  'LUCRO LÍQUIDO NO BOLSO',
+  'COMPATÍVEL COM PC & ANDROID',
+];
 
 export default function LoginPage({ setUser }: { setUser: (user: UserSession) => void }) {
   const [email, setEmail] = useState('');
@@ -56,57 +140,91 @@ export default function LoginPage({ setUser }: { setUser: (user: UserSession) =>
   return (
     <main className="login-page">
       <div className="login-wrapper">
-        <section className="login-story" aria-label="BStore, gestão de loja">
-          <div className="login-brand">
-            <span className="login-brand-mark" aria-hidden="true">
-              <Store size={30} />
-            </span>
-            <span>BStore</span>
-          </div>
-
-          <div className="login-intro">
-            <h1>
-              Mais atenção à loja.
-              <br />
-              Menos tempo nas contas.
-            </h1>
-            <p>Vendas, stock e clientes. Tudo no mesmo lugar, do primeiro produto ao fecho do dia.</p>
-
-            <ul className="login-features">
-              <li>
-                <span className="feature-emoji" aria-hidden="true">
-                  <Receipt size={20} />
-                </span>
-                <span>Registe vendas e calcule o troco na hora</span>
-              </li>
-              <li>
-                <span className="feature-emoji" aria-hidden="true">
-                  <Package size={20} />
-                </span>
-                <span>Acompanhe o stock dos seus produtos</span>
-              </li>
-              <li>
-                <span className="feature-emoji" aria-hidden="true">
-                  <Users size={20} />
-                </span>
-                <span>Tenha as dívidas e clientes organizados</span>
-              </li>
-            </ul>
-          </div>
-
-          <p className="login-story-footer">FlexStock — O seu negócio, organizado.</p>
-        </section>
-
-        <section className="login-form-panel" aria-labelledby="login-title">
-          <div className="login-card">
-            <div className="login-mobile-brand">
-              <span aria-hidden="true"><Store size={26} /></span> BStore
+        {/* LADO STREAMING IA AUTOMÁTICO (PC & TABLET) */}
+        <section
+          className="login-story"
+          aria-label="Transmissão contínua de funcionalidades do BStore"
+        >
+          {/* Header da Marca + Status de Transmissão */}
+          <div className="login-story-header">
+            <div className="login-brand">
+              <span className="login-brand-mark" aria-hidden="true">
+                <Store size={26} />
+              </span>
+              <div className="login-brand-meta">
+                <span className="login-brand-name">BStore</span>
+                <span className="login-brand-badge">SISTEMA COMERCIAL</span>
+              </div>
             </div>
 
-            <h2 id="login-title">Bem-vindo de volta</h2>
-            <p className="login-subtitle">Entre para continuar a gerir a sua loja.</p>
+            <div className="stream-live-pill" title="Transmissão contínua em tempo real">
+              <span className="live-dot" aria-hidden="true" />
+              <Radio size={13} className="live-icon" aria-hidden="true" />
+              <span>TRANSMISSÃO AO VIVO</span>
+            </div>
+          </div>
 
-            <form onSubmit={handleLogin} aria-busy={loading}>
+          {/* Marquee Ticker de Alta Velocidade (Sem estrelas, sem emojis) */}
+          <div className="stream-ticker-rail" aria-hidden="true">
+            <div className="stream-ticker-track">
+              {[...TICKER_ITEMS, ...TICKER_ITEMS].map((item, i) => (
+                <span key={`${item}-${i}`} className="ticker-item">
+                  <Activity size={10} className="ticker-symbol" />
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Terminal de Streaming IA Letra por Letra (100% Automático) */}
+          <div className="ai-stream-wrapper">
+            <AITypewriter phrases={AI_STREAM_PHRASES} />
+          </div>
+
+          {/* Cards Flutuantes de Telemetria Operacional */}
+          <div className="stream-telemetry-row" aria-hidden="true">
+            <div className="telemetry-chip">
+              <Receipt size={13} className="telemetry-icon" />
+              <span>Venda balcão processada: 450,00 MT</span>
+            </div>
+            <div className="telemetry-chip">
+              <ShieldCheck size={13} className="telemetry-icon" />
+              <span>Sessão de caixa auditada: 0,00 MT quebra</span>
+            </div>
+          </div>
+
+          <p className="login-story-footer">
+            BStore — Gestão de stock e vendas para pequenos e médios estabelecimentos comerciais.
+          </p>
+        </section>
+
+        {/* LADO FORMULÁRIO DE LOGIN */}
+        <section className="login-form-panel" aria-labelledby="login-title">
+          <div className="login-card">
+            {/* Header Mobile com Terminal IA Compacto */}
+            <div className="login-mobile-header">
+              <div className="login-mobile-brand">
+                <span className="login-mobile-icon" aria-hidden="true">
+                  <Store size={20} />
+                </span>
+                <span className="login-mobile-title">BStore</span>
+                <span className="stream-live-pill mobile-pill">
+                  <span className="live-dot" /> AO VIVO
+                </span>
+              </div>
+
+              {/* Streaming IA no Mobile (Automático Letra por Letra) */}
+              <div className="login-mobile-ai-preview">
+                <AITypewriter phrases={AI_STREAM_PHRASES} />
+              </div>
+            </div>
+
+            <div className="login-header-group">
+              <h1 id="login-title">Aceder ao Sistema</h1>
+              <p className="login-subtitle">Introduza as suas credenciais para continuar.</p>
+            </div>
+
+            <form onSubmit={handleLogin} aria-busy={loading} className="login-form">
               {error && <Notice>{error}</Notice>}
 
               <fieldset disabled={loading}>
@@ -118,7 +236,7 @@ export default function LoginPage({ setUser }: { setUser: (user: UserSession) =>
                     autoComplete="username"
                     autoCapitalize="none"
                     spellCheck={false}
-                    placeholder="nome@exemplo.com"
+                    placeholder="ex: admin@bstore.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
@@ -132,6 +250,7 @@ export default function LoginPage({ setUser }: { setUser: (user: UserSession) =>
                       name="password"
                       type={showPassword ? 'text' : 'password'}
                       autoComplete="current-password"
+                      placeholder="Introduza a sua senha"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
@@ -149,17 +268,27 @@ export default function LoginPage({ setUser }: { setUser: (user: UserSession) =>
                 </Field>
 
                 <button type="submit" className="btn-primary login-submit" disabled={loading}>
-                  {loading ? <Spinner size="small" /> : <span aria-hidden="true"><LogIn size={18} /></span>}
+                  {loading ? (
+                    <Spinner size="small" />
+                  ) : (
+                    <span aria-hidden="true">
+                      <LogIn size={17} />
+                    </span>
+                  )}
                   <span>{loading ? 'A entrar…' : 'Entrar na minha loja'}</span>
                 </button>
               </fieldset>
             </form>
 
-            <p className="login-help">
-              Precisa de acesso ou de recuperar a senha?
-              <br />
-              Contacte o administrador da loja.
-            </p>
+            <div className="login-trust-footer">
+              <div className="login-security-tag">
+                <Lock size={12} aria-hidden="true" />
+                <span>Ligação segura com encriptação de ponta a ponta</span>
+              </div>
+              <p className="login-help">
+                Dificuldades de acesso? Contacte o administrador do sistema.
+              </p>
+            </div>
           </div>
         </section>
       </div>

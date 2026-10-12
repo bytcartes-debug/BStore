@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,11 +12,16 @@
     "format:check": "prettier --check src/components src/pages src/utils/useResource.ts src/utils/useDialog.ts src/utils/toast.ts src/utils/categoryIcons.ts src/utils/api.ts src/App.tsx src/index.css tests playwright.config.ts index.html"
   },
   "dependencies": {
+    "@capacitor-community/keep-awake": "^8.0.1",
     "@capacitor-mlkit/barcode-scanning": "^8.2.1",
     "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.1.2",
     "@capacitor/cli": "^8.5.0",
     "@capacitor/core": "^8.5.0",
+    "@capacitor/keyboard": "^8.0.6",
     "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4",
     "decimal.js": "^10.6.0",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^1.28.0",
@@ -33,6 +38,7 @@
     "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.71.0",
     "prettier": "^3.9.9",
+    "rollup-plugin-visualizer": "^7.1.1",
     "typescript": "~6.0.2",
     "vite": "^8.1.1"
   }

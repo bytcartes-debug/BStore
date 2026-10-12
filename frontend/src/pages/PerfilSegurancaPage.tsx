@@ -1,12 +1,14 @@
 import { useToast } from '../utils/toast';
 import { useEffect, useRef, useState } from 'react';
-import { User, Camera, Save, KeyRound, Eye, EyeOff, Store, Plus, Power, CreditCard } from 'lucide-react';
+import { User, Camera, Save, KeyRound, Eye, EyeOff, Store, Plus, Power, CreditCard, Download, CheckCircle, Smartphone } from 'lucide-react';
 import type { UserSession } from '../App';
 import { apiRequest } from '../utils/api';
 import { useMutation } from '../utils/useResource';
 import { PageHeading, Field, Notice, Spinner } from '../components/UI';
+import { usePwaInstall } from '../utils/usePwaInstall';
 
 export default function PerfilSegurancaPage({ user }: { user: UserSession | null }) {
+  const { canInstall, isStandalone, isIos, promptInstall } = usePwaInstall();
   const [name, setName] = useState(localStorage.getItem('profileFullName') || '');
   const [pic, setPic] = useState(localStorage.getItem('profilePic') || '');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -415,6 +417,40 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
             <Plus size={16} /> Adicionar
           </button>
         </form>
+      </section>
+
+      <section className="panel" style={{ marginTop: '2rem' }}>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+          <Smartphone size={18} /> Aplicação no Dispositivo (PWA)
+        </h2>
+        {isStandalone ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#065f46', fontSize: '0.95rem' }}>
+            <CheckCircle size={18} />
+            <span>O BStore está instalado e a ser executado em modo de aplicação independente.</span>
+          </div>
+        ) : canInstall ? (
+          <div>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+              Instale o BStore no seu telemóvel ou computador para acesso instantâneo sem barra do navegador.
+            </p>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => void promptInstall()}
+              style={{ minHeight: '44px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+            >
+              <Download size={16} /> Instalar app
+            </button>
+          </div>
+        ) : isIos ? (
+          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            No Safari do iPhone/iPad: toque no botão <strong>Partilhar</strong> e selecione <strong>Adicionar ao ecrã principal</strong> para instalar a app.
+          </p>
+        ) : (
+          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+            Aplicação web pronta para instalação nos navegadores compatíveis (Chrome, Edge, Safari).
+          </p>
+        )}
       </section>
     </div>
   );

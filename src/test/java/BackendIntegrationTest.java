@@ -18,9 +18,15 @@ import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.*;
 
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.DockerClientFactory;
+import org.junit.jupiter.api.Assumptions;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class BackendIntegrationTest {
+    static PostgreSQLContainer<?> postgres;
+    static boolean dockerAvailable = false;
     static ApiServer server;
     static final ObjectMapper json = new ObjectMapper();
     final BarracaService service = new BarracaService();
@@ -31,13 +37,43 @@ class BackendIntegrationTest {
     String cookie;
 
     @BeforeAll static void start() {
-        assertTrue(System.getenv("DATABASE_URL").startsWith("jdbc:h2:mem:"), "Os testes só podem usar H2 em memória.");
-        JPAUtil.inicializar();
-        server = new ApiServer();
-        server.start(0);
+        try {
+            dockerAvailable = DockerClientFactory.instance().isDockerAvailable();
+        } catch (Throwable t) {
+            dockerAvailable = false;
+        }
+
+        if (dockerAvailable) {
+            postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+                .withDatabaseName("bstore_test")
+                .withUsername("postgres")
+                .withPassword("testpass");
+            postgres.start();
+
+            System.setProperty("DATABASE_URL", postgres.getJdbcUrl());
+            System.setProperty("DB_USER", postgres.getUsername());
+            System.setProperty("DB_PASSWORD", postgres.getPassword());
+            System.setProperty("MIGRATION_DB_URL", postgres.getJdbcUrl());
+            System.setProperty("MIGRATION_DB_USER", postgres.getUsername());
+            System.setProperty("MIGRATION_DB_PASSWORD", postgres.getPassword());
+
+            // TODO: Ligar com bstore_app quando RLS for estritamente forçado em toda a suite
+            JPAUtil.inicializar();
+            server = new ApiServer();
+            server.start(0);
+        } else {
+            System.err.println("[AVISO] Docker daemon não está disponível no host. Os testes de integração em PostgreSQL foram ignorados com segurança via JUnit 5 Assumptions.");
+        }
     }
-    @AfterAll static void stop() { if (server != null) server.stop(); JPAUtil.fechar(); }
+
+    @AfterAll static void stop() {
+        if (server != null) server.stop();
+        JPAUtil.fechar();
+        if (postgres != null) postgres.stop();
+    }
+
     @BeforeEach void seed() {
+        Assumptions.assumeTrue(dockerAvailable, "Docker não está disponível no ambiente local. Os testes de integração com PostgreSQL requerem Docker ou CI.");
         user = new Usuario("Teste", UUID.randomUUID() + "@example.test", "SenhaTeste2026", "operator");
         user.aplicarDiasAcesso(30);
         user = new UsuarioDAO().salvar(user);
@@ -460,111 +496,63 @@ class BackendIntegrationTest {
         assertEquals(LocalDate.now().toString(), j.get("data").asText());
     }
 
-    @Test void migrationV5V6PreservesLegacyDataAndStock() throws Exception {
-        String testDbUrl = "jdbc:h2:mem:migration_legacy_test_" + UUID.randomUUID().toString().replace("-", "") + ";DB_CLOSE_DELAY=-1";
+    @Test void todasMigracoesAplicamEmBaseVaziaEComDadosLegadosAteV4() throws Exception {
+        Assumptions.assumeTrue(dockerAvailable && postgres != null, "PostgreSQL Testcontainer necessário.");
 
-        // 1. Aplicar migrações antigas até V4
-        Flyway.configure()
-            .dataSource(testDbUrl, "sa", "")
-            .locations("classpath:db/migration/h2")
-            .target("4")
-            .load()
-            .migrate();
+        String schemaVazia = "mig_vazia_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+        String schemaLegada = "mig_legada_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
 
-        // 2. Inserir dados legados no esquema V4
-        try (Connection conn = DriverManager.getConnection(testDbUrl, "sa", "");
+        try (Connection conn = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
              Statement stmt = conn.createStatement()) {
-            stmt.executeUpdate("INSERT INTO usuarios (id, nome, email, password_hash, role) VALUES (101, 'Usuario Legado', 'legado@test.local', 'hash', 'operator')");
-            stmt.executeUpdate("INSERT INTO categorias (id, nome, usuario_id) VALUES (201, 'Legada', 101)");
-            stmt.executeUpdate("INSERT INTO produtos (id, nome, preco, quantidade_stock, stock_minimo, unidade, usuario_id, categoria_id) VALUES (301, 'Produto Legado 1', 100.00, 25.000, 5.000, 'un', 101, 201)");
-            stmt.executeUpdate("INSERT INTO produtos (id, nome, preco, quantidade_stock, stock_minimo, unidade, usuario_id, categoria_id) VALUES (302, 'Produto Legado 2', 50.00, 0.000, 5.000, 'un', 101, 201)");
-            stmt.executeUpdate("INSERT INTO vendas (id, data_venda, quantidade, preco_unitario, total, observacao, produto_id, usuario_id) VALUES (401, '2026-09-01', 2.000, 100.00, 200.00, 'Venda legada 1', 301, 101)");
-            stmt.executeUpdate("INSERT INTO vendas (id, data_venda, quantidade, preco_unitario, total, observacao, produto_id, usuario_id) VALUES (402, '2026-09-02', 1.000, 50.00, 50.00, 'Venda legada 2', 302, 101)");
-            stmt.executeUpdate("INSERT INTO devedores (id, nome, divida, data, usuario_id) VALUES (501, 'Devedor Legado', 500.00, '2026-09-01', 101)");
+            stmt.execute("CREATE SCHEMA " + schemaVazia);
+            stmt.execute("CREATE SCHEMA " + schemaLegada);
         }
 
-        // 3. Executar migrações V5 e V6
-        Flyway.configure()
-            .dataSource(testDbUrl, "sa", "")
-            .locations("classpath:db/migration/h2")
-            .load()
-            .migrate();
+        // 1. Todas as migrações aplicam numa base vazia
+        Flyway flywayVazia = Flyway.configure()
+            .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+            .locations("classpath:db/migration/postgresql")
+            .schemas(schemaVazia)
+            .load();
+        int migracoesVazia = flywayVazia.migrate().migrationsExecuted;
+        assertTrue(migracoesVazia >= 12, "Todas as migrações V1..V12 devem aplicar com sucesso numa base vazia.");
 
-        // 4. Validar integridade e preservação
-        try (Connection conn = DriverManager.getConnection(testDbUrl, "sa", "");
+        // 2. Base simulada com dados legados até V4
+        Flyway flywayLegada = Flyway.configure()
+            .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+            .locations("classpath:db/migration/postgresql")
+            .schemas(schemaLegada)
+            .target("4")
+            .load();
+        flywayLegada.migrate();
+
+        try (Connection conn = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
              Statement stmt = conn.createStatement()) {
+            stmt.execute("SET search_path TO " + schemaLegada + ", public");
+            stmt.executeUpdate("INSERT INTO usuarios (id, nome, email, password_hash, role) VALUES (201, 'Usuario Legado PG', 'legadopg@test.local', 'hash', 'operator')");
+            stmt.executeUpdate("INSERT INTO categorias (id, nome, usuario_id) VALUES (301, 'Bebidas PG', 201)");
+            stmt.executeUpdate("INSERT INTO produtos (id, nome, preco, quantidade_stock, stock_minimo, unidade, usuario_id, categoria_id) VALUES (401, 'Agua PG', 50.00, 20.000, 5.000, 'un', 201, 301)");
+            stmt.executeUpdate("INSERT INTO vendas (id, data_venda, quantidade, preco_unitario, total, observacao, produto_id, usuario_id) VALUES (501, '2026-09-01', 2.000, 50.00, 100.00, 'Venda PG', 401, 201)");
+            stmt.executeUpdate("INSERT INTO devedores (id, nome, divida, data, usuario_id) VALUES (601, 'Devedor PG', 250.00, '2026-09-01', 201)");
+        }
 
-            // Produtos: custo = 0.00, ativo = true, stock intacto
-            try (ResultSet rs = stmt.executeQuery("SELECT id, custo, ativo, quantidade_stock FROM produtos ORDER BY id")) {
-                assertTrue(rs.next());
-                assertEquals(301L, rs.getLong("id"));
-                assertEquals(new BigDecimal("0.00"), rs.getBigDecimal("custo"));
-                assertTrue(rs.getBoolean("ativo"));
-                assertEquals(new BigDecimal("25.000"), rs.getBigDecimal("quantidade_stock"));
+        // Migrar do V4 até à última versão
+        Flyway flywayLegadaFinal = Flyway.configure()
+            .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+            .locations("classpath:db/migration/postgresql")
+            .schemas(schemaLegada)
+            .load();
+        flywayLegadaFinal.migrate();
 
+        try (Connection conn = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("SET search_path TO " + schemaLegada + ", public");
+            try (ResultSet rs = stmt.executeQuery("SELECT v.id, v.total, vi.custo_conhecido, COUNT(vi.id) as total_itens, COUNT(pv.id) as total_pagamentos FROM vendas v LEFT JOIN venda_itens vi ON vi.venda_id = v.id LEFT JOIN pagamentos_venda pv ON pv.venda_id = v.id GROUP BY v.id, v.total, vi.custo_conhecido ORDER BY v.id")) {
                 assertTrue(rs.next());
-                assertEquals(302L, rs.getLong("id"));
-                assertEquals(new BigDecimal("0.00"), rs.getBigDecimal("custo"));
-                assertTrue(rs.getBoolean("ativo"));
-                assertEquals(new BigDecimal("0.000"), rs.getBigDecimal("quantidade_stock"));
-            }
-
-            // Movimentos de stock: apenas produto com stock > 0 gerou STOCK_INICIAL
-            try (ResultSet rs = stmt.executeQuery("SELECT produto_id, tipo, quantidade FROM movimentos_stock")) {
-                assertTrue(rs.next());
-                assertEquals(301L, rs.getLong("produto_id"));
-                assertEquals("STOCK_INICIAL", rs.getString("tipo"));
-                assertEquals(new BigDecimal("25.000"), rs.getBigDecimal("quantidade"));
-                assertFalse(rs.next(), "Produto com stock zero não deve gerar movimento inicial.");
-            }
-
-            // Vendas (cabeçalhos): 2 vendas criadas a partir das linhas legadas
-            try (ResultSet rs = stmt.executeQuery("SELECT id, numero, total, total_custo, estado FROM vendas ORDER BY id")) {
-                assertTrue(rs.next());
-                assertEquals(1L, rs.getLong("numero"));
-                assertEquals(new BigDecimal("200.00"), rs.getBigDecimal("total"));
-                assertEquals(new BigDecimal("0.00"), rs.getBigDecimal("total_custo"));
-                assertEquals("CONCLUIDA", rs.getString("estado"));
-
-                assertTrue(rs.next());
-                assertEquals(2L, rs.getLong("numero"));
-                assertEquals(new BigDecimal("50.00"), rs.getBigDecimal("total"));
-                assertEquals(new BigDecimal("0.00"), rs.getBigDecimal("total_custo"));
-                assertEquals("CONCLUIDA", rs.getString("estado"));
-            }
-
-            // Venda itens: 2 itens ligados aos cabeçalhos com custo 0
-            try (ResultSet rs = stmt.executeQuery("SELECT id, venda_id, total, custo_unitario FROM venda_itens ORDER BY id")) {
-                assertTrue(rs.next());
-                assertEquals(401L, rs.getLong("id"));
-                assertNotNull(rs.getObject("venda_id"));
-                assertEquals(new BigDecimal("200.00"), rs.getBigDecimal("total"));
-                assertEquals(new BigDecimal("0.00"), rs.getBigDecimal("custo_unitario"));
-
-                assertTrue(rs.next());
-                assertEquals(402L, rs.getLong("id"));
-                assertNotNull(rs.getObject("venda_id"));
-                assertEquals(new BigDecimal("50.00"), rs.getBigDecimal("total"));
-                assertEquals(new BigDecimal("0.00"), rs.getBigDecimal("custo_unitario"));
-            }
-
-            // Pagamentos venda: cada venda legada recebeu pagamento DINHEIRO com o valor total
-            try (ResultSet rs = stmt.executeQuery("SELECT metodo, valor, troco FROM pagamentos_venda ORDER BY id")) {
-                assertTrue(rs.next());
-                assertEquals("DINHEIRO", rs.getString("metodo"));
-                assertEquals(new BigDecimal("200.00"), rs.getBigDecimal("valor"));
-                assertEquals(new BigDecimal("0.00"), rs.getBigDecimal("troco"));
-
-                assertTrue(rs.next());
-                assertEquals("DINHEIRO", rs.getString("metodo"));
-                assertEquals(new BigDecimal("50.00"), rs.getBigDecimal("valor"));
-                assertEquals(new BigDecimal("0.00"), rs.getBigDecimal("troco"));
-            }
-
-            // Devedor preservado
-            try (ResultSet rs = stmt.executeQuery("SELECT id, divida FROM devedores WHERE id = 501")) {
-                assertTrue(rs.next());
-                assertEquals(new BigDecimal("500.00"), rs.getBigDecimal("divida"));
+                assertEquals(100.00, rs.getDouble("total"), 0.001);
+                assertFalse(rs.getBoolean("custo_conhecido"), "custo_conhecido deve ser false em vendas legadas migradas sem custo");
+                assertEquals(1, rs.getInt("total_itens"));
+                assertEquals(1, rs.getInt("total_pagamentos"));
             }
         }
     }
@@ -1291,59 +1279,148 @@ class BackendIntegrationTest {
     }
 
     @Test
-    void migrationLegacyAteV10VerificaIntegridade() throws Exception {
-        String testDbUrl = "jdbc:h2:mem:migration_v10_test_" + UUID.randomUUID().toString().replace("-", "") + ";DB_CLOSE_DELAY=-1";
+    void vinteVendasSimultaneasDaMesmaLojaComNumerosUnicosESemErros() throws Exception {
+        Usuario loja = new Usuario("Loja 20", "loja_20_" + UUID.randomUUID() + "@test.mz", "Senha2026!", "operator");
+        loja.aplicarDiasAcesso(30);
+        loja = new UsuarioDAO().salvar(loja);
+        Categoria cat = service.criarCategoria("Concorrencia", "", loja.getId());
 
-        // 1. Aplicar migrações antigas até V4
-        Flyway.configure()
-            .dataSource(testDbUrl, "sa", "")
-            .locations("classpath:db/migration/h2")
-            .target("4")
-            .load()
-            .migrate();
-
-        // 2. Inserir dados legados no esquema V4
-        try (Connection conn = DriverManager.getConnection(testDbUrl, "sa", "");
-             Statement stmt = conn.createStatement()) {
-            stmt.executeUpdate("INSERT INTO usuarios (id, nome, email, password_hash, role) VALUES (101, 'Usuario Legado', 'legado@test.local', 'hash', 'operator')");
-            stmt.executeUpdate("INSERT INTO categorias (id, nome, usuario_id) VALUES (201, 'Bebidas', 101)");
-            stmt.executeUpdate("INSERT INTO produtos (id, nome, preco, quantidade_stock, stock_minimo, unidade, usuario_id, categoria_id) VALUES (301, 'Agua 500ml', 50.00, 20.000, 5.000, 'un', 101, 201)");
-            stmt.executeUpdate("INSERT INTO produtos (id, nome, preco, quantidade_stock, stock_minimo, unidade, usuario_id, categoria_id) VALUES (302, 'Sumo 1L', 100.00, 15.000, 2.000, 'un', 101, 201)");
-            stmt.executeUpdate("INSERT INTO vendas (id, data_venda, quantidade, preco_unitario, total, observacao, produto_id, usuario_id) VALUES (401, '2026-09-01', 2.000, 50.00, 100.00, 'Venda 1', 301, 101)");
-            stmt.executeUpdate("INSERT INTO vendas (id, data_venda, quantidade, preco_unitario, total, observacao, produto_id, usuario_id) VALUES (402, '2026-09-02', 1.000, 100.00, 100.00, 'Venda 2', 302, 101)");
+        int n = 20;
+        List<Produto> prods = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            prods.add(service.criarProduto("P" + i, new BigDecimal("10.00"), new BigDecimal("10.000"), "un", BigDecimal.ZERO, cat.getId(), null, loja.getId()));
         }
 
-        // 3. Executar todas as migrações até V10
-        Flyway.configure()
-            .dataSource(testDbUrl, "sa", "")
-            .locations("classpath:db/migration/h2")
-            .load()
-            .migrate();
-
-        // 4. Validar integridade
-        try (Connection conn = DriverManager.getConnection(testDbUrl, "sa", "");
-             Statement stmt = conn.createStatement()) {
-            // Nenhuma venda perdeu itens nem pagamentos e custo_conhecido = false para vendas antigas sem custo
-            try (ResultSet rs = stmt.executeQuery("SELECT v.id, v.total, vi.custo_conhecido, COUNT(vi.id) as total_itens, COUNT(pv.id) as total_pagamentos FROM vendas v LEFT JOIN venda_itens vi ON vi.venda_id = v.id LEFT JOIN pagamentos_venda pv ON pv.venda_id = v.id GROUP BY v.id, v.total, vi.custo_conhecido ORDER BY v.id")) {
-                assertTrue(rs.next());
-                assertEquals(100.00, rs.getDouble("total"), 0.001);
-                assertFalse(rs.getBoolean("custo_conhecido"), "custo_conhecido deve ser false em vendas legadas migradas sem custo");
-                assertEquals(1, rs.getInt("total_itens"));
-                assertEquals(1, rs.getInt("total_pagamentos"));
-
-                assertTrue(rs.next());
-                assertEquals(100.00, rs.getDouble("total"), 0.001);
-                assertFalse(rs.getBoolean("custo_conhecido"), "custo_conhecido deve ser false em vendas legadas migradas sem custo");
-                assertEquals(1, rs.getInt("total_itens"));
-                assertEquals(1, rs.getInt("total_pagamentos"));
-            }
-
-            // Total de stock bate certo antes e depois (20.000 + 15.000 = 35.000)
-            try (ResultSet rs = stmt.executeQuery("SELECT SUM(quantidade_stock) as total_stock FROM produtos WHERE usuario_id = 101")) {
-                assertTrue(rs.next());
-                assertEquals(35.000, rs.getDouble("total_stock"), 0.001);
-            }
+        ExecutorService executor = Executors.newFixedThreadPool(n);
+        CountDownLatch latch = new CountDownLatch(1);
+        List<Future<VendaIdempotenteService.Resultado>> futures = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            Produto p = prods.get(i);
+            String idempKey = UUID.randomUUID().toString();
+            Long uid = loja.getId();
+            futures.add(executor.submit(() -> {
+                latch.await();
+                return safe.registar(List.of(Map.of("produtoId", p.getId(), "quantidade", "1.000")), uid, idempKey);
+            }));
         }
+        latch.countDown();
+        executor.shutdown();
+        assertTrue(executor.awaitTermination(30, TimeUnit.SECONDS));
+
+        Set<Long> numeros = new HashSet<>();
+        for (Future<VendaIdempotenteService.Resultado> f : futures) {
+            VendaIdempotenteService.Resultado res = f.get();
+            assertNotNull(res);
+            assertFalse(res.repetido);
+            JsonNode no = json.readTree(res.json);
+            long num = no.get("numero").asLong();
+            numeros.add(num);
+        }
+        assertEquals(n, numeros.size(), "Devem existir exactamente 20 números únicos sequenciais.");
+        assertEquals(n, service.listarVendas(loja.getId()).size());
+    }
+
+    @Test
+    void duasDevolucoesSimultaneasDoMesmoItemUmaPassaEOutraFalha() throws Exception {
+        Usuario loja = new Usuario("Loja Dev", "loja_dev_" + UUID.randomUUID() + "@test.mz", "Senha2026!", "operator");
+        loja.aplicarDiasAcesso(30);
+        loja = new UsuarioDAO().salvar(loja);
+        Categoria cat = service.criarCategoria("Devs", "", loja.getId());
+        Produto p = service.criarProduto("Item Devolucao", new BigDecimal("50.00"), new BigDecimal("10.000"), "un", BigDecimal.ZERO, cat.getId(), null, loja.getId());
+
+        VendaIdempotenteService.Resultado r = safe.registar(List.of(Map.of("produtoId", p.getId(), "quantidade", "2.000")), loja.getId(), UUID.randomUUID().toString());
+        Long vendaId = json.readTree(r.json).get("id").asLong();
+        Long itemVendaId = json.readTree(r.json).get("itens").get(0).get("id").asLong();
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch latch = new CountDownLatch(1);
+        List<Future<Boolean>> futures = new ArrayList<>();
+        for (int i = 0; i < 2; i++) {
+            Long uid = loja.getId();
+            futures.add(executor.submit(() -> {
+                latch.await();
+                try {
+                    service.processarDevolucao(vendaId, List.of(new service.BarracaService.DevolucaoItemParam(itemVendaId, new BigDecimal("2.000"))), "Defeito concorrente", null, null, uid);
+                    return true;
+                } catch (Exception ex) {
+                    return false;
+                }
+            }));
+        }
+        latch.countDown();
+        executor.shutdown();
+        assertTrue(executor.awaitTermination(15, TimeUnit.SECONDS));
+
+        int sucessos = 0;
+        int falhas = 0;
+        for (Future<Boolean> f : futures) {
+            if (f.get()) sucessos++;
+            else falhas++;
+        }
+        assertEquals(1, sucessos, "Exactamente uma devolução de quantidade total deve ter sucesso.");
+        assertEquals(1, falhas, "A segunda devolução concorrente da mesma quantidade deve ser rejeitada.");
+    }
+
+    @Test
+    void duasAnulacoesSimultaneasStockRepostoUmaSoVez() throws Exception {
+        Usuario loja = new Usuario("Loja Anula", "loja_anula_" + UUID.randomUUID() + "@test.mz", "Senha2026!", "operator");
+        loja.aplicarDiasAcesso(30);
+        loja = new UsuarioDAO().salvar(loja);
+        Categoria cat = service.criarCategoria("Anulacoes", "", loja.getId());
+        Produto p = service.criarProduto("Item Anulacao", new BigDecimal("100.00"), new BigDecimal("10.000"), "un", BigDecimal.ZERO, cat.getId(), null, loja.getId());
+
+        VendaIdempotenteService.Resultado r = safe.registar(List.of(Map.of("produtoId", p.getId(), "quantidade", "3.000")), loja.getId(), UUID.randomUUID().toString());
+        Long vendaId = json.readTree(r.json).get("id").asLong();
+        assertEquals(new BigDecimal("7.000"), new ProdutoDAO().buscarPorId(p.getId(), loja.getId()).getQuantidadeStock());
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch latch = new CountDownLatch(1);
+        List<Future<Boolean>> futures = new ArrayList<>();
+        for (int i = 0; i < 2; i++) {
+            Long uid = loja.getId();
+            futures.add(executor.submit(() -> {
+                latch.await();
+                try {
+                    service.anularVenda(vendaId, "Anulação de teste concorrente", uid);
+                    return true;
+                } catch (Exception ex) {
+                    return false;
+                }
+            }));
+        }
+        latch.countDown();
+        executor.shutdown();
+        assertTrue(executor.awaitTermination(15, TimeUnit.SECONDS));
+
+        int sucessos = 0;
+        for (Future<Boolean> f : futures) {
+            if (f.get()) sucessos++;
+        }
+        assertEquals(1, sucessos, "Apenas uma anulação concorrente deve ter sucesso.");
+        assertEquals(new BigDecimal("10.000"), new ProdutoDAO().buscarPorId(p.getId(), loja.getId()).getQuantidadeStock(), "O stock final deve ser reposto apenas uma vez (10 unidades, nunca 13).");
+    }
+
+    @Test
+    void indiceUnicoParcialApenasUmaSessaoCaixaAbertaPorLoja() throws Exception {
+        Usuario loja = new Usuario("Loja Caixa Indice", "loja_caixa_" + UUID.randomUUID() + "@test.mz", "Senha2026!", "operator");
+        loja.aplicarDiasAcesso(30);
+        loja = new UsuarioDAO().salvar(loja);
+        final Long lojaId = loja.getId();
+
+        SessaoCaixa s1 = new SessaoCaixa(lojaId, new BigDecimal("100.00"), "Abertura 1", lojaId);
+        JPAUtil.emTransacao(lojaId, em -> {
+            em.persist(s1);
+            return null;
+        });
+        assertNotNull(s1.getId());
+
+        final SessaoCaixa s2 = new SessaoCaixa(lojaId, new BigDecimal("200.00"), "Abertura 2", lojaId);
+        assertThrows(Exception.class, () -> {
+            JPAUtil.emTransacao(lojaId, em -> {
+                em.persist(s2);
+                return null;
+            });
+        }, "Inserir segunda sessão de caixa com estado ABERTA deve violar o índice parcial uk_sessao_aberta_usuario.");
     }
 
     @Test

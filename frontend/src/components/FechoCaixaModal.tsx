@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { RefreshCw, CreditCard, Printer, CheckCircle2, History, Download } from 'lucide-react';
 import { apiRequest, descarregarFicheiro } from '../utils/api';
+import { formatarDataHora } from '../utils/dataHora';
 import { decimalSeguro, formatMoney, parseDecimalInput } from '../utils/decimal';
 import { Modal, Spinner, Notice, Field } from './UI';
 import { useToast } from '../utils/toast';
+import { Confetti, type ConfettiHandle } from './ui/Confetti';
 
 interface FechoCaixaData {
   data: string;
@@ -49,9 +51,7 @@ interface FechoCaixaModalProps {
 export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalProps) {
   const toast = useToast();
   const [abaAtiva, setAbaAtiva] = useState<'sessao' | 'diario' | 'historico'>('sessao');
-  const [dataSelecionada, setDataSelecionada] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
+  const [dataSelecionada, setDataSelecionada] = useState(new Date().toISOString().slice(0, 10));
 
   // Sessão atual
   const [sessao, setSessao] = useState<SessaoCaixaAtual | null>(null);
@@ -60,6 +60,7 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
   const [notaFecho, setNotaFecho] = useState('');
   const [fechando, setFechando] = useState(false);
   const [fechoSucesso, setFechoSucesso] = useState<any | null>(null);
+  const confettiRef = useRef<ConfettiHandle>(null);
 
   // Relatório diário
   const [dados, setDados] = useState<FechoCaixaData | null>(null);
@@ -160,6 +161,7 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
         }),
       });
       setFechoSucesso(res);
+      confettiRef.current?.fire();
       toast('Caixa fechado com sucesso.');
       if (onSessaoFechada) onSessaoFechada();
     } catch (err: unknown) {
@@ -174,7 +176,10 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
     const win = window.open('', '_blank', 'width=450,height=600');
     if (!win) return;
     const metodosHtml = Object.entries(dados.totaisPorMetodo || {})
-      .map(([m, val]) => `<tr><td style="padding:4px 0">${m}:</td><td style="text-align:right;font-weight:bold">${formatMoney(val)}</td></tr>`)
+      .map(
+        ([m, val]) =>
+          `<tr><td style="padding:4px 0">${m}:</td><td style="text-align:right;font-weight:bold">${formatMoney(val)}</td></tr>`,
+      )
       .join('');
 
     win.document.write(`
@@ -225,7 +230,15 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
   return (
     <Modal title="Controlo e Fecho de Caixa" onClose={onClose} wide>
       {/* Abas */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, borderBottom: '1px solid var(--border-color)', paddingBottom: 8 }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: 8,
+          marginBottom: 16,
+          borderBottom: '1px solid var(--border-color)',
+          paddingBottom: 8,
+        }}
+      >
         {sessao && sessao.aberta && (
           <button
             type="button"
@@ -264,11 +277,18 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
               <CheckCircle2 size={48} color="#16a34a" style={{ margin: '0 auto 12px' }} />
               <h3>Caixa fechado com sucesso!</h3>
               <p style={{ color: 'var(--text-secondary)' }}>
-                Esperado: {formatMoney(fechoSucesso.valorEsperado)} | Contado: {formatMoney(fechoSucesso.valorContado)}
+                Esperado: {formatMoney(fechoSucesso.valorEsperado)} | Contado:{' '}
+                {formatMoney(fechoSucesso.valorContado)}
               </p>
               {fechoSucesso.diferenca !== '0.00' && (
-                <p style={{ fontWeight: 600, color: Number(fechoSucesso.diferenca) < 0 ? '#dc2626' : '#2563eb' }}>
-                  Diferença: {Number(fechoSucesso.diferenca) > 0 ? '+' : ''}{formatMoney(fechoSucesso.diferenca)}
+                <p
+                  style={{
+                    fontWeight: 600,
+                    color: Number(fechoSucesso.diferenca) < 0 ? '#dc2626' : '#2563eb',
+                  }}
+                >
+                  Diferença: {Number(fechoSucesso.diferenca) > 0 ? '+' : ''}
+                  {formatMoney(fechoSucesso.diferenca)}
                 </p>
               )}
               <div style={{ marginTop: 20 }}>
@@ -279,26 +299,48 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
             </div>
           ) : (
             <form onSubmit={handleFecharSessao}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 16 }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                  gap: 10,
+                  marginBottom: 16,
+                }}
+              >
                 <div className="card" style={{ padding: 10, textAlign: 'center' }}>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Fundo Inicial</span>
-                  <strong style={{ display: 'block', fontSize: 16 }}>{formatMoney(sessao.valorInicial || '0')}</strong>
+                  <strong style={{ display: 'block', fontSize: 16 }}>
+                    {formatMoney(sessao.valorInicial || '0')}
+                  </strong>
                 </div>
                 <div className="card" style={{ padding: 10, textAlign: 'center' }}>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Vendas Dinheiro</span>
-                  <strong style={{ display: 'block', fontSize: 16, color: '#16a34a' }}>+{formatMoney(sessao.vendasDinheiro || '0')}</strong>
+                  <strong style={{ display: 'block', fontSize: 16, color: '#16a34a' }}>
+                    +{formatMoney(sessao.vendasDinheiro || '0')}
+                  </strong>
                 </div>
                 <div className="card" style={{ padding: 10, textAlign: 'center' }}>
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Devoluções</span>
-                  <strong style={{ display: 'block', fontSize: 16, color: '#dc2626' }}>-{formatMoney(sessao.devolucoesDinheiro || '0')}</strong>
+                  <strong style={{ display: 'block', fontSize: 16, color: '#dc2626' }}>
+                    -{formatMoney(sessao.devolucoesDinheiro || '0')}
+                  </strong>
                 </div>
                 <div className="card" style={{ padding: 10, textAlign: 'center' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Despesas / Saídas</span>
-                  <strong style={{ display: 'block', fontSize: 16, color: '#ea580c' }}>-{formatMoney(sessao.despesasDinheiro || '0')}</strong>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Despesas / Saídas
+                  </span>
+                  <strong style={{ display: 'block', fontSize: 16, color: '#ea580c' }}>
+                    -{formatMoney(sessao.despesasDinheiro || '0')}
+                  </strong>
                 </div>
-                <div className="card" style={{ padding: 10, textAlign: 'center', background: 'var(--bg-subtle)' }}>
+                <div
+                  className="card"
+                  style={{ padding: 10, textAlign: 'center', background: 'var(--bg-subtle)' }}
+                >
                   <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Valor Esperado</span>
-                  <strong style={{ display: 'block', fontSize: 18, color: 'var(--color-brand)' }}>{formatMoney(valorEsperadoDec)}</strong>
+                  <strong style={{ display: 'block', fontSize: 18, color: 'var(--color-brand)' }}>
+                    {formatMoney(valorEsperadoDec)}
+                  </strong>
                 </div>
               </div>
 
@@ -308,12 +350,50 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
                   type="number"
                   step="0.01"
                   min="0"
+                  inputMode="decimal"
                   required
                   value={valorContado}
                   onChange={(e) => setValorContado(e.target.value)}
                   style={{ fontSize: 18, fontWeight: 600, padding: 10 }}
                 />
               </Field>
+
+              <div className="pos-keypad-container" style={{ marginTop: 8, marginBottom: 12 }}>
+                <div className="pos-keypad">
+                  {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+                    <button
+                      key={digit}
+                      type="button"
+                      className="pos-keypad-btn"
+                      onClick={() => setValorContado((prev) => (prev === '0' ? digit : prev + digit))}
+                    >
+                      {digit}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="pos-keypad-btn"
+                    onClick={() => setValorContado((prev) => (prev.includes('.') ? prev : (prev || '0') + '.'))}
+                  >
+                    .
+                  </button>
+                  <button
+                    type="button"
+                    className="pos-keypad-btn"
+                    onClick={() => setValorContado((prev) => (prev === '0' ? '0' : prev + '0'))}
+                  >
+                    0
+                  </button>
+                  <button
+                    type="button"
+                    className="pos-keypad-btn backspace"
+                    onClick={() => setValorContado((prev) => prev.slice(0, -1))}
+                    aria-label="Apagar dígito"
+                  >
+                    ⌫
+                  </button>
+                </div>
+              </div>
 
               <div style={{ display: 'flex', gap: 8, marginTop: 8, marginBottom: 16 }}>
                 <button
@@ -329,11 +409,17 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
               {/* Indicador de diferença */}
               <div style={{ marginBottom: 16 }}>
                 {diferencaDec.isZero() ? (
-                  <Notice kind="success">A contagem confere exatamente com o valor esperado.</Notice>
+                  <Notice kind="success">
+                    A contagem confere exatamente com o valor esperado.
+                  </Notice>
                 ) : diferencaDec.gt(0) ? (
-                  <Notice kind="info">Sobra de dinheiro na gaveta: +{formatMoney(diferencaDec)}</Notice>
+                  <Notice kind="info">
+                    Sobra de dinheiro na gaveta: +{formatMoney(diferencaDec)}
+                  </Notice>
                 ) : (
-                  <Notice kind="error">Falta de dinheiro na gaveta: {formatMoney(diferencaDec)}</Notice>
+                  <Notice kind="error">
+                    Falta de dinheiro na gaveta: {formatMoney(diferencaDec)}
+                  </Notice>
                 )}
               </div>
 
@@ -348,7 +434,12 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
               </Field>
 
               <div className="modal-actions" style={{ marginTop: 20 }}>
-                <button type="button" className="btn-secondary" onClick={onClose} disabled={fechando}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={onClose}
+                  disabled={fechando}
+                >
                   Cancelar
                 </button>
                 <button type="submit" className="btn-primary" disabled={fechando}>
@@ -372,7 +463,11 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
               type="date"
               value={dataSelecionada}
               onChange={(e) => setDataSelecionada(e.target.value)}
-              style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border-color, #ccc)' }}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 6,
+                border: '1px solid var(--border-color, #ccc)',
+              }}
             />
             <button
               type="button"
@@ -380,7 +475,13 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
               onClick={() => void carregarDiario(dataSelecionada)}
               disabled={carregandoDiario}
             >
-              {carregandoDiario ? <Spinner size="small" /> : <><RefreshCw size={15} /> <span>Atualizar</span></>}
+              {carregandoDiario ? (
+                <Spinner size="small" />
+              ) : (
+                <>
+                  <RefreshCw size={15} /> <span>Atualizar</span>
+                </>
+              )}
             </button>
           </div>
 
@@ -391,84 +492,107 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
             </div>
           ) : dados ? (
             <div>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                  gap: 12,
-                  marginBottom: 20,
-                }}
-              >
-                <div className="card" style={{ padding: 12, textAlign: 'center' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>Total Vendido</span>
-                  <strong style={{ display: 'block', fontSize: 18, color: 'var(--primary, #1e40af)' }}>
-                    {formatMoney(dados.totalVendido)}
-                  </strong>
+              <div className="fecho-pc-layout">
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                    gap: 12,
+                  }}
+                >
+                  <div className="card" style={{ padding: 12, textAlign: 'center' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>
+                      Total Vendido
+                    </span>
+                    <strong
+                      style={{ display: 'block', fontSize: 18, color: 'var(--primary, #1e40af)' }}
+                    >
+                      {formatMoney(dados.totalVendido)}
+                    </strong>
+                  </div>
+
+                  <div className="card" style={{ padding: 12, textAlign: 'center' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>
+                      Custo Mercadorias
+                    </span>
+                    <strong style={{ display: 'block', fontSize: 18 }}>
+                      {formatMoney(dados.totalCusto)}
+                    </strong>
+                  </div>
+
+                  <div className="card" style={{ padding: 12, textAlign: 'center' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>
+                      Lucro Estimado
+                    </span>
+                    <strong style={{ display: 'block', fontSize: 18, color: '#16a34a' }}>
+                      {formatMoney(dados.lucroEstimado)}
+                    </strong>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        color: 'var(--text-muted, #888)',
+                        display: 'block',
+                        marginTop: 2,
+                      }}
+                    >
+                      Vendas antigas sem custo não entram no lucro
+                    </span>
+                  </div>
+
+                  <div className="card" style={{ padding: 12, textAlign: 'center' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>
+                      Vendas / Anuladas
+                    </span>
+                    <strong style={{ display: 'block', fontSize: 18 }}>
+                      {dados.numeroVendas} /{' '}
+                      <span style={{ color: '#dc2626' }}>{dados.vendasAnuladas}</span>
+                    </strong>
+                  </div>
+
+                  <div className="card" style={{ padding: 12, textAlign: 'center' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>
+                      Vendido a Fiado
+                    </span>
+                    <strong style={{ display: 'block', fontSize: 18, color: '#d97706' }}>
+                      {formatMoney(dados.totalFiado)}
+                    </strong>
+                  </div>
+
+                  <div className="card" style={{ padding: 12, textAlign: 'center' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>
+                      Saídas / Despesas
+                    </span>
+                    <strong style={{ display: 'block', fontSize: 18, color: '#ea580c' }}>
+                      -{formatMoney(dados.totalDespesas || '0')}
+                    </strong>
+                  </div>
                 </div>
 
-                <div className="card" style={{ padding: 12, textAlign: 'center' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>Custo Mercadorias</span>
-                  <strong style={{ display: 'block', fontSize: 18 }}>
-                    {formatMoney(dados.totalCusto)}
-                  </strong>
-                </div>
-
-                <div className="card" style={{ padding: 12, textAlign: 'center' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>Lucro Estimado</span>
-                  <strong style={{ display: 'block', fontSize: 18, color: '#16a34a' }}>
-                    {formatMoney(dados.lucroEstimado)}
-                  </strong>
-                  <span style={{ fontSize: 10, color: 'var(--text-muted, #888)', display: 'block', marginTop: 2 }}>
-                    Vendas antigas sem custo não entram no lucro
-                  </span>
-                </div>
-
-                <div className="card" style={{ padding: 12, textAlign: 'center' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>Vendas / Anuladas</span>
-                  <strong style={{ display: 'block', fontSize: 18 }}>
-                    {dados.numeroVendas} / <span style={{ color: '#dc2626' }}>{dados.vendasAnuladas}</span>
-                  </strong>
-                </div>
-
-                <div className="card" style={{ padding: 12, textAlign: 'center' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>Vendido a Fiado</span>
-                  <strong style={{ display: 'block', fontSize: 18, color: '#d97706' }}>
-                    {formatMoney(dados.totalFiado)}
-                  </strong>
-                </div>
-
-                <div className="card" style={{ padding: 12, textAlign: 'center' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted, #666)' }}>Saídas / Despesas</span>
-                  <strong style={{ display: 'block', fontSize: 18, color: '#ea580c' }}>
-                    -{formatMoney(dados.totalDespesas || '0')}
-                  </strong>
-                </div>
-              </div>
-
-              <div className="card" style={{ padding: 16 }}>
-                <h4 style={{ margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <CreditCard size={18} /> Totais por Forma de Pagamento
-                </h4>
-                <table className="responsive-table">
-                  <thead>
-                    <tr>
-                      <th>Método</th>
-                      <th className="numeric">Total Recebido</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(dados.totaisPorMetodo || {}).map(([metodo, valor]) => (
-                      <tr key={metodo}>
-                        <td>
-                          <strong>{metodo}</strong>
-                        </td>
-                        <td className="numeric font-mono" style={{ fontWeight: 600 }}>
-                          {formatMoney(valor)}
-                        </td>
+                <div className="card" style={{ padding: 16 }}>
+                  <h4 style={{ margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <CreditCard size={18} /> Totais por Forma de Pagamento
+                  </h4>
+                  <table className="responsive-table">
+                    <thead>
+                      <tr>
+                        <th>Método</th>
+                        <th className="numeric">Total Recebido</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {Object.entries(dados.totaisPorMetodo || {}).map(([metodo, valor]) => (
+                        <tr key={metodo}>
+                          <td data-label="Método">
+                            <strong>{metodo}</strong>
+                          </td>
+                          <td data-label="Total Recebido" className="numeric font-mono" style={{ fontWeight: 600 }}>
+                            {formatMoney(valor)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               <div className="modal-actions" style={{ marginTop: 20 }}>
@@ -488,7 +612,9 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
       {abaAtiva === 'historico' && (
         <div>
           {carregandoHistorico ? (
-            <div style={{ textAlign: 'center', padding: 24 }}><Spinner /></div>
+            <div style={{ textAlign: 'center', padding: 24 }}>
+              <Spinner />
+            </div>
           ) : historico.length === 0 ? (
             <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 24 }}>
               Nenhum fecho de caixa registado até ao momento.
@@ -512,16 +638,33 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
                     const difNum = Number(h.diferenca || '0');
                     return (
                       <tr key={h.id}>
-                        <td>{h.abertaEm ? h.abertaEm.replace('T', ' ').slice(0, 16) : '-'}</td>
-                        <td>{h.fechadaEm ? h.fechadaEm.replace('T', ' ').slice(0, 16) : 'Aberta'}</td>
-                        <td className="numeric font-mono">{formatMoney(h.valorInicial)}</td>
-                        <td className="numeric font-mono">{h.valorEsperado ? formatMoney(h.valorEsperado) : '-'}</td>
-                        <td className="numeric font-mono">{h.valorContado ? formatMoney(h.valorContado) : '-'}</td>
-                        <td className="numeric font-mono" style={{ color: difNum < 0 ? '#dc2626' : difNum > 0 ? '#2563eb' : '#16a34a', fontWeight: 600 }}>
-                          {h.diferenca ? `${difNum > 0 ? '+' : ''}${formatMoney(h.diferenca)}` : '-'}
+                        <td data-label="Data Abertura">{formatarDataHora(h.abertaEm)}</td>
+                        <td data-label="Fechada Em">
+                          {h.fechadaEm ? formatarDataHora(h.fechadaEm) : 'Aberta'}
                         </td>
-                        <td>
-                          <span className={`badge ${h.estado === 'ABERTA' ? 'badge-success' : 'badge-neutral'}`}>
+                        <td data-label="Inicial" className="numeric font-mono">{formatMoney(h.valorInicial)}</td>
+                        <td data-label="Esperado" className="numeric font-mono">
+                          {h.valorEsperado ? formatMoney(h.valorEsperado) : '-'}
+                        </td>
+                        <td data-label="Contado" className="numeric font-mono">
+                          {h.valorContado ? formatMoney(h.valorContado) : '-'}
+                        </td>
+                        <td
+                          data-label="Diferença"
+                          className="numeric font-mono"
+                          style={{
+                            color: difNum < 0 ? '#dc2626' : difNum > 0 ? '#2563eb' : '#16a34a',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {h.diferenca
+                            ? `${difNum > 0 ? '+' : ''}${formatMoney(h.diferenca)}`
+                            : '-'}
+                        </td>
+                        <td data-label="Estado">
+                          <span
+                            className={`badge ${h.estado === 'ABERTA' ? 'badge-success' : 'badge-neutral'}`}
+                          >
                             {h.estado === 'ABERTA' ? 'Aberta' : 'Fechada'}
                           </span>
                         </td>
@@ -548,6 +691,7 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
           </div>
         </div>
       )}
+      <Confetti ref={confettiRef} count={90} />
     </Modal>
   );
 }

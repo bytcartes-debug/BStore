@@ -109,6 +109,19 @@ export async function limparDadosLocais(): Promise<void> {
     tx.objectStore(STORE_PENDENTES).clear();
     tx.objectStore(STORE_CACHE).clear();
   } catch {}
+
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('bstore_')) {
+        keysToRemove.push(k);
+      }
+    }
+    for (const k of keysToRemove) {
+      localStorage.removeItem(k);
+    }
+  } catch {}
 }
 
 // Sincronizador de vendas pendentes ao voltar online

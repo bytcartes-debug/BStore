@@ -47,10 +47,15 @@
             <version>2.0.9</version>
         </dependency>
 
-        <!-- Hibernate ORM -->
+        <!-- Hibernate ORM & HikariCP -->
         <dependency>
             <groupId>org.hibernate</groupId>
             <artifactId>hibernate-core</artifactId>
+            <version>5.6.15.Final</version>
+        </dependency>
+        <dependency>
+            <groupId>org.hibernate</groupId>
+            <artifactId>hibernate-hikaricp</artifactId>
             <version>5.6.15.Final</version>
         </dependency>
 
@@ -61,14 +66,7 @@
             <version>2.2</version>
         </dependency>
 
-        <!-- H2 Database (fallback local) -->
-        <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <version>2.2.224</version>
-        </dependency>
-
-        <!-- PostgreSQL (Supabase na nuvem) -->
+        <!-- PostgreSQL (Supabase na nuvem / Testcontainers em testes) -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
@@ -91,6 +89,26 @@
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Testcontainers para testes em PostgreSQL real -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <version>1.19.8</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>1.19.8</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>1.19.8</version>
             <scope>test</scope>
         </dependency>
 
@@ -147,13 +165,6 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
-                <configuration>
-                    <environmentVariables>
-                        <DATABASE_URL>jdbc:h2:mem:bstore-test;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000</DATABASE_URL>
-                        <DB_USER>sa</DB_USER>
-                        <DB_PASSWORD></DB_PASSWORD>
-                    </environmentVariables>
-                </configuration>
             </plugin>
             <!-- Exclui código Swing legado (não usado pelo servidor web) -->
             <plugin>

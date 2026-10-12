@@ -4,16 +4,25 @@ import { apiFetch, apiRequest, descarregarFicheiro } from '../utils/api';
 import { useMutation, useResource } from '../utils/useResource';
 import { abrirScanner } from '../utils/scanner';
 import { notificarVendaRegistada } from '../utils/notificacoes';
-import { decimal, decimalSeguro, formatMoney, formatQuantity, parseDecimalInput } from '../utils/decimal';
+import {
+  decimal,
+  decimalSeguro,
+  formatMoney,
+  formatQuantity,
+  parseDecimalInput,
+} from '../utils/decimal';
 import {
   gerarTextoRecibo,
   imprimirReciboTexto,
+  partilharRecibo,
   partilharReciboWhatsApp,
   formatarMetodoPagamento,
   type ReciboDados,
 } from '../utils/recibo';
+import { formatarData } from '../utils/dataHora';
 import { FechoCaixaModal } from '../components/FechoCaixaModal';
 import { DespesaCaixaModal } from '../components/caixa/DespesaCaixaModal';
+import { Confetti, type ConfettiHandle } from '../components/ui/Confetti';
 import {
   salvarVendaPendente,
   listarVendasPendentes,
@@ -77,29 +86,53 @@ import { PaymentDialog } from '../components/vendas/PaymentDialog';
 import { SaleDetailsModal } from '../components/vendas/SaleDetailsModal';
 
 const loadSalesData = async (signal: AbortSignal) => {
-  const [vendas, produtos, categorias, devedores, metodos, definicoes, sessaoCaixa] = await Promise.all([
-    apiRequest<VendaDocumento[]>('/api/vendas', { signal }),
-    apiRequest<Produto[]>('/api/produtos', { signal }),
-    apiRequest<Categoria[]>('/api/categorias', { signal }).catch(() => [] as Categoria[]),
-    apiRequest<Devedor[]>('/api/devedores', { signal }).catch(() => [] as Devedor[]),
-    apiRequest<MetodoPagamentoConfig[]>('/api/metodos-pagamento?apenasAtivos=true', { signal }).catch(
-      () => [] as MetodoPagamentoConfig[],
-    ),
-    apiRequest<DefinicoesLoja>('/api/definicoes', { signal }).catch(
-      () => ({ controloCaixa: false, nomeLoja: 'BStore' } as DefinicoesLoja),
-    ),
-    apiRequest<SessaoCaixaAtual>('/api/caixa/atual', { signal }).catch(
-      () => ({ aberta: false } as SessaoCaixaAtual),
-    ),
-  ]);
+  const [vendas, produtos, categorias, devedores, metodos, definicoes, sessaoCaixa] =
+    await Promise.all([
+      apiRequest<VendaDocumento[]>('/api/vendas', { signal }),
+      apiRequest<Produto[]>('/api/produtos', { signal }),
+      apiRequest<Categoria[]>('/api/categorias', { signal }).catch(() => [] as Categoria[]),
+      apiRequest<Devedor[]>('/api/devedores', { signal }).catch(() => [] as Devedor[]),
+      apiRequest<MetodoPagamentoConfig[]>('/api/metodos-pagamento?apenasAtivos=true', {
+        signal,
+      }).catch(() => [] as MetodoPagamentoConfig[]),
+      apiRequest<DefinicoesLoja>('/api/definicoes', { signal }).catch(
+        () => ({ controloCaixa: false, nomeLoja: 'BStore' }) as DefinicoesLoja,
+      ),
+      apiRequest<SessaoCaixaAtual>('/api/caixa/atual', { signal }).catch(
+        () => ({ aberta: false }) as SessaoCaixaAtual,
+      ),
+    ]);
   return { vendas, produtos, categorias, devedores, metodos, definicoes, sessaoCaixa };
 };
 
-export default function VendasPage() {
+interface VendasPageProps {
+  currentUser?: {
+    userId: number;
+    email: string;
+    role: 'superuser' | 'operator';
+    diasRestantes: number;
+  } | null;
+}
+
+export default function VendasPage({ currentUser }: VendasPageProps = {}) {
   const { data, loading, error, reload } = useResource(loadSalesData);
   const [search, setSearch] = useState('');
   const [filterEstado, setFilterEstado] = useState('todos');
   const [filterMetodo, setFilterMetodo] = useState('todos');
+
+  const usuarioId = useMemo(() => {
+    if (currentUser?.userId) return String(currentUser.userId);
+    try {
+      const raw = localStorage.getItem('currentUser');
+      if (raw) {
+        const u = JSON.parse(raw);
+        if (u.userId) return String(u.userId);
+      }
+    } catch {}
+    return 'padrao';
+  }, [currentUser]);
+
+  const storageKey = `bstore_carrinhos_espera_${usuarioId}`;
 
   // Modais principais
   const [showModal, setShowModal] = useState(false);
@@ -112,14 +145,15 @@ export default function VendasPage() {
   const [reciboSucesso, setReciboSucesso] = useState<ReciboDados | null>(null);
   const [telefoneWhatsAppRecibo, setTelefoneWhatsAppRecibo] = useState('');
   const [larguraTermica, setLarguraTermica] = useState<'58mm' | '80mm'>('58mm');
+  const confettiRef = useRef<ConfettiHandle>(null);
 
   // Despesa de Caixa
   const [showDespesaModal, setShowDespesaModal] = useState(false);
 
-  // Vendas em Espera (Hold Cart)
+  // Vendas em Espera (Hold Cart) por utilizador
   const [carrinhosEmEspera, setCarrinhosEmEspera] = useState<CarrinhoEmEspera[]>(() => {
     try {
-      return JSON.parse(localStorage.getItem('bstore_carrinhos_espera') || '[]');
+      return JSON.parse(localStorage.getItem(storageKey) || '[]');
     } catch {
       return [];
     }
@@ -127,7 +161,9 @@ export default function VendasPage() {
 
   // Devoluções simples
   const [vendaParaDevolver, setVendaParaDevolver] = useState<VendaDocumento | null>(null);
-  const [itensDevolucao, setItensDevolucao] = useState<{ itemVendaId: number; quantidade: string }[]>([]);
+  const [itensDevolucao, setItensDevolucao] = useState<
+    { itemVendaId: number; quantidade: string }[]
+  >([]);
   const [motivoDevolucao, setMotivoDevolucao] = useState('Engano na venda');
   const [devolvendo, setDevolvendo] = useState(false);
 
@@ -149,6 +185,9 @@ export default function VendasPage() {
   const [quantity, setQuantity] = useState('1');
   const [cartError, setCartError] = useState<string | null>(null);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [selectedCategoriaId, setSelectedCategoriaId] = useState<number | string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [selectedCartIndex, setSelectedCartIndex] = useState<number>(0);
 
   // Desconto por linha (Modal)
   const [itemParaDesconto, setItemParaDesconto] = useState<ItemCarrinho | null>(null);
@@ -438,21 +477,188 @@ export default function VendasPage() {
     inputRef.current?.focus();
   };
 
-  const changeQuantity = (id: number, qty: Decimal) => {
-    const item = carrinho.find((entry) => entry.produto.id === id);
-    if (item && qty.gt(item.produto.stock)) {
-      setCartError(`Stock insuficiente de ${item.produto.nome}.`);
-      return;
-    }
-    setCartError(null);
-    setCarrinho((previous) =>
-      qty.lte(0)
+  const changeQuantity = useCallback((id: number, qty: Decimal) => {
+    setCarrinho((previous) => {
+      const item = previous.find((entry) => entry.produto.id === id);
+      if (item && qty.gt(item.produto.stock)) {
+        setCartError(`Stock insuficiente de ${item.produto.nome}.`);
+        return previous;
+      }
+      setCartError(null);
+      return qty.lte(0)
         ? previous.filter((entry) => entry.produto.id !== id)
         : previous.map((entry) =>
             entry.produto.id === id ? { ...entry, quantidade: qty } : entry,
-          ),
-    );
-  };
+          );
+    });
+  }, []);
+
+  const handleQuickAdd = useCallback(
+    (p: Produto) => {
+      setCartError(null);
+      const unit = p.unidade || 'un';
+      const step = decimal(['kg', 'L', 'g', 'ml', 'm'].includes(unit) ? '0.5' : '1');
+      setCarrinho((prev) => {
+        const idx = prev.findIndex((it) => it.produto.id === p.id);
+        if (idx >= 0) {
+          const itemExistente = prev[idx];
+          const novaQtd = itemExistente.quantidade.plus(step);
+          const copy = [...prev];
+          copy[idx] = { ...itemExistente, quantidade: novaQtd };
+          return copy;
+        }
+        return [
+          ...prev,
+          {
+            produto: p,
+            quantidade: decimal('1'),
+            descontoPercentual: '0',
+            descontoValor: '0.00',
+          },
+        ];
+      });
+      toast(`${p.nome} adicionado ao carrinho.`);
+      inputRef.current?.focus();
+    },
+    [toast],
+  );
+
+  useEffect(() => {
+    // Foco automático inicial na pesquisa
+    const timer = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Proteger o fluxo de pagamento contra fecho acidental pelo botão voltar do sistema
+  useEffect(() => {
+    if (!showModal) return;
+
+    if (typeof window !== 'undefined' && window.history?.pushState) {
+      window.history.pushState({ bstorePagamento: true }, '');
+    }
+
+    const handlePopState = () => {
+      if (carrinho.length > 0) {
+        const confirmar = window.confirm(
+          'Deseja sair do pagamento? Os itens no carrinho serão mantidos.',
+        );
+        if (!confirmar) {
+          window.history.pushState({ bstorePagamento: true }, '');
+          return;
+        }
+      }
+      setShowModal(false);
+    };
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (carrinho.length > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [showModal, carrinho.length]);
+
+  useEffect(() => {
+    let barcodeBuffer = '';
+    let lastKeyTime = 0;
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInputFocused =
+        activeEl instanceof HTMLInputElement ||
+        activeEl instanceof HTMLTextAreaElement ||
+        activeEl instanceof HTMLSelectElement;
+
+      // F2 ou '/' foca a pesquisa de produtos
+      if (e.key === 'F2' || (e.key === '/' && !isInputFocused)) {
+        e.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+        return;
+      }
+
+      // F4 abre o diálogo de pagamento se houver carrinho
+      if (e.key === 'F4') {
+        e.preventDefault();
+        if (carrinho.length > 0) {
+          setShowModal(true);
+        }
+        return;
+      }
+
+      // Leitor de código de barras USB (sequência rápida de caracteres terminada em Enter)
+      const now = Date.now();
+      if (now - lastKeyTime > 80) {
+        barcodeBuffer = '';
+      }
+      lastKeyTime = now;
+
+      if (e.key === 'Enter') {
+        if (barcodeBuffer.length >= 3) {
+          const lido = barcodeBuffer.trim();
+          barcodeBuffer = '';
+          const encontrado = produtos.find(
+            (p) => p.codigoBarras && p.codigoBarras.trim() === lido,
+          );
+          if (encontrado) {
+            e.preventDefault();
+            handleQuickAdd(encontrado);
+            return;
+          }
+        }
+        barcodeBuffer = '';
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        barcodeBuffer += e.key;
+      }
+
+      // Atalhos de navegação do carrinho fora de campos de texto
+      if (!isInputFocused && carrinho.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setSelectedCartIndex((idx) => Math.min(idx + 1, carrinho.length - 1));
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setSelectedCartIndex((idx) => Math.max(0, idx - 1));
+        } else if (e.key === 'Delete') {
+          e.preventDefault();
+          const item = carrinho[selectedCartIndex];
+          if (item) {
+            changeQuantity(item.produto.id, decimal(0));
+            setSelectedCartIndex((idx) => Math.max(0, idx - 1));
+          }
+        } else if (e.key === '+' || e.key === '=') {
+          e.preventDefault();
+          const item = carrinho[selectedCartIndex];
+          if (item) {
+            const unit = item.produto.unidade || 'un';
+            const step = decimal(['kg', 'L', 'g', 'ml', 'm'].includes(unit) ? '0.5' : '1');
+            changeQuantity(item.produto.id, item.quantidade.plus(step));
+          }
+        } else if (e.key === '-' || e.key === '_') {
+          e.preventDefault();
+          const item = carrinho[selectedCartIndex];
+          if (item) {
+            const unit = item.produto.unidade || 'un';
+            const step = decimal(['kg', 'L', 'g', 'ml', 'm'].includes(unit) ? '0.5' : '1');
+            changeQuantity(item.produto.id, item.quantidade.minus(step));
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [carrinho, selectedCartIndex, produtos, handleQuickAdd, changeQuantity]);
 
   const resetCart = () => {
     setCarrinho([]);
@@ -481,28 +687,78 @@ export default function VendasPage() {
     resetCart();
   };
 
+  const storageLoadedRef = useRef<string | null>(null);
+
   useEffect(() => {
     try {
-      localStorage.setItem('bstore_carrinhos_espera', JSON.stringify(carrinhosEmEspera));
+      const salvas = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      setCarrinhosEmEspera(salvas);
+    } catch {
+      setCarrinhosEmEspera([]);
+    } finally {
+      storageLoadedRef.current = storageKey;
+    }
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (storageLoadedRef.current !== storageKey) return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(carrinhosEmEspera));
     } catch {
       // ignore
     }
-  }, [carrinhosEmEspera]);
+  }, [carrinhosEmEspera, storageKey]);
+
+  useEffect(() => {
+    try {
+      const salvas: CarrinhoEmEspera[] = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      const agora = Date.now();
+      const vinteQuatroHorasMs = 24 * 60 * 60 * 1000;
+      const expirados = salvas.filter((c) => {
+        const ms = c.criadoEmMs || 0;
+        return ms > 0 && agora - ms > vinteQuatroHorasMs;
+      });
+      if (expirados.length > 0) {
+        const confirmar = window.confirm(
+          `Existem ${expirados.length} venda(s) em espera guardadas há mais de 24 horas. Deseja descartá-las?`,
+        );
+        if (confirmar) {
+          const limpas = salvas.filter((c) => {
+            const ms = c.criadoEmMs || 0;
+            return !(ms > 0 && agora - ms > vinteQuatroHorasMs);
+          });
+          localStorage.setItem(storageKey, JSON.stringify(limpas));
+          setCarrinhosEmEspera(limpas);
+          toast(`${expirados.length} venda(s) em espera expirada(s) descartada(s).`);
+        }
+      }
+    } catch {}
+  }, [storageKey, toast]);
 
   const handleSegurarCarrinho = () => {
     if (carrinho.length === 0) {
       toast('O carrinho está vazio.');
       return;
     }
+    if (carrinhosEmEspera.length >= 10) {
+      toast('Limite de 10 vendas em espera atingido. Descarte um carrinho antes de guardar outro.');
+      return;
+    }
     const hora = new Date().toLocaleTimeString('pt-MZ', { hour: '2-digit', minute: '2-digit' });
     const clienteObj = devedores.find((d) => String(d.id) === String(clienteId));
-    const nomePadrao = clienteObj ? clienteObj.nome : `Cliente #${carrinhosEmEspera.length + 1} (${hora})`;
-    const identificador = window.prompt('Identificador ou nota do cliente (ex: Nome, Camisola, Balcão):', nomePadrao);
+    const nomePadrao = clienteObj
+      ? clienteObj.nome
+      : `Cliente #${carrinhosEmEspera.length + 1} (${hora})`;
+    const identificador = window.prompt(
+      'Identificador ou nota do cliente (ex: Nome, Camisola, Balcão):',
+      nomePadrao,
+    );
     if (identificador === null) return;
 
     const novoHeld: CarrinhoEmEspera = {
       id: crypto.randomUUID(),
       criadoEm: hora,
+      criadoEmMs: Date.now(),
       identificador: identificador.trim() || nomePadrao,
       clienteId: clienteId || undefined,
       observacao: observacao || undefined,
@@ -525,25 +781,74 @@ export default function VendasPage() {
   const handleRecuperarCarrinho = (held: CarrinhoEmEspera) => {
     if (carrinho.length > 0) {
       const confirmar = window.confirm(
-        'Já existe um carrinho ativo no momento. Deseja substituí-lo pelos itens recuperados?'
+        'Já existe um carrinho ativo no momento. Deseja substituí-lo pelos itens recuperados?',
       );
       if (!confirmar) return;
     }
 
-    const itensRecuperados: ItemCarrinho[] = held.itens.map((it) => ({
-      produto: it.produto,
-      quantidade: decimalSeguro(it.quantidade, 1),
-      descontoPercentual: it.descontoPercentual,
-      descontoValor: it.descontoValor,
-      notaDesconto: it.notaDesconto,
-    }));
+    let precosAlterados = 0;
+    const itensRecuperados: ItemCarrinho[] = [];
+
+    for (const it of held.itens) {
+      const prodAtual = produtos.find((p) => String(p.id) === String(it.produto.id));
+
+      if (!prodAtual || prodAtual.ativo === false) {
+        const querRemover = window.confirm(
+          `O produto "${it.produto.nome}" foi arquivado ou já não existe no catálogo. Deseja removê-lo do carrinho?`,
+        );
+        if (querRemover) {
+          continue;
+        } else {
+          toast(`O produto "${it.produto.nome}" não pode ser vendido por estar inativo.`);
+          continue;
+        }
+      }
+
+      const stockDisponivel = prodAtual.stock ? Number(prodAtual.stock) : 0;
+      let qtd = decimalSeguro(it.quantidade, 1);
+
+      if (stockDisponivel <= 0) {
+        window.alert(
+          `O produto "${prodAtual.nome}" está esgotado (stock: 0) e foi removido do carrinho.`,
+        );
+        continue;
+      } else if (qtd.toNumber() > stockDisponivel) {
+        window.alert(
+          `O produto "${prodAtual.nome}" tem apenas ${stockDisponivel} em stock. A quantidade foi ajustada de ${qtd.toString()} para ${stockDisponivel}.`,
+        );
+        qtd = decimalSeguro(stockDisponivel, 1);
+      }
+
+      if (prodAtual.preco !== it.produto.preco) {
+        precosAlterados++;
+      }
+
+      itensRecuperados.push({
+        produto: prodAtual,
+        quantidade: qtd,
+        descontoPercentual: it.descontoPercentual,
+        descontoValor: it.descontoValor,
+        notaDesconto: it.notaDesconto,
+      });
+    }
+
+    if (itensRecuperados.length === 0) {
+      toast('Nenhum item válido pôde ser recuperado.');
+      setCarrinhosEmEspera((prev) => prev.filter((c) => c.id !== held.id));
+      return;
+    }
+
+    if (precosAlterados > 0) {
+      toast(`O preço de ${precosAlterados} produto(s) mudou.`);
+    } else {
+      toast(`Carrinho recuperado: ${held.identificador}.`);
+    }
 
     setCarrinho(itensRecuperados);
     setClienteId(held.clienteId || '');
     setObservacao(held.observacao || '');
     setCarrinhosEmEspera((prev) => prev.filter((c) => c.id !== held.id));
     setShowModal(true);
-    toast(`Carrinho recuperado: ${held.identificador}.`);
   };
 
   const handleDescartarCarrinhoEmEspera = (id: string) => {
@@ -656,7 +961,8 @@ export default function VendasPage() {
         if (it.produto.id !== itemParaDesconto.produto.id) return it;
         return {
           ...it,
-          descontoPercentual: modalDescTipo === 'percentual' ? modalDescValor || undefined : undefined,
+          descontoPercentual:
+            modalDescTipo === 'percentual' ? modalDescValor || undefined : undefined,
           descontoValor: modalDescTipo === 'valor' ? modalDescValor || undefined : undefined,
           notaDesconto: modalDescNota.trim() || undefined,
         };
@@ -696,13 +1002,15 @@ export default function VendasPage() {
   };
 
   const addLinhaPagamento = () => {
-    const metodoPadrao = metodosDisponiveis.find((m) => m.tipo === 'DIGITAL') || metodosDisponiveis[0];
+    const metodoPadrao =
+      metodosDisponiveis.find((m) => m.tipo === 'DIGITAL') || metodosDisponiveis[0];
     setPagamentos((prev) => [
       ...prev,
       {
         id: crypto.randomUUID(),
         metodoId: metodoPadrao?.id,
-        metodo: metodoPadrao?.tipo === 'FIADO' ? 'FIADO' : (metodoPadrao?.nome.toUpperCase() || 'MPESA'),
+        metodo:
+          metodoPadrao?.tipo === 'FIADO' ? 'FIADO' : metodoPadrao?.nome.toUpperCase() || 'MPESA',
         valor: faltaPagar.gt(0) ? faltaPagar.toFixed(2) : '',
       },
     ]);
@@ -785,13 +1093,15 @@ export default function VendasPage() {
         }),
         pagamentos: pagamentos.map((p) => {
           let valorCalculado = p.valor;
-          const isFiado = p.metodo === 'FIADO' || metodosDisponiveis.find((m) => m.id === p.metodoId)?.tipo === 'FIADO';
+          const isFiado =
+            p.metodo === 'FIADO' ||
+            metodosDisponiveis.find((m) => m.id === p.metodoId)?.tipo === 'FIADO';
           if (isFiado) {
             const outros = pagamentos
               .filter((x) => x.id !== p.id)
               .reduce((acc, x) => acc.plus(decimalSeguro(x.valor)), decimalSeguro(0));
             const saldo = total.minus(outros);
-            valorCalculado = saldo.gt(0) ? saldo.toFixed(2) : (p.valor || '0.00');
+            valorCalculado = saldo.gt(0) ? saldo.toFixed(2) : p.valor || '0.00';
           }
           return {
             metodoId: p.metodoId,
@@ -880,6 +1190,7 @@ export default function VendasPage() {
         setShowModal(false);
         resetCart();
         setReciboSucesso(dadosRecibo);
+        confettiRef.current?.fire();
         toast(`Venda registada: ${formatMoney(result.total)}.`);
         void reload();
         void notificarVendaRegistada(`${result.itens} produtos`, result.total).catch(() => {});
@@ -1022,20 +1333,11 @@ export default function VendasPage() {
             </button>
           )}
 
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => setShowFechoModal(true)}
-          >
+          <button type="button" className="btn-secondary" onClick={() => setShowFechoModal(true)}>
             <BarChart3 size={16} strokeWidth={2} aria-hidden="true" /> Fecho de Caixa
           </button>
 
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={!data}
-            onClick={abrirNovaVenda}
-          >
+          <button type="button" className="btn-primary" disabled={!data} onClick={abrirNovaVenda}>
             <Plus size={16} strokeWidth={2.2} aria-hidden="true" /> Registar venda
           </button>
         </div>
@@ -1064,8 +1366,8 @@ export default function VendasPage() {
                 )}
                 {sessaoCaixa.despesasDinheiro && Number(sessaoCaixa.despesasDinheiro) > 0 && (
                   <> | Saídas: -{formatMoney(sessaoCaixa.despesasDinheiro)}</>
-                )}
-                {' '}| Esperado: {formatMoney(sessaoCaixa.valorEsperado || '0')}
+                )}{' '}
+                | Esperado: {formatMoney(sessaoCaixa.valorEsperado || '0')}
               </span>
             )}
           </div>
@@ -1080,8 +1382,8 @@ export default function VendasPage() {
                   onClick={() => setShowDespesaModal(true)}
                   title="Registar saída ou despesa de dinheiro do caixa"
                 >
-                  <ArrowDownRight size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-                  + Saída / Despesa
+                  <ArrowDownRight size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} />+
+                  Saída / Despesa
                 </button>
                 <button
                   type="button"
@@ -1122,7 +1424,15 @@ export default function VendasPage() {
             gap: 10,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#c2410c' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 13,
+              color: '#c2410c',
+            }}
+          >
             <Clock size={17} />
             <strong>{carrinhosEmEspera.length} Carrinho(s) em Espera no Balcão:</strong>
           </div>
@@ -1247,7 +1557,11 @@ export default function VendasPage() {
             title="Exportar vendas filtradas para CSV / Excel"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px' }}
           >
-            {exportandoVendas ? <Spinner size="small" /> : <Download size={15} aria-hidden="true" />}
+            {exportandoVendas ? (
+              <Spinner size="small" />
+            ) : (
+              <Download size={15} aria-hidden="true" />
+            )}
             Exportar CSV
           </button>
         </div>
@@ -1312,9 +1626,7 @@ export default function VendasPage() {
                     {filteredSales.map((v) => {
                       const metodosStr =
                         v.pagamentos && v.pagamentos.length > 0
-                          ? v.pagamentos
-                              .map((p) => formatarMetodoPagamento(p.metodo))
-                              .join(' + ')
+                          ? v.pagamentos.map((p) => formatarMetodoPagamento(p.metodo)).join(' + ')
                           : 'Dinheiro';
                       const isAnulada = v.estado === 'ANULADA';
                       const isDevolvida =
@@ -1326,7 +1638,7 @@ export default function VendasPage() {
                             <strong>#{v.numero}</strong>
                           </td>
                           <td data-label="Data / Hora" className="cell-secondary">
-                            {v.data} {v.hora && <span style={{ fontSize: 12 }}>{v.hora}</span>}
+                            {formatarData(v.data)} {v.hora && <span style={{ fontSize: 12 }}>{v.hora}</span>}
                           </td>
                           <td data-label="Resumo" className="cell-name">
                             {v.produto || `Venda #${v.numero}`}
@@ -1358,9 +1670,7 @@ export default function VendasPage() {
                                   border: '1px solid #f87171',
                                 }}
                                 title={
-                                  v.motivoAnulacao
-                                    ? `Motivo: ${v.motivoAnulacao}`
-                                    : 'Venda anulada'
+                                  v.motivoAnulacao ? `Motivo: ${v.motivoAnulacao}` : 'Venda anulada'
                                 }
                               >
                                 <XCircle size={12} strokeWidth={2} aria-hidden="true" /> Anulada
@@ -1382,7 +1692,7 @@ export default function VendasPage() {
                                 className="badge"
                                 style={{
                                   background: '#dcfce7',
-                                  color: '#166534',
+                                  color: '#14532d',
                                   border: '1px solid #86efac',
                                 }}
                               >
@@ -1475,12 +1785,7 @@ export default function VendasPage() {
 
       {/* MODAL DE REGISTO DE VENDA (FLUXO 3 TOQUES) */}
       {showModal && (
-        <Modal
-          title="Registar Venda"
-          onClose={closeModal}
-          busy={save.pending || scan.pending}
-          wide
-        >
+        <Modal title="Registar Venda" onClose={closeModal} busy={save.pending || scan.pending} wide>
           <form onSubmit={finishSale}>
             {save.error && <Notice>{save.error}</Notice>}
             {scan.error && <Notice>{scan.error}</Notice>}
@@ -1508,6 +1813,14 @@ export default function VendasPage() {
                 onContinuousScanChange={setContinuousScan}
                 inputRef={inputRef}
                 suggestionsRef={suggestionsRef}
+                categorias={categorias}
+                selectedCategoriaId={selectedCategoriaId}
+                onSelectCategoria={setSelectedCategoriaId}
+                onQuickAdd={handleQuickAdd}
+                loading={loading}
+                viewMode={viewMode}
+                onToggleViewMode={() => setViewMode((m) => (m === 'grid' ? 'list' : 'grid'))}
+                showGrid={false}
               />
 
               {carrinhosEmEspera.length > 0 && (
@@ -1526,7 +1839,15 @@ export default function VendasPage() {
                     gap: 6,
                   }}
                 >
-                  <span style={{ color: '#c2410c', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span
+                    style={{
+                      color: '#c2410c',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                  >
                     <Clock size={13} /> {carrinhosEmEspera.length} carrinho(s) em espera:
                   </span>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1539,7 +1860,8 @@ export default function VendasPage() {
                         onClick={() => handleRecuperarCarrinho(held)}
                         title="Recuperar este carrinho"
                       >
-                        <Play size={10} style={{ marginRight: 2 }} /> {held.identificador} ({formatMoney(held.total)})
+                        <Play size={10} style={{ marginRight: 2 }} /> {held.identificador} (
+                        {formatMoney(held.total)})
                       </button>
                     ))}
                   </div>
@@ -1547,7 +1869,10 @@ export default function VendasPage() {
               )}
 
               {/* LISTA DO CARRINHO */}
-              <div className="cart-heading" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div
+                className="cart-heading"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <ShoppingCart size={17} strokeWidth={2} aria-hidden="true" /> Carrinho
@@ -1560,7 +1885,14 @@ export default function VendasPage() {
                   <button
                     type="button"
                     className="btn-secondary"
-                    style={{ fontSize: 12, padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 4, color: '#ea580c' }}
+                    style={{
+                      fontSize: 12,
+                      padding: '3px 8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      color: '#ea580c',
+                    }}
                     onClick={handleSegurarCarrinho}
                     title="Pôr venda em espera e libertar o balcão"
                   >
@@ -1578,9 +1910,7 @@ export default function VendasPage() {
                 <div className="cart-list">
                   {carrinho.map((item) => {
                     const unit = item.produto.unidade || 'un';
-                    const step = decimal(
-                      ['kg', 'L', 'g', 'ml', 'm'].includes(unit) ? '0.5' : '1',
-                    );
+                    const step = decimal(['kg', 'L', 'g', 'ml', 'm'].includes(unit) ? '0.5' : '1');
                     const calc = calcularLinha(item);
                     const temDesconto = calc.descPerc.gt(0) || calc.descVal.gt(0);
 
@@ -1588,10 +1918,22 @@ export default function VendasPage() {
                       <div className="cart-item" key={item.produto.id}>
                         <div className="cart-product">
                           <strong>{item.produto.nome}</strong>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
+                              flexWrap: 'wrap',
+                            }}
+                          >
                             {temDesconto ? (
                               <>
-                                <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)' }}>
+                                <span
+                                  style={{
+                                    textDecoration: 'line-through',
+                                    color: 'var(--text-muted)',
+                                  }}
+                                >
                                   {formatMoney(calc.precoUnit)}
                                 </span>
                                 <span style={{ fontWeight: 600, color: 'var(--color-brand)' }}>
@@ -1623,23 +1965,27 @@ export default function VendasPage() {
                           <button
                             type="button"
                             className="icon-btn"
+                            style={{ minWidth: 44, minHeight: 44 }}
                             aria-label="Diminuir quantidade"
                             onClick={() =>
                               changeQuantity(item.produto.id, item.quantidade.minus(step))
                             }
                           >
-                            <Minus size={14} strokeWidth={2.5} aria-hidden="true" />
+                            <Minus size={16} strokeWidth={2.5} aria-hidden="true" />
                           </button>
-                          <span>{formatQuantity(item.quantidade, unit)}</span>
+                          <span style={{ minWidth: 44, textAlign: 'center', fontWeight: 650 }}>
+                            {formatQuantity(item.quantidade, unit)}
+                          </span>
                           <button
                             type="button"
                             className="icon-btn"
+                            style={{ minWidth: 44, minHeight: 44 }}
                             aria-label="Aumentar quantidade"
                             onClick={() =>
                               changeQuantity(item.produto.id, item.quantidade.plus(step))
                             }
                           >
-                            <Plus size={14} strokeWidth={2.5} aria-hidden="true" />
+                            <Plus size={16} strokeWidth={2.5} aria-hidden="true" />
                           </button>
                         </div>
 
@@ -1650,6 +1996,7 @@ export default function VendasPage() {
                         <button
                           type="button"
                           className="icon-btn delete cart-remove"
+                          style={{ minWidth: 44, minHeight: 44 }}
                           aria-label="Remover do carrinho"
                           onClick={() =>
                             setCarrinho((prev) =>
@@ -1657,7 +2004,7 @@ export default function VendasPage() {
                             )
                           }
                         >
-                          <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
+                          <Trash2 size={16} strokeWidth={2} aria-hidden="true" />
                         </button>
                       </div>
                     );
@@ -1691,6 +2038,14 @@ export default function VendasPage() {
                 canSubmit={carrinho.length > 0 && (temFiado || faltaPagar.lte(0))}
                 isSaving={save.pending}
               />
+              <div className="keyboard-shortcuts-hint" aria-hidden="true" style={{ marginTop: 14 }}>
+                <span><kbd className="shortcut-kbd">F2</kbd> / <kbd className="shortcut-kbd">/</kbd> Pesquisar</span>
+                <span><kbd className="shortcut-kbd">Enter</kbd> Adicionar</span>
+                <span><kbd className="shortcut-kbd">1-5</kbd> Forma pagamento</span>
+                <span><kbd className="shortcut-kbd">↑</kbd><kbd className="shortcut-kbd">↓</kbd> Carrinho</span>
+                <span><kbd className="shortcut-kbd">+</kbd><kbd className="shortcut-kbd">-</kbd> Qtd</span>
+                <span><kbd className="shortcut-kbd">Del</kbd> Remover</span>
+              </div>
             </fieldset>
           </form>
         </Modal>
@@ -1802,10 +2157,7 @@ export default function VendasPage() {
 
       {/* MODAL PARA ABRIR CAIXA DIÁRIO */}
       {showAbrirCaixaModal && (
-        <Modal
-          title="Abrir Caixa do Dia"
-          onClose={() => setShowAbrirCaixaModal(false)}
-        >
+        <Modal title="Abrir Caixa do Dia" onClose={() => setShowAbrirCaixaModal(false)}>
           <form onSubmit={handleAbrirCaixa}>
             <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
               O controlo de caixa está ativo. Indique o montante em dinheiro na gaveta para iniciar
@@ -1843,6 +2195,44 @@ export default function VendasPage() {
                   {v} MT
                 </button>
               ))}
+            </div>
+
+            <div className="pos-keypad-container" style={{ marginTop: 10 }}>
+              <div className="pos-keypad">
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+                  <button
+                    key={digit}
+                    type="button"
+                    className="pos-keypad-btn"
+                    onClick={() => setValorAberturaCaixa((prev) => (prev === '0' ? digit : prev + digit))}
+                  >
+                    {digit}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="pos-keypad-btn"
+                  onClick={() =>
+                    setValorAberturaCaixa((prev) => (!prev.includes('.') ? (prev ? prev + '.' : '0.') : prev))
+                  }
+                >
+                  ,
+                </button>
+                <button
+                  type="button"
+                  className="pos-keypad-btn"
+                  onClick={() => setValorAberturaCaixa((prev) => (prev ? prev + '0' : '0'))}
+                >
+                  0
+                </button>
+                <button
+                  type="button"
+                  className="pos-keypad-btn action-clear"
+                  onClick={() => setValorAberturaCaixa((prev) => prev.slice(0, -1))}
+                >
+                  ⌫
+                </button>
+              </div>
             </div>
 
             <div className="modal-actions" style={{ marginTop: 20 }}>
@@ -1997,7 +2387,13 @@ export default function VendasPage() {
           >
             <label
               htmlFor="recibo-whatsapp"
-              style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#15803d', marginBottom: 6 }}
+              style={{
+                display: 'block',
+                fontSize: 12,
+                fontWeight: 600,
+                color: '#15803d',
+                marginBottom: 6,
+              }}
             >
               <MessageCircle size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
               WhatsApp do Cliente (opcional)
@@ -2009,13 +2405,33 @@ export default function VendasPage() {
                 placeholder="Ex: 84 123 4567 ou 82/85/86/87..."
                 value={telefoneWhatsAppRecibo}
                 onChange={(e) => setTelefoneWhatsAppRecibo(e.target.value)}
-                style={{ flex: 1, padding: '6px 10px', fontSize: 13, borderRadius: 6, border: '1px solid var(--border-color)' }}
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  fontSize: 13,
+                  borderRadius: 6,
+                  border: '1px solid var(--border-color)',
+                }}
               />
               <button
                 type="button"
                 className="btn-primary"
-                style={{ background: '#16a34a', borderColor: '#16a34a', fontSize: 13, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6 }}
-                onClick={() => partilharReciboWhatsApp(reciboSucesso, definicoes.nomeLoja || 'BStore', telefoneWhatsAppRecibo)}
+                style={{
+                  background: '#16a34a',
+                  borderColor: '#16a34a',
+                  fontSize: 13,
+                  padding: '6px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+                onClick={() =>
+                  partilharReciboWhatsApp(
+                    reciboSucesso,
+                    definicoes.nomeLoja || 'BStore',
+                    telefoneWhatsAppRecibo,
+                  )
+                }
               >
                 <Share2 size={14} /> Enviar WhatsApp
               </button>
@@ -2023,8 +2439,25 @@ export default function VendasPage() {
           </div>
 
           {/* Formato de Impressão Térmica */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 16,
+              flexWrap: 'wrap',
+              gap: 8,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+              }}
+            >
               <span>Largura do papel térmico:</span>
               <button
                 type="button"
@@ -2056,15 +2489,34 @@ export default function VendasPage() {
             <button
               type="button"
               className="btn-primary"
-              onClick={() => imprimirReciboTexto(reciboSucesso, definicoes.nomeLoja || 'BStore', larguraTermica)}
+              onClick={() =>
+                imprimirReciboTexto(reciboSucesso, definicoes.nomeLoja || 'BStore', larguraTermica)
+              }
             >
-              <Printer size={15} strokeWidth={2} aria-hidden="true" /> Imprimir Térmico ({larguraTermica})
+              <Printer size={15} strokeWidth={2} aria-hidden="true" /> Imprimir Térmico (
+              {larguraTermica})
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={async () => {
+                const res = await partilharRecibo(reciboSucesso, definicoes.nomeLoja || 'BStore');
+                if (res === 'compartilhado') {
+                  toast('Recibo partilhado com sucesso.');
+                } else if (res === 'copiado') {
+                  toast('Recibo copiado para a área de transferência.');
+                }
+              }}
+            >
+              <Share2 size={15} strokeWidth={2} aria-hidden="true" /> Partilhar
             </button>
             <button
               type="button"
               className="btn-secondary"
               onClick={() => {
-                void navigator.clipboard.writeText(gerarTextoRecibo(reciboSucesso, definicoes.nomeLoja || 'BStore'));
+                void navigator.clipboard.writeText(
+                  gerarTextoRecibo(reciboSucesso, definicoes.nomeLoja || 'BStore'),
+                );
                 toast('Recibo copiado para a área de transferência.');
               }}
             >
@@ -2152,35 +2604,83 @@ export default function VendasPage() {
                       itensDevolucao.find((d) => d.itemVendaId === it.id)?.quantidade || '';
                     return (
                       <tr key={it.id}>
-                        <td>
+                        <td data-label="Produto">
                           <strong>{it.produto}</strong>
                         </td>
-                        <td className="numeric font-mono">{formatQuantity(it.quantidade, '')}</td>
-                        <td className="numeric">
-                          <input
-                            type="number"
-                            min="0"
-                            max={it.quantidade}
-                            step="0.001"
-                            placeholder="0"
-                            value={atual}
-                            onChange={(e) =>
-                              setItensDevolucao((prev) =>
-                                prev.map((d) =>
-                                  d.itemVendaId === it.id
-                                    ? { ...d, quantidade: e.target.value }
-                                    : d,
-                                ),
-                              )
-                            }
-                            style={{
-                              width: 100,
-                              textAlign: 'right',
-                              padding: '4px 8px',
-                              borderRadius: 4,
-                              border: '1px solid var(--border-color)',
-                            }}
-                          />
+                        <td data-label="Qtd Vendida" className="numeric font-mono">
+                          {formatQuantity(it.quantidade, '')}
+                        </td>
+                        <td data-label="Devolver agora" className="numeric">
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              style={{ minWidth: 44, minHeight: 44 }}
+                              aria-label={`Diminuir devolução de ${it.produto}`}
+                              onClick={() => {
+                                const valAtual = decimalSeguro(atual || '0');
+                                const sub = valAtual.minus(1);
+                                const novo = sub.isNegative() ? decimal(0) : sub;
+                                setItensDevolucao((prev) =>
+                                  prev.map((d) =>
+                                    d.itemVendaId === it.id
+                                      ? { ...d, quantidade: novo.isZero() ? '' : novo.toString() }
+                                      : d,
+                                  ),
+                                );
+                              }}
+                            >
+                              <Minus size={16} strokeWidth={2.5} aria-hidden="true" />
+                            </button>
+                            <input
+                              type="number"
+                              min="0"
+                              max={it.quantidade}
+                              step="0.001"
+                              inputMode="decimal"
+                              placeholder="0"
+                              value={atual}
+                              onChange={(e) =>
+                                setItensDevolucao((prev) =>
+                                  prev.map((d) =>
+                                    d.itemVendaId === it.id
+                                      ? { ...d, quantidade: e.target.value }
+                                      : d,
+                                  ),
+                                )
+                              }
+                              style={{
+                                width: 70,
+                                textAlign: 'center',
+                                padding: '8px 4px',
+                                fontSize: 15,
+                                fontWeight: 650,
+                                borderRadius: 6,
+                                border: '1px solid var(--border-color)',
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              style={{ minWidth: 44, minHeight: 44 }}
+                              aria-label={`Aumentar devolução de ${it.produto}`}
+                              onClick={() => {
+                                const valAtual = decimalSeguro(atual || '0');
+                                const maxQtd = decimalSeguro(it.quantidade);
+                                const som = valAtual.plus(1);
+                                const novo = som.gt(maxQtd) ? maxQtd : som;
+                                setItensDevolucao((prev) =>
+                                  prev.map((d) =>
+                                    d.itemVendaId === it.id
+                                      ? { ...d, quantidade: novo.toString() }
+                                      : d,
+                                  ),
+                                );
+                              }}
+                            >
+                              <Plus size={16} strokeWidth={2.5} aria-hidden="true" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -2258,6 +2758,29 @@ export default function VendasPage() {
           onSessaoFechada={() => void reload()}
         />
       )}
+
+      {/* BARRA MÓVEL DE CARRINHO (TELEMOVEL < 600px) */}
+      {carrinho.length > 0 && !showModal && (
+        <aside
+          className="mobile-cart-bar"
+          role="region"
+          aria-label="Carrinho ativo no balcão"
+          onClick={() => setShowModal(true)}
+        >
+          <div className="cart-bar-info" aria-live="polite">
+            <span className="cart-count-badge">
+              {carrinho.reduce((acc, it) => acc + it.quantidade.toNumber(), 0)}
+            </span>
+            <span className="cart-total-text">{formatMoney(total)}</span>
+          </div>
+          <div className="cart-bar-btn">
+            <ShoppingCart size={16} /> Ver Carrinho / Pagar
+          </div>
+        </aside>
+      )}
+
+      {/* CELEBRAÇÃO DE VENDA */}
+      <Confetti ref={confettiRef} count={70} />
     </div>
   );
 }

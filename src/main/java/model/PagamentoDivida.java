@@ -31,14 +31,23 @@ public class PagamentoDivida {
     @Column(name = "observacao", length = 255)
     private String observacao;
 
-    public PagamentoDivida() {}
+    @PrePersist
+    public void prePersist() {
+        if (this.criadoEm == null) {
+            this.criadoEm = util.Fuso.agora();
+        }
+    }
+
+    public PagamentoDivida() {
+        this.criadoEm = util.Fuso.agora();
+    }
 
     public PagamentoDivida(Long usuarioId, Devedor devedor, BigDecimal valor, String metodo, LocalDateTime criadoEm, String observacao) {
         this.usuarioId = usuarioId;
         this.devedor = devedor;
         this.valor = valor;
         this.metodo = metodo;
-        this.criadoEm = criadoEm != null ? criadoEm : LocalDateTime.now();
+        this.criadoEm = criadoEm != null ? criadoEm : util.Fuso.agora();
         this.observacao = observacao;
     }
 

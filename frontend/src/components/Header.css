@@ -1,6 +1,6 @@
 .app-header {
   min-height: 76px;
-  padding: 12px 32px;
+  padding: calc(12px + var(--safe-top)) calc(32px + var(--safe-right)) 12px calc(32px + var(--safe-left));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -29,23 +29,32 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.header-status-badge {
+  margin-left: 6px;
+}
 .header-menu-btn {
   display: none;
   font-size: 20px;
+  min-width: 44px;
+  min-height: 44px;
 }
 .header-profile {
   display: flex;
   align-items: center;
   gap: 10px;
   min-height: 44px;
+  min-width: 44px;
   padding: 4px 10px;
   border: 0;
   border-radius: 7px;
   background: transparent;
   color: var(--text-primary);
+  touch-action: manipulation;
 }
-.header-profile:hover {
-  background: var(--bg-subtle);
+@media (hover: hover) {
+  .header-profile:hover {
+    background: var(--bg-subtle);
+  }
 }
 .header-avatar {
   display: grid;
@@ -64,37 +73,82 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.header-theme-btn,
+.header-install-btn,
+.header-logout {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-grid;
+  place-items: center;
+  touch-action: manipulation;
+}
 .header-logout {
   color: var(--text-muted);
 }
-.header-logout:hover {
-  color: var(--color-danger);
-}
-@media (max-width: 767px) {
-  .app-header {
-    min-height: 64px;
-    padding: 10px 16px;
-    gap: 8px;
+@media (hover: hover) {
+  .header-logout:hover {
+    color: var(--color-danger);
   }
-  .header-menu-btn {
-    display: inline-flex;
+}
+
+/* Faixa Tablet (600px a 1199px) */
+@media (min-width: 600px) and (max-width: 1199px) {
+  .app-header {
+    min-height: 68px;
+    padding: calc(10px + var(--safe-top)) calc(20px + var(--safe-right)) 10px calc(20px + var(--safe-left));
+    gap: 10px;
+  }
+}
+
+/* Faixa Telemóvel (até 599px): Header compacto */
+@media (max-width: 599px) {
+  .app-header {
+    min-height: 54px;
+    padding: calc(6px + var(--safe-top)) calc(8px + var(--safe-right)) 6px calc(8px + var(--safe-left));
+    gap: 4px;
+  }
+  .header-left {
+    min-width: 0;
+    flex: 1 1 auto;
+    gap: 4px;
+  }
+  .header-right {
+    flex-shrink: 0;
+    gap: 2px;
   }
   .header-username {
     display: none;
   }
-  .header-right,
-  .header-left {
-    gap: 4px;
-  }
-  .header-profile {
-    padding: 4px 6px;
-  }
-}
-@media (max-width: 360px) {
-  .app-header {
-    padding-inline: 8px;
+  .header-status-badge {
+    display: none;
   }
   .header-title {
-    font-size: 12px;
+    font-size: 13px;
+    min-width: 0;
+    max-width: 115px;
+  }
+  .header-menu-btn {
+    min-width: 36px;
+    min-height: 44px;
+    padding: 0 4px;
+  }
+  .header-theme-btn,
+  .header-logout {
+    min-width: 36px;
+    min-height: 44px;
+    padding: 0 4px;
+  }
+  .header-profile {
+    min-width: 36px;
+    min-height: 44px;
+    padding: 2px 4px;
+  }
+}
+
+@media (max-width: 767px) {
+  .header-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 }

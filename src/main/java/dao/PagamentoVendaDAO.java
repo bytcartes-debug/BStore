@@ -26,7 +26,7 @@ public class PagamentoVendaDAO extends GenericDAO<PagamentoVenda> {
     }
 
     public Map<String, BigDecimal> totaisPorMetodo(Long usuarioId, LocalDate data) {
-        LocalDate d = data != null ? data : LocalDate.now();
+        LocalDate d = data != null ? data : util.Fuso.hoje();
         LocalDateTime inicio = d.atStartOfDay();
         LocalDateTime fimExclusive = d.plusDays(1).atStartOfDay();
         return JPAUtil.emTransacao(usuarioId, em -> {

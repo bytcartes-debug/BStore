@@ -1,0 +1,111 @@
+/* ==========================================================================
+   BStore — StatusBadge: Pill com Indicador Radar Pulsante (Estilo 21st.dev)
+   ========================================================================== */
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  line-height: 1.2;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.status-badge-dot {
+  width: 6.5px;
+  height: 6.5px;
+  border-radius: 50%;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.status-badge-dot::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: inherit;
+  opacity: 0.5;
+  animation: statusRadarRipple 2s ease-out infinite;
+}
+
+@keyframes statusRadarRipple {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* Variantes */
+.status-badge-online {
+  background: rgba(16, 185, 129, 0.12);
+  color: #065f46;
+  border-color: rgba(16, 185, 129, 0.25);
+}
+.status-badge-online .status-badge-dot {
+  background: #10b981;
+}
+
+.status-badge-warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+  border-color: rgba(245, 158, 11, 0.28);
+}
+.status-badge-warning .status-badge-dot {
+  background: #f59e0b;
+}
+
+.status-badge-danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  border-color: rgba(239, 68, 68, 0.25);
+}
+.status-badge-danger .status-badge-dot {
+  background: #ef4444;
+}
+
+.status-badge-info {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+  border-color: rgba(59, 130, 246, 0.25);
+}
+.status-badge-info .status-badge-dot {
+  background: #3b82f6;
+}
+
+.status-badge-neutral {
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  border-color: var(--border-color);
+}
+.status-badge-neutral .status-badge-dot {
+  background: var(--text-muted);
+}
+
+/* Dark mode adjustments */
+body.dark-theme .status-badge-online {
+  background: rgba(16, 185, 129, 0.18);
+  color: #6ee7b7;
+}
+body.dark-theme .status-badge-warning {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fcd34d;
+}
+body.dark-theme .status-badge-danger {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+}
+body.dark-theme .status-badge-info {
+  background: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+}

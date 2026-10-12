@@ -31,6 +31,27 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
   return (
     <div className="toolbar">
       <SearchField value={search} onChange={onSearchChange} label="Pesquisar por nome ou código" />
+      {categorias.length > 0 && (
+        <div className="category-chips-bar" role="toolbar" aria-label="Filtro rápido de categorias">
+          <button
+            type="button"
+            className={`category-chip ${!category ? 'active' : ''}`}
+            onClick={() => onCategoryChange('')}
+          >
+            Todas
+          </button>
+          {categorias.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className={`category-chip ${category === c.id.toString() ? 'active' : ''}`}
+              onClick={() => onCategoryChange(category === c.id.toString() ? '' : c.id.toString())}
+            >
+              {c.nome}
+            </button>
+          ))}
+        </div>
+      )}
       <Field id="product-category-filter" label="Categoria">
         <select
           id="product-category-filter"

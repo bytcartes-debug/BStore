@@ -24,13 +24,22 @@ public class PedidoVenda {
     @Column(name = "criado_em", nullable = false)
     private LocalDateTime criadoEm;
 
-    public PedidoVenda() {}
+    @PrePersist
+    public void prePersist() {
+        if (this.criadoEm == null) {
+            this.criadoEm = util.Fuso.agora();
+        }
+    }
+
+    public PedidoVenda() {
+        this.criadoEm = util.Fuso.agora();
+    }
     public PedidoVenda(Long usuarioId, String chave, String fingerprint) {
         this.usuarioId = usuarioId;
         this.chave = chave;
         this.fingerprint = fingerprint;
         this.resposta = "";
-        this.criadoEm = LocalDateTime.now();
+        this.criadoEm = util.Fuso.agora();
     }
 
     public String getFingerprint() { return fingerprint; }

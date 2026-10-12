@@ -1,85 +1,148 @@
 .store-overview {
   display: grid;
-  grid-template-columns: minmax(240px, 1.15fr) 2fr;
+  grid-template-columns: minmax(260px, 1.2fr) 2fr;
   gap: 32px;
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 16px;
   background: var(--bg-card);
   padding: 28px;
   margin-bottom: 24px;
+  box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.04);
+  position: relative;
+  overflow: hidden;
 }
+
 .today-sales {
   border-right: 1px solid var(--border-color);
-  padding-right: 24px;
+  padding-right: 28px;
+  position: relative;
 }
+
 .today-label {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
+  font-weight: 650;
   color: var(--text-secondary);
 }
+
+.today-label svg {
+  color: var(--color-brand);
+}
+
 .today-value {
-  font-size: clamp(30px, 3.5vw, 48px);
-  line-height: 1.2;
+  font-size: clamp(32px, 3.5vw, 50px);
+  line-height: 1.15;
   letter-spacing: -1.6px;
-  font-weight: 650;
+  font-weight: 750;
   margin: 14px 0 8px;
   overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
 }
+
 .today-description {
   font-size: 12px;
   color: var(--text-muted);
+  font-weight: 500;
 }
+
 .store-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: center;
-  gap: 24px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 16px;
 }
+
 .section-title-with-icon {
   display: flex;
   align-items: center;
   gap: 8px;
 }
+
 .store-metric {
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--bg-subtle);
   color: var(--text-primary);
   text-align: left;
-  padding: 10px;
-  transition: transform 0.18s ease, background-color 0.18s ease;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition:
+    transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.22s ease,
+    background-color 0.22s ease;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
 }
+
 .store-metric:hover {
-  background: var(--bg-subtle);
-  transform: translateY(-2px);
+  background: var(--bg-card);
+  border-color: rgba(23, 99, 79, 0.3);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px -4px rgba(23, 99, 79, 0.12);
 }
+
 .store-metric:active {
   transform: scale(0.98);
 }
+
 .store-metric:hover .metric-label {
   color: var(--color-brand);
 }
+
 .metric-label {
   display: flex;
   flex-direction: column;
   gap: 10px;
   font-size: 12px;
+  font-weight: 600;
   color: var(--text-secondary);
 }
+
+.metric-icon-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--color-brand-light);
+  color: var(--color-brand);
+  transition: transform 0.2s ease;
+}
+
+.store-metric:hover .metric-icon-badge {
+  transform: scale(1.1);
+}
+
 .metric-value {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  font-size: 28px;
-  margin-top: 10px;
-  font-weight: 600;
+  font-size: 26px;
+  margin-top: 12px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
 }
-.metric-value svg {
+
+.metric-arrow {
   color: var(--text-muted);
+  transition:
+    transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+    color 0.2s ease;
 }
+
+.store-metric:hover .metric-arrow {
+  transform: translate(2px, -2px);
+  color: var(--color-brand);
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 0.48fr);
@@ -176,10 +239,14 @@
   padding: 24px;
   margin: 0;
 }
-@media (max-width: 1100px) {
+@media (max-width: 1199px) {
   .store-overview {
     grid-template-columns: 1fr;
     gap: 24px;
+  }
+  .store-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
   }
   .today-sales {
     border-right: 0;
@@ -197,7 +264,7 @@
     padding-top: 0;
   }
 }
-@media (max-width: 767px) {
+@media (max-width: 599px) {
   .store-overview {
     padding: 20px 16px;
     text-align: center;

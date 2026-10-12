@@ -1,8 +1,9 @@
-import React from 'react';
-import { Ban, CheckCircle2, Printer, RotateCcw, XCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Ban, CheckCircle2, Printer, RotateCcw, Share2, XCircle } from 'lucide-react';
 import { Modal } from '../UI';
 import { formatMoney, formatQuantity } from '../../utils/decimal';
-import { formatarMetodoPagamento, type ReciboDados } from '../../utils/recibo';
+import { formatarMetodoPagamento, gerarTextoRecibo, type ReciboDados } from '../../utils/recibo';
+import { formatarDataHora } from '../../utils/dataHora';
 import type { Devedor, VendaDocumento } from './types';
 
 interface SaleDetailsModalProps {
@@ -23,40 +24,67 @@ export const SaleDetailsModal: React.FC<SaleDetailsModalProps> = ({
   onAnular,
 }) => {
   const clienteObj = devedores.find((d) => d.id === vendaDetalhes.clienteId);
+  const [partilhado, setPartilhado] = useState(false);
+
+  const montarDadosRecibo = (): ReciboDados => ({
+    id: vendaDetalhes.id,
+    numero: vendaDetalhes.numero,
+    data: vendaDetalhes.data,
+    hora: vendaDetalhes.hora,
+    total: vendaDetalhes.total,
+    troco: vendaDetalhes.troco,
+    observacao: vendaDetalhes.observacao,
+    clienteNome: clienteObj?.nome,
+    itens:
+      vendaDetalhes.itens && vendaDetalhes.itens.length > 0
+        ? vendaDetalhes.itens.map((it) => ({
+            produto: it.produto,
+            quantidade: it.quantidade,
+            precoUnitario: it.precoUnitario,
+            total: it.total,
+          }))
+        : [
+            {
+              produto: vendaDetalhes.produto || `Venda #${vendaDetalhes.numero}`,
+              quantidade: vendaDetalhes.quantidade || '1',
+              precoUnitario: vendaDetalhes.total,
+              total: vendaDetalhes.total,
+            },
+          ],
+    pagamentos: vendaDetalhes.pagamentos?.map((p) => ({
+      metodo: p.metodo,
+      valor: p.valor,
+      troco: p.troco,
+    })),
+  });
 
   const handlePrint = () => {
-    const dados: ReciboDados = {
-      id: vendaDetalhes.id,
-      numero: vendaDetalhes.numero,
-      data: vendaDetalhes.data,
-      hora: vendaDetalhes.hora,
-      total: vendaDetalhes.total,
-      troco: vendaDetalhes.troco,
-      observacao: vendaDetalhes.observacao,
-      clienteNome: clienteObj?.nome,
-      itens:
-        vendaDetalhes.itens && vendaDetalhes.itens.length > 0
-          ? vendaDetalhes.itens.map((it) => ({
-              produto: it.produto,
-              quantidade: it.quantidade,
-              precoUnitario: it.precoUnitario,
-              total: it.total,
-            }))
-          : [
-              {
-                produto: vendaDetalhes.produto || `Venda #${vendaDetalhes.numero}`,
-                quantidade: vendaDetalhes.quantidade || '1',
-                precoUnitario: vendaDetalhes.total,
-                total: vendaDetalhes.total,
-              },
-            ],
-      pagamentos: vendaDetalhes.pagamentos?.map((p) => ({
-        metodo: p.metodo,
-        valor: p.valor,
-        troco: p.troco,
-      })),
-    };
-    onImprimirRecibo(dados);
+    onImprimirRecibo(montarDadosRecibo());
+  };
+
+  const handleShare = async () => {
+    const dados = montarDadosRecibo();
+    const texto = gerarTextoRecibo(dados, 'BStore');
+
+    if (typeof navigator !== 'undefined' && 'share' in navigator) {
+      try {
+        await navigator.share({
+          title: `Recibo BStore #${vendaDetalhes.numero}`,
+          text: texto,
+        });
+        setPartilhado(true);
+        setTimeout(() => setPartilhado(false), 2500);
+        return;
+      } catch {
+        // Usuário cancelou ou navegador não suportou, segue para o fallback
+      }
+    }
+
+    // Fallback: abrir WhatsApp com texto codificado
+    const url = `https://wa.me/?text=${encodeURIComponent(texto)}`;
+    window.open(url, '_blank');
+    setPartilhado(true);
+    setTimeout(() => setPartilhado(false), 2500);
   };
 
   return (
@@ -78,7 +106,7 @@ export const SaleDetailsModal: React.FC<SaleDetailsModalProps> = ({
             Data e Hora:
           </span>
           <strong style={{ display: 'block' }}>
-            {vendaDetalhes.data} {vendaDetalhes.hora}
+            {formatarDataHora(vendaDetalhes.criadaEm || `${vendaDetalhes.data}T${vendaDetalhes.hora || '00:00'}`)}
           </strong>
         </div>
         <div>
@@ -109,7 +137,7 @@ export const SaleDetailsModal: React.FC<SaleDetailsModalProps> = ({
             style={{
               display: 'block',
               fontSize: 18,
-              color: 'var(--primary, #1e40af)',
+              color: 'var(--color-brand)',
             }}
           >
             {formatMoney(vendaDetalhes.total)}
@@ -156,17 +184,17 @@ export const SaleDetailsModal: React.FC<SaleDetailsModalProps> = ({
       <table className="responsive-table" style={{ marginBottom: 16 }}>
         <thead>
           <tr>
-            <th>Produto</th>
-            <th className="numeric">Quantidade</th>
-            <th className="numeric">Preço Unitário</th>
-            <th className="numeric">Total</th>
+            <th scope="col">Produto</th>
+            <th scope="col" className="numeric">Quantidade</th>
+            <th scope="col" className="numeric">Preço Unitário</th>
+            <th scope="col" className="numeric">Total</th>
           </tr>
         </thead>
         <tbody>
           {vendaDetalhes.itens && vendaDetalhes.itens.length > 0 ? (
             vendaDetalhes.itens.map((it) => (
               <tr key={it.id}>
-                <td>
+                <td data-label="Produto">
                   <strong>{it.produto}</strong>
                   {it.notaDesconto && (
                     <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
@@ -174,25 +202,25 @@ export const SaleDetailsModal: React.FC<SaleDetailsModalProps> = ({
                     </div>
                   )}
                 </td>
-                <td className="numeric font-mono">
+                <td data-label="Quantidade" className="numeric font-mono">
                   {formatQuantity(it.quantidade, '')}
                 </td>
-                <td className="numeric font-mono">
+                <td data-label="Preço Unitário" className="numeric font-mono">
                   {formatMoney(it.precoUnitario)}
                 </td>
-                <td className="numeric font-mono" style={{ fontWeight: 600 }}>
+                <td data-label="Total" className="numeric font-mono" style={{ fontWeight: 600 }}>
                   {formatMoney(it.total)}
                 </td>
               </tr>
             ))
           ) : (
             <tr>
-              <td>{vendaDetalhes.produto || `Venda #${vendaDetalhes.numero}`}</td>
-              <td className="numeric font-mono">
+              <td data-label="Produto">{vendaDetalhes.produto || `Venda #${vendaDetalhes.numero}`}</td>
+              <td data-label="Quantidade" className="numeric font-mono">
                 {formatQuantity(vendaDetalhes.quantidade || '1', '')}
               </td>
-              <td className="numeric font-mono">{formatMoney(vendaDetalhes.total)}</td>
-              <td className="numeric font-mono" style={{ fontWeight: 600 }}>
+              <td data-label="Preço Unitário" className="numeric font-mono">{formatMoney(vendaDetalhes.total)}</td>
+              <td data-label="Total" className="numeric font-mono" style={{ fontWeight: 600 }}>
                 {formatMoney(vendaDetalhes.total)}
               </td>
             </tr>
@@ -206,21 +234,21 @@ export const SaleDetailsModal: React.FC<SaleDetailsModalProps> = ({
           <table className="responsive-table">
             <thead>
               <tr>
-                <th>Método</th>
-                <th className="numeric">Valor</th>
-                <th className="numeric">Troco</th>
-                <th>Referência</th>
+                <th scope="col">Método</th>
+                <th scope="col" className="numeric">Valor</th>
+                <th scope="col" className="numeric">Troco</th>
+                <th scope="col">Referência</th>
               </tr>
             </thead>
             <tbody>
               {vendaDetalhes.pagamentos.map((p) => (
                 <tr key={p.id}>
-                  <td>
+                  <td data-label="Método">
                     <strong>{formatarMetodoPagamento(p.metodo)}</strong>
                   </td>
-                  <td className="numeric font-mono">{formatMoney(p.valor)}</td>
-                  <td className="numeric font-mono">{formatMoney(p.troco || '0.00')}</td>
-                  <td style={{ fontSize: 12 }}>{p.referencia || '-'}</td>
+                  <td data-label="Valor" className="numeric font-mono">{formatMoney(p.valor)}</td>
+                  <td data-label="Troco" className="numeric font-mono">{formatMoney(p.troco || '0.00')}</td>
+                  <td data-label="Referência" style={{ fontSize: 12 }}>{p.referencia || '-'}</td>
                 </tr>
               ))}
             </tbody>
@@ -228,7 +256,7 @@ export const SaleDetailsModal: React.FC<SaleDetailsModalProps> = ({
         </>
       )}
 
-      <div className="modal-actions" style={{ marginTop: 20 }}>
+      <div className="modal-actions" style={{ marginTop: 20, flexWrap: 'wrap', gap: 8 }}>
         <button
           type="button"
           className="btn-secondary"
@@ -242,6 +270,15 @@ export const SaleDetailsModal: React.FC<SaleDetailsModalProps> = ({
           onClick={handlePrint}
         >
           <Printer size={15} strokeWidth={2} aria-hidden="true" /> Imprimir Recibo
+        </button>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={handleShare}
+          title="Partilhar recibo por WhatsApp ou mensagem"
+        >
+          <Share2 size={15} strokeWidth={2} aria-hidden="true" />
+          {partilhado ? 'Recibo enviado!' : 'Partilhar Recibo'}
         </button>
 
         {vendaDetalhes.estado !== 'ANULADA' &&

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { PageId } from '../App';
-import { LogOut, Menu, Moon, Sun } from 'lucide-react';
+import { Download, LogOut, Menu, Moon, Sun } from 'lucide-react';
 import { Spinner } from './UI';
+import { StatusBadge } from './ui/StatusBadge';
 import './Header.css';
 
 const titles: Record<PageId, string> = {
@@ -25,6 +26,8 @@ interface HeaderProps {
   onMenuClick: () => void;
   menuOpen: boolean;
   onProfileClick: () => void;
+  canInstall?: boolean;
+  onInstall?: () => void;
 }
 
 export default function Header({
@@ -37,6 +40,8 @@ export default function Header({
   onMenuClick,
   menuOpen,
   onProfileClick,
+  canInstall,
+  onInstall,
 }: HeaderProps) {
   const [, refresh] = useState(0);
 
@@ -62,8 +67,20 @@ export default function Header({
           <Menu size={20} strokeWidth={2} aria-hidden="true" />
         </button>
         <h1 className="header-title">{titles[currentPage]}</h1>
+        <StatusBadge label="Online" variant="online" className="header-status-badge" />
       </div>
       <div className="header-right">
+        {canInstall && onInstall && (
+          <button
+            type="button"
+            className="icon-btn header-install-btn"
+            onClick={onInstall}
+            aria-label="Instalar app"
+            title="Instalar BStore no dispositivo"
+          >
+            <Download size={18} strokeWidth={2} aria-hidden="true" />
+          </button>
+        )}
         <button
           className="icon-btn header-theme-btn"
           onClick={toggleTheme}

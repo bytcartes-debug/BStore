@@ -45,7 +45,7 @@ public class VendaDAO extends GenericDAO<Venda> {
         }
         long proximo = current + 1L;
         def.setUltimoNumeroVenda(proximo);
-        def.setAtualizadoEm(LocalDateTime.now());
+        def.setAtualizadoEm(util.Fuso.agora());
         return proximo;
     }
 
@@ -268,7 +268,7 @@ public class VendaDAO extends GenericDAO<Venda> {
     }
 
     public BigDecimal totalVendasHoje(Long usuarioId) {
-        return totalVendasPeriodo(LocalDate.now(), LocalDate.now(), usuarioId);
+        return totalVendasPeriodo(util.Fuso.hoje(), util.Fuso.hoje(), usuarioId);
     }
 
     public BigDecimal totalVendasPeriodo(LocalDate inicio, LocalDate fim, Long usuarioId) {
@@ -371,8 +371,8 @@ public class VendaDAO extends GenericDAO<Venda> {
 
             Object resVendasObj = em.createNativeQuery(
                 "SELECT " +
-                "COALESCE(SUM(CASE WHEN v.criada_em >= CAST(:inicioHoje AS timestamp) THEN iv.total - (iv.quantidade * iv.custo_unitario) ELSE 0.00 END), 0.00), " +
-                "COALESCE(SUM(iv.total - (iv.quantidade * iv.custo_unitario)), 0.00) " +
+                "COALESCE(SUM(CASE WHEN v.criada_em >= CAST(:inicioHoje AS timestamp) THEN iv.total - (iv.quantidade * iv.custo_unitario) ELSE 0.00 END), 0.00) AS lucro_venda_hoje, " +
+                "COALESCE(SUM(iv.total - (iv.quantidade * iv.custo_unitario)), 0.00) AS lucro_venda_7dias " +
                 "FROM venda_itens iv " +
                 "JOIN vendas v ON v.id = iv.venda_id " +
                 "WHERE iv.usuario_id = :uid AND iv.custo_conhecido = TRUE AND v.estado != 'ANULADA' " +
@@ -387,8 +387,8 @@ public class VendaDAO extends GenericDAO<Venda> {
 
             Object resDevsObj = em.createNativeQuery(
                 "SELECT " +
-                "COALESCE(SUM(CASE WHEN d.criada_em >= CAST(:inicioHoje AS timestamp) THEN idv.valor - (idv.quantidade * iv.custo_unitario) ELSE 0.00 END), 0.00), " +
-                "COALESCE(SUM(idv.valor - (idv.quantidade * iv.custo_unitario)), 0.00) " +
+                "COALESCE(SUM(CASE WHEN d.criada_em >= CAST(:inicioHoje AS timestamp) THEN idv.valor - (idv.quantidade * iv.custo_unitario) ELSE 0.00 END), 0.00) AS lucro_dev_hoje, " +
+                "COALESCE(SUM(idv.valor - (idv.quantidade * iv.custo_unitario)), 0.00) AS lucro_dev_7dias " +
                 "FROM devolucao_itens idv " +
                 "JOIN devolucoes d ON d.id = idv.devolucao_id " +
                 "JOIN venda_itens iv ON iv.id = idv.item_venda_id " +
@@ -416,11 +416,11 @@ public class VendaDAO extends GenericDAO<Venda> {
     }
 
     public long contarVendasHoje(Long usuarioId) {
-        return contarVendasDia(LocalDate.now(), usuarioId);
+        return contarVendasDia(util.Fuso.hoje(), usuarioId);
     }
 
     public long contarVendasDia(LocalDate data, Long usuarioId) {
-        LocalDate d = data != null ? data : LocalDate.now();
+        LocalDate d = data != null ? data : util.Fuso.hoje();
         LocalDateTime inicioTs = d.atStartOfDay();
         LocalDateTime fimExclusive = d.plusDays(1).atStartOfDay();
         return JPAUtil.emTransacao(usuarioId, em -> em.createQuery(
@@ -433,7 +433,7 @@ public class VendaDAO extends GenericDAO<Venda> {
     }
 
     public long contarVendasAnuladasHoje(Long usuarioId, LocalDate data) {
-        LocalDate d = data != null ? data : LocalDate.now();
+        LocalDate d = data != null ? data : util.Fuso.hoje();
         LocalDateTime inicioTs = d.atStartOfDay();
         LocalDateTime fimExclusive = d.plusDays(1).atStartOfDay();
         return JPAUtil.emTransacao(usuarioId, em -> em.createQuery(

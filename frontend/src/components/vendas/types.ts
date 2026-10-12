@@ -8,6 +8,9 @@ export interface Produto {
   unidade: string;
   codigoBarras?: string;
   custo?: string;
+  ativo?: boolean;
+  categoriaId?: number;
+  categoriaNome?: string;
 }
 
 export interface Categoria {
@@ -99,6 +102,7 @@ export interface DespesaCaixa {
 export interface CarrinhoEmEspera {
   id: string;
   criadoEm: string;
+  criadoEmMs?: number;
   identificador?: string;
   clienteId?: string;
   observacao?: string;

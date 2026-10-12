@@ -48,8 +48,15 @@ public class SessaoCaixa {
     @Column(name = "estado", nullable = false, length = 15)
     private String estado = "ABERTA"; // ABERTA, FECHADA
 
+    @PrePersist
+    public void prePersist() {
+        if (this.abertaEm == null) {
+            this.abertaEm = util.Fuso.agora();
+        }
+    }
+
     public SessaoCaixa() {
-        this.abertaEm = LocalDateTime.now();
+        this.abertaEm = util.Fuso.agora();
     }
 
     public SessaoCaixa(Long usuarioId, BigDecimal valorInicial, String notaAbertura, Long abertaPor) {
@@ -57,7 +64,7 @@ public class SessaoCaixa {
         this.valorInicial = valorInicial != null ? valorInicial : BigDecimal.ZERO;
         this.notaAbertura = notaAbertura;
         this.abertaPor = abertaPor;
-        this.abertaEm = LocalDateTime.now();
+        this.abertaEm = util.Fuso.agora();
         this.estado = "ABERTA";
     }
 

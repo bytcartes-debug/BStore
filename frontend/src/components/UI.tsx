@@ -88,6 +88,16 @@ export function EmptyState({
   );
 }
 
+export function PageContainer({
+  children,
+  className = '',
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <div className={`page-container ${className}`.trim()}>{children}</div>;
+}
+
 export function PageHeading({
   title,
   description,
@@ -104,6 +114,20 @@ export function PageHeading({
         <p>{description}</p>
       </div>
       {children && <div className="page-heading-actions">{children}</div>}
+    </div>
+  );
+}
+
+export function ResponsiveTable({
+  children,
+  className = '',
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className="table-wrapper">
+      <table className={`responsive-table ${className}`.trim()}>{children}</table>
     </div>
   );
 }
@@ -212,11 +236,17 @@ export function Modal({
       className={`modal-container${wide ? ' modal-wide' : ''}`}
       aria-labelledby={titleId}
       aria-busy={busy}
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !busy) {
+          onClose();
+        }
+      }}
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) onClose();
       }}
     >
+      <div className="modal-sheet-handle" aria-hidden="true" />
       <div className="modal-header">
         <h3 id={titleId}>{title}</h3>
         <button

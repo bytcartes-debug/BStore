@@ -4,6 +4,8 @@ import javax.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+import util.Fuso;
+
 @Entity
 @Table(name = "despesas_caixa")
 public class DespesaCaixa {
@@ -34,8 +36,15 @@ public class DespesaCaixa {
     @Column(name = "criado_por")
     private Long criadoPor;
 
+    @PrePersist
+    public void prePersist() {
+        if (this.criadaEm == null) {
+            this.criadaEm = Fuso.agora();
+        }
+    }
+
     public DespesaCaixa() {
-        this.criadaEm = LocalDateTime.now();
+        this.criadaEm = Fuso.agora();
     }
 
     public DespesaCaixa(Long usuarioId, SessaoCaixa sessaoCaixa, BigDecimal valor, String categoria, String descricao, Long criadoPor) {
@@ -45,7 +54,7 @@ public class DespesaCaixa {
         this.categoria = categoria != null && !categoria.trim().isEmpty() ? categoria.trim().toUpperCase() : "OUTRO";
         this.descricao = descricao != null ? descricao.trim() : "";
         this.criadoPor = criadoPor;
-        this.criadaEm = LocalDateTime.now();
+        this.criadaEm = Fuso.agora();
     }
 
     public Long getId() { return id; }

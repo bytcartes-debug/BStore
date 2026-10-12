@@ -19,7 +19,7 @@
   --color-brand: #17634f;
   --color-brand-hover: #104b3c;
   --color-brand-light: #e8f3ed;
-  --color-danger: #b22f36;
+  --color-danger: #a1232a;
   --color-danger-light: #fff0f0;
   --color-warning: #89520e;
   --color-warning-light: #fff5dd;
@@ -32,11 +32,21 @@
   --border-color: #d8e2dd;
   --input-border: #839a8f;
   --text-primary: #203832;
-  --text-secondary: #52665f;
-  --text-muted: #60736b;
+  --text-secondary: #41554e;
+  --text-muted: #495e56;
   --chart-color: #387dae;
   --shadow: 0 2px 5px rgb(22 51 41 / 3%);
   --sidebar-width: 232px;
+  /* Faixas de dispositivo (usar sempre estas, definidas uma só vez):
+     - Telemóvel: até 599 px
+     - Telemóvel grande e tablet pequeno: 600 a 899 px
+     - Tablet e portátil pequeno: 900 a 1199 px
+     - PC: 1200 px ou mais */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --bottom-nav-height: 60px;
 }
 body.dark-theme {
   color-scheme: dark;
@@ -71,12 +81,14 @@ body.dark-theme {
 }
 html {
   font-size: 16px;
+  overflow-x: hidden;
 }
 body {
   background: var(--bg-app);
   color: var(--text-primary);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 button,
 input,
@@ -93,6 +105,17 @@ input,
 select,
 textarea {
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+button:not(.btn-link),
+.icon-btn,
+.btn-primary,
+.btn-secondary,
+.btn-danger {
+  min-height: 44px;
+}
+.icon-btn {
+  min-width: 44px;
 }
 button:disabled {
   cursor: not-allowed;
@@ -148,20 +171,101 @@ img {
   padding: 32px;
   max-width: 1560px;
   margin-inline: auto;
-  animation: bstore-page-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-@keyframes bstore-page-enter {
-  from {
-    opacity: 0.85;
-    transform: translateY(3px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 .page-content:focus {
   outline: none;
+}
+
+/* ==========================================================================
+   HYPERFRAMES ANIMATION ENGINE — NAVEGAÇÃO 100% ANIMADA ENTRE ABAS
+   ========================================================================== */
+
+.page-view-animated {
+  display: flex;
+  flex-direction: column;
+  animation: hfPageEnter 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+@keyframes hfPageEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.992);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Cascata escalonada (Stagger) de entrada nos blocos filhos da página */
+.page-view-animated .page-heading {
+  animation: hfStaggerHeading 0.36s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.page-view-animated .stats-grid > * {
+  animation: hfStaggerCard 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.page-view-animated .stats-grid > *:nth-child(1) {
+  animation-delay: 0.04s;
+}
+.page-view-animated .stats-grid > *:nth-child(2) {
+  animation-delay: 0.08s;
+}
+.page-view-animated .stats-grid > *:nth-child(3) {
+  animation-delay: 0.12s;
+}
+.page-view-animated .stats-grid > *:nth-child(4) {
+  animation-delay: 0.16s;
+}
+
+.page-view-animated .card,
+.page-view-animated .table-container,
+.page-view-animated .pos-layout,
+.page-view-animated .produtos-grid {
+  animation: hfStaggerContent 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.06s;
+}
+
+@keyframes hfStaggerHeading {
+  0% {
+    transform: translateY(-8px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes hfStaggerCard {
+  0% {
+    transform: translateY(16px) scale(0.97);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes hfStaggerContent {
+  0% {
+    transform: translateY(12px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-view-animated,
+  .page-view-animated .page-heading,
+  .page-view-animated .stats-grid > *,
+  .page-view-animated .card,
+  .page-view-animated .table-container,
+  .page-view-animated .pos-layout,
+  .page-view-animated .produtos-grid {
+    animation: none !important;
+    transform: none !important;
+  }
 }
 .page-heading {
   display: flex;
@@ -237,15 +341,14 @@ img {
   place-items: center;
   user-select: none;
 }
-.search-field input {
-  padding-left: 42px;
-}
 .result-count {
   font-size: 13px;
   color: var(--text-muted);
   margin-left: auto;
 }
-:where(input:not([type='file']), select, textarea) {
+input:not([type='file']),
+select,
+textarea {
   width: 100%;
   min-width: 0;
   min-height: 44px;
@@ -260,12 +363,19 @@ img {
     box-shadow 0.18s ease,
     background-color 0.18s ease;
 }
-:where(input:not([type='file']), select, textarea):focus {
+.search-field input {
+  padding-left: 42px;
+}
+input:not([type='file']):focus,
+select:focus,
+textarea:focus {
   border-color: var(--color-brand);
   outline: none;
   box-shadow: 0 0 0 3px rgba(23, 99, 79, 0.12);
 }
-body.dark-theme :where(input:not([type='file']), select, textarea):focus {
+body.dark-theme input:not([type='file']):focus,
+body.dark-theme select:focus,
+body.dark-theme textarea:focus {
   box-shadow: 0 0 0 3px rgba(135, 213, 179, 0.15);
 }
 input::placeholder,
@@ -537,6 +647,7 @@ tbody tr:hover {
   color: var(--text-primary);
   width: min(520px, calc(100% - 32px));
   max-width: none;
+  max-height: calc(100vh - 32px);
   max-height: calc(100dvh - 32px);
   padding: 24px;
   margin: auto;
@@ -546,9 +657,22 @@ tbody tr:hover {
   animation: bstore-modal-appear 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   will-change: transform, opacity;
 }
+.modal-sheet-handle {
+  display: none;
+}
 .modal-container::backdrop {
   background: rgb(12 29 23 / 55%);
   animation: bstore-backdrop-appear 0.22s ease-out forwards;
+}
+@keyframes bstore-sheet-appear {
+  from {
+    transform: translateY(100%);
+    opacity: 0.8;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 @keyframes bstore-modal-appear {
   from {
@@ -706,18 +830,7 @@ tbody tr:hover {
 .loading-label {
   font-size: 14px;
   font-weight: 550;
-  color: var(--text-secondary);
-  animation: bstore-pulse 1.8s ease-in-out infinite;
-}
-
-@keyframes bstore-pulse {
-  0%,
-  100% {
-    opacity: 0.7;
-  }
-  50% {
-    opacity: 1;
-  }
+  color: var(--text-primary);
 }
 
 /* Spinner — Círculo girando suave e nítido */
@@ -1066,39 +1179,69 @@ body.dark-theme .btn-secondary .spinner {
   font-size: 12px;
   font-weight: 400;
 }
-@media (max-width: 1100px) {
+/* --------------------------------------------------------------------------
+   PADRÃO RESPONSIVO BSTORE — TRANSIÇÃO POR FAIXAS DE DISPOSITIVO
+   - Telemóvel: até 599 px
+   - Telemóvel grande e tablet pequeno: 600 a 899 px
+   - Tablet e portátil pequeno: 900 a 1199 px
+   - PC: 1200 px ou mais
+   -------------------------------------------------------------------------- */
+
+/* Tablet e Portátil Pequeno (até 1199px) */
+@media (max-width: 1199px) {
   .page-content {
-    padding: 24px;
+    padding: 24px 20px;
   }
 }
-@media (max-width: 767px) {
+
+/* Telemóvel Grande e Tablet Pequeno (até 899px) */
+@media (max-width: 899px) {
   .page-content {
-    padding: 20px 14px;
+    padding: 20px 16px;
+  }
+  .toolbar {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}
+
+/* Telemóvel (até 599px) */
+@media (max-width: 599px) {
+  .page-content {
+    padding: 16px 12px calc(72px + var(--safe-bottom));
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
   }
   .page-heading {
     flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: 14px;
+    align-items: flex-start;
+    text-align: left;
+    gap: 12px;
   }
   .page-heading-info {
-    text-align: center;
+    text-align: left;
+    width: 100%;
   }
   .page-heading h2 {
-    font-size: 24px;
-    text-align: center;
+    font-size: clamp(19px, 4.5vw, 24px);
+    text-align: left;
   }
   .page-heading p {
-    text-align: center;
-    margin-inline: auto;
+    text-align: left;
+    margin-inline: 0;
   }
   .page-heading-actions {
     width: 100%;
-    justify-content: center;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
   }
-  .page-heading-actions > button,
-  .page-heading-actions > a {
+  .page-heading-actions > :only-child {
     width: 100%;
+  }
+  .page-heading-actions > :not(:only-child) {
+    flex: 1 1 auto;
+    min-width: 0;
   }
   .toolbar {
     flex-direction: column;
@@ -1115,7 +1258,7 @@ body.dark-theme .btn-secondary .spinner {
   }
   .result-count {
     margin-left: 0;
-    text-align: center;
+    text-align: left;
   }
   .pagination {
     flex-direction: column;
@@ -1136,33 +1279,39 @@ body.dark-theme .btn-secondary .spinner {
   textarea {
     font-size: 16px;
   }
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* Cartão Responsivo para Tabelas em Telemóvel */
   .responsive-table {
     display: block;
+    border: 0;
   }
-  .responsive-table thead {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
+  .responsive-table thead,
+  .responsive-table thead tr,
+  .responsive-table thead th {
+    display: none;
   }
   .responsive-table tbody {
     display: block;
   }
   .responsive-table tr {
     display: block;
-    padding: 16px;
-    border-bottom: 1px solid var(--border-color);
+    padding: 14px 12px;
+    margin-bottom: 10px;
+    border-radius: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
   }
   .responsive-table tr:last-child {
-    border-bottom: 0;
+    margin-bottom: 0;
   }
   .responsive-table td {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 16px;
-    padding: 8px 0;
+    gap: 12px;
+    padding: 6px 0;
     border: 0;
     text-align: right;
     white-space: normal;
@@ -1173,7 +1322,7 @@ body.dark-theme .btn-secondary .spinner {
     color: var(--text-secondary);
     font-weight: 500;
     font-size: 13px;
-    flex: 0 0 85px;
+    flex: 0 0 100px;
   }
   .responsive-table td > * {
     min-width: 0;
@@ -1182,36 +1331,69 @@ body.dark-theme .btn-secondary .spinner {
     font-size: 15px;
   }
   .panel {
-    padding: 20px 16px;
+    padding: 16px 12px;
   }
-  .toast-region {
-    bottom: 16px;
-    right: 16px;
-    left: 16px;
-    max-width: 100%;
-  }
-}
-@media (max-width: 480px) {
-  .page-content {
-    padding: 16px 10px;
-  }
-  .form-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
+  /* Modal em Bottom Sheet no Telemóvel */
   .modal-container {
-    width: calc(100vw - 16px);
-    max-height: calc(100dvh - 16px);
-    padding: 20px 14px;
-    border-radius: 14px;
+    position: fixed;
+    inset: auto 0 0 0;
+    margin: 0;
+    width: 100vw;
+    max-width: 100vw;
+    max-height: calc(100vh - var(--safe-top) - 16px);
+    max-height: calc(100dvh - var(--safe-top) - 16px);
+    border-radius: 20px 20px 0 0;
+    border: 1px solid var(--border-color);
+    border-bottom: 0;
+    padding: 10px 16px calc(16px + var(--safe-bottom));
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.28);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    animation: bstore-sheet-appear 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .modal-sheet-handle {
+    display: block;
+    width: 38px;
+    height: 4.5px;
+    border-radius: 3px;
+    background: var(--border-color);
+    margin: 4px auto 14px;
+    flex-shrink: 0;
   }
   .modal-actions {
     flex-direction: column-reverse;
+    gap: 8px;
   }
   .modal-actions > button {
     width: 100%;
+    min-height: 44px;
   }
   .action-group {
     justify-content: flex-end;
+  }
+  .toast-region {
+    bottom: calc(72px + var(--safe-bottom));
+    right: 14px;
+    left: 14px;
+    max-width: 100%;
+  }
+}
+
+/* Telemóvel em Paisagem (Landscape com altura reduzida) */
+@media (max-height: 520px) and (orientation: landscape) {
+  .modal-container {
+    max-height: calc(100vh - 12px);
+    max-height: calc(100dvh - 12px);
+  }
+  .bottom-nav {
+    height: calc(48px + var(--safe-bottom));
+    padding: 2px 6px var(--safe-bottom);
+  }
+  .bottom-nav-item {
+    min-height: 42px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1558,3 +1740,207 @@ body.dark-theme .btn-secondary .spinner {
   width: 100%;
   min-height: 44px;
 }
+
+/* ==========================================
+   PROMPT 3: SUPORTE RESPONSIVO E COMPONENTES
+   ========================================== */
+.mobile-fab {
+  position: fixed;
+  bottom: calc(var(--bottom-nav-height, 60px) + var(--safe-bottom, 0px) + 16px);
+  right: 16px;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--color-brand);
+  color: #fff;
+  border: none;
+  box-shadow: 0 4px 16px rgba(23, 99, 79, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  cursor: pointer;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.mobile-fab:active {
+  transform: scale(0.92);
+}
+
+@media (min-width: 600px) {
+  .mobile-fab {
+    display: none !important;
+  }
+  .mobile-actions-trigger {
+    display: none !important;
+  }
+  .desktop-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    opacity: 0.85;
+    transition: opacity 0.15s ease;
+  }
+  tr:hover .desktop-actions {
+    opacity: 1;
+  }
+  .pagination-desktop {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+  .pagination-mobile {
+    display: none;
+  }
+}
+
+@media (max-width: 599.98px) {
+  .desktop-actions {
+    display: none !important;
+  }
+  .mobile-actions-trigger {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .pagination-desktop {
+    display: none;
+  }
+  .pagination-mobile {
+    display: block;
+    width: 100%;
+  }
+  .btn-carregar-mais {
+    width: 100%;
+    min-height: 44px;
+    font-weight: 600;
+  }
+  .pagination-mobile-end {
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+    padding: 8px 0;
+  }
+}
+
+/* Layout Fecho de Caixa */
+.fecho-pc-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+@media (min-width: 900px) {
+  .fecho-pc-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+}
+
+/* Layout Despesas de Caixa */
+.despesa-modal-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.despesa-lista-col {
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+}
+@media (min-width: 768px) {
+  .despesa-modal-layout {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) minmax(280px, 1.2fr);
+    gap: 24px;
+  }
+  .despesa-lista-col {
+    border-top: none;
+    border-left: 1px solid var(--border-color);
+    padding-top: 0;
+    padding-left: 20px;
+  }
+}
+
+/* Compatibilidade Safari iOS para campos de data */
+input[type='date'] {
+  min-height: 44px;
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 16px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Folha de estilos de impressão térmica para recibos (58mm e 80mm) */
+#bstore-recibo-print-area {
+  display: none;
+}
+
+@media print {
+  /* Esconder todos os elementos de navegação, cabeçalho e botões */
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .app-header,
+  .sidebar,
+  .sidebar-backdrop,
+  .bottom-nav,
+  .expiration-banner,
+  .ios-install-banner,
+  .skip-link,
+  .modal-backdrop,
+  .modal-wrapper,
+  dialog,
+  button,
+  .main-content > *:not(#bstore-recibo-print-area) {
+    display: none !important;
+  }
+
+  body > *:not(#bstore-recibo-print-area) {
+    display: none !important;
+  }
+
+  #bstore-recibo-print-area {
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    margin: 0 !important;
+    padding: 4px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .bstore-recibo-pre {
+    margin: 0;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 12px;
+    line-height: 1.25;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #000000 !important;
+  }
+
+  .recibo-termico-58 {
+    width: 48mm !important;
+    max-width: 48mm !important;
+  }
+
+  .recibo-termico-80 {
+    width: 72mm !important;
+    max-width: 72mm !important;
+  }
+
+  @page {
+    margin: 0;
+    size: auto;
+  }
+}
+
+

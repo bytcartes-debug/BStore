@@ -22,4 +22,4 @@ WORKDIR /app
 COPY --from=backend-build /app/target/barraca-sistema-1.0.jar app.jar
 
 EXPOSE 8080
-CMD ["java", "-Djava.awt.headless=true", "-jar", "app.jar"]
+CMD ["java", "-Djava.awt.headless=true", "-Duser.timezone=Africa/Maputo", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]

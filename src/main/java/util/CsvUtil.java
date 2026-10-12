@@ -15,13 +15,50 @@ public final class CsvUtil {
 
     private CsvUtil() {}
 
-    public static String escape(String val) {
+    /**
+     * Neutraliza valores de texto contra injeção de fórmulas CSV/Excel (=, +, -, @, \t, \r).
+     * Prefixa com apóstrofo (') para garantir que aplicações de folha de cálculo tratem como texto puro.
+     */
+    public static String escapeTexto(String val) {
         if (val == null) return "";
+        boolean temPrefixoPerigoso = val.startsWith("\t") || val.startsWith("\r") || val.startsWith("\n");
         String s = val.replace("\r\n", " ").replace('\r', ' ').replace('\n', ' ').trim();
+        if (s.isEmpty()) return "";
+
+        char primeiro = s.charAt(0);
+        if (temPrefixoPerigoso || primeiro == '=' || primeiro == '+' || primeiro == '-' || primeiro == '@') {
+            s = "'" + s;
+        }
+
         if (s.contains(";") || s.contains("\"")) {
             return "\"" + s.replace("\"", "\"\"") + "\"";
         }
         return s;
+    }
+
+    /**
+     * Escapa valores para CSV. Se o valor for puramente numérico ou data (incluindo números negativos),
+     * preserva a formatação original sem adicionar apóstrofo. Caso contrário, neutraliza potenciais fórmulas.
+     */
+    public static String escape(String val) {
+        if (val == null) return "";
+        String s = val.replace("\r\n", " ").replace('\r', ' ').replace('\n', ' ').trim();
+        if (isNumeroOuData(s)) {
+            if (s.contains(";") || s.contains("\"")) {
+                return "\"" + s.replace("\"", "\"\"") + "\"";
+            }
+            return s;
+        }
+        return escapeTexto(val);
+    }
+
+    public static boolean isNumeroOuData(String s) {
+        if (s == null || s.isBlank()) return false;
+        // Números inteiros, decimais (com ponto ou vírgula) e percentuais, positivos ou negativos
+        if (s.matches("^-?\\d+([.,]\\d+)?%?$")) return true;
+        // Datas no formato dd/MM/yyyy ou dd/MM/yyyy HH:mm
+        if (s.matches("^\\d{2}/\\d{2}/\\d{4}( \\d{2}:\\d{2})?$")) return true;
+        return false;
     }
 
     public static String formatarMoeda(BigDecimal valor) {
