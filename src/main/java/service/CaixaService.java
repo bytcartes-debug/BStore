@@ -159,7 +159,11 @@ public class CaixaService {
     }
 
     public List<SessaoCaixa> listarHistoricoSessoes(Long usuarioId, int limite) {
-        return sessaoCaixaDAO.listarHistorico(usuarioId, limite);
+        return listarHistoricoSessoes(usuarioId, null, null, limite);
+    }
+
+    public List<SessaoCaixa> listarHistoricoSessoes(Long usuarioId, LocalDate inicio, LocalDate fim, int limite) {
+        return sessaoCaixaDAO.listarHistorico(usuarioId, inicio, fim, limite);
     }
 
     public Map<String, Object> fechoCaixa(LocalDate data, Long usuarioId) {

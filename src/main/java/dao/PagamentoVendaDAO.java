@@ -26,9 +26,14 @@ public class PagamentoVendaDAO extends GenericDAO<PagamentoVenda> {
     }
 
     public Map<String, BigDecimal> totaisPorMetodo(Long usuarioId, LocalDate data) {
-        LocalDate d = data != null ? data : util.Fuso.hoje();
-        LocalDateTime inicio = d.atStartOfDay();
-        LocalDateTime fimExclusive = d.plusDays(1).atStartOfDay();
+        return totaisPorMetodo(usuarioId, data, data);
+    }
+
+    public Map<String, BigDecimal> totaisPorMetodo(Long usuarioId, LocalDate inicioData, LocalDate fimData) {
+        LocalDate in = inicioData != null ? inicioData : (fimData != null ? fimData : util.Fuso.hoje());
+        LocalDate out = fimData != null ? fimData : in;
+        LocalDateTime inicio = in.atStartOfDay();
+        LocalDateTime fimExclusive = out.plusDays(1).atStartOfDay();
         return JPAUtil.emTransacao(usuarioId, em -> {
             List<Object[]> rows = em.createQuery(
                 "SELECT p.metodo, SUM(p.valor - p.troco) FROM PagamentoVenda p JOIN p.venda v " +

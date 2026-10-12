@@ -1,5 +1,5 @@
 // BStore Service Worker - Network First with Cache Fallback
-const CACHE_VERSION = 'bmv576pii';
+const CACHE_VERSION = 'bmv5v83fc';
 const CACHE_NAME = `bstore-cache-${CACHE_VERSION}`;
 
 self.addEventListener('install', () => {

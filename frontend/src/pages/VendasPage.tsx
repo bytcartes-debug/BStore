@@ -119,6 +119,48 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
   const [search, setSearch] = useState('');
   const [filterEstado, setFilterEstado] = useState('todos');
   const [filterMetodo, setFilterMetodo] = useState('todos');
+  const [filterPeriodo, setFilterPeriodo] = useState<
+    'todos' | 'hoje' | 'ontem' | '7dias' | '30dias' | 'mes' | 'custom'
+  >('todos');
+  const [filterDataInicio, setFilterDataInicio] = useState('');
+  const [filterDataFim, setFilterDataFim] = useState('');
+
+  const aplicarPeriodoVendas = useCallback((periodo: string) => {
+    setFilterPeriodo(
+      periodo as 'todos' | 'hoje' | 'ontem' | '7dias' | '30dias' | 'mes' | 'custom',
+    );
+    const hojeObj = new Date();
+    const formatIso = (d: Date) => d.toISOString().slice(0, 10);
+    const hojeStr = formatIso(hojeObj);
+
+    if (periodo === 'todos') {
+      setFilterDataInicio('');
+      setFilterDataFim('');
+    } else if (periodo === 'hoje') {
+      setFilterDataInicio(hojeStr);
+      setFilterDataFim(hojeStr);
+    } else if (periodo === 'ontem') {
+      const ontemObj = new Date();
+      ontemObj.setDate(ontemObj.getDate() - 1);
+      const ontemStr = formatIso(ontemObj);
+      setFilterDataInicio(ontemStr);
+      setFilterDataFim(ontemStr);
+    } else if (periodo === '7dias') {
+      const seteObj = new Date();
+      seteObj.setDate(seteObj.getDate() - 6);
+      setFilterDataInicio(formatIso(seteObj));
+      setFilterDataFim(hojeStr);
+    } else if (periodo === '30dias') {
+      const trintaObj = new Date();
+      trintaObj.setDate(trintaObj.getDate() - 29);
+      setFilterDataInicio(formatIso(trintaObj));
+      setFilterDataFim(hojeStr);
+    } else if (periodo === 'mes') {
+      const mesInicioObj = new Date(hojeObj.getFullYear(), hojeObj.getMonth(), 1);
+      setFilterDataInicio(formatIso(mesInicioObj));
+      setFilterDataFim(hojeStr);
+    }
+  }, []);
 
   const usuarioId = useMemo(() => {
     if (currentUser?.userId) return String(currentUser.userId);
@@ -378,6 +420,23 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
     }
   };
 
+  const extrairDataIsoVenda = (v: VendaDocumento): string => {
+    if (v.criadaEm) {
+      return v.criadaEm.slice(0, 10);
+    }
+    if (v.data) {
+      if (v.data.includes('/')) {
+        const partes = v.data.split('/');
+        if (partes.length === 3) {
+          const [d, m, y] = partes;
+          return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        }
+      }
+      return v.data.slice(0, 10);
+    }
+    return '';
+  };
+
   const filteredSales = vendas.filter((v) => {
     const termo = search.trim().toLocaleLowerCase();
     const matchSearch =
@@ -390,7 +449,17 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
       filterMetodo === 'todos' ||
       (v.pagamentos &&
         v.pagamentos.some((p) => p.metodo.toUpperCase() === filterMetodo.toUpperCase()));
-    return matchSearch && matchEstado && matchMetodo;
+
+    let matchData = true;
+    if (filterDataInicio || filterDataFim) {
+      const d = extrairDataIsoVenda(v);
+      if (d) {
+        if (filterDataInicio && d < filterDataInicio) matchData = false;
+        if (filterDataFim && d > filterDataFim) matchData = false;
+      }
+    }
+
+    return matchSearch && matchEstado && matchMetodo && matchData;
   });
 
   const handleExportarVendas = async () => {
@@ -399,6 +468,8 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
       const params = new URLSearchParams();
       if (filterEstado && filterEstado !== 'todos') params.set('estado', filterEstado);
       if (filterMetodo && filterMetodo !== 'todos') params.set('metodo', filterMetodo);
+      if (filterDataInicio) params.set('inicio', filterDataInicio);
+      if (filterDataFim) params.set('fim', filterDataFim);
       if (search.trim()) params.set('q', search.trim());
       const query = params.toString() ? `?${params.toString()}` : '';
       await descarregarFicheiro(
@@ -1532,6 +1603,60 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
           </select>
 
           <select
+            aria-label="Filtrar por período"
+            value={filterPeriodo}
+            onChange={(e) => aplicarPeriodoVendas(e.target.value)}
+            style={{
+              padding: '7px 12px',
+              borderRadius: 6,
+              border: '1px solid var(--border-color, #ccc)',
+            }}
+          >
+            <option value="todos">Todas as datas</option>
+            <option value="hoje">Hoje</option>
+            <option value="ontem">Ontem</option>
+            <option value="7dias">Últimos 7 dias</option>
+            <option value="30dias">Últimos 30 dias</option>
+            <option value="mes">Este mês</option>
+            <option value="custom">Personalizado</option>
+          </select>
+
+          {filterPeriodo === 'custom' && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                De:
+                <input
+                  type="date"
+                  aria-label="Data inicial"
+                  value={filterDataInicio}
+                  max={filterDataFim || undefined}
+                  onChange={(e) => setFilterDataInicio(e.target.value)}
+                  style={{
+                    padding: '6px 8px',
+                    borderRadius: 6,
+                    border: '1px solid var(--border-color, #ccc)',
+                  }}
+                />
+              </label>
+              <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                Até:
+                <input
+                  type="date"
+                  aria-label="Data final"
+                  value={filterDataFim}
+                  min={filterDataInicio || undefined}
+                  onChange={(e) => setFilterDataFim(e.target.value)}
+                  style={{
+                    padding: '6px 8px',
+                    borderRadius: 6,
+                    border: '1px solid var(--border-color, #ccc)',
+                  }}
+                />
+              </label>
+            </div>
+          )}
+
+          <select
             aria-label="Filtrar por método de pagamento"
             value={filterMetodo}
             onChange={(e) => setFilterMetodo(e.target.value)}
@@ -1600,6 +1725,7 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
                     setSearch('');
                     setFilterEstado('todos');
                     setFilterMetodo('todos');
+                    aplicarPeriodoVendas('todos');
                   }}
                 >
                   <RefreshCw size={14} strokeWidth={2} aria-hidden="true" /> Limpar filtros

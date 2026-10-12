@@ -158,7 +158,11 @@ public class RelatorioService {
     }
 
     public byte[] exportarCaixaCsv(Long usuarioId, int limite) {
-        List<SessaoCaixa> sessoes = sessaoCaixaDAO.listarHistorico(usuarioId, limite > 0 ? limite : 200);
+        return exportarCaixaCsv(usuarioId, null, null, limite);
+    }
+
+    public byte[] exportarCaixaCsv(Long usuarioId, LocalDate inicio, LocalDate fim, int limite) {
+        List<SessaoCaixa> sessoes = sessaoCaixaDAO.listarHistorico(usuarioId, inicio, fim, limite > 0 ? limite : 200);
 
         StringBuilder sb = new StringBuilder();
         sb.append(CsvUtil.UTF8_BOM);

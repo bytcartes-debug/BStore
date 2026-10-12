@@ -46,12 +46,22 @@ public class SessaoCaixaDAO extends GenericDAO<SessaoCaixa> {
     }
 
     public List<SessaoCaixa> listarHistorico(Long uid, int limite) {
-        return JPAUtil.emTransacao(uid, em -> em.createQuery(
-                "SELECT s FROM SessaoCaixa s WHERE s.usuarioId = :uid ORDER BY s.abertaEm DESC",
-                SessaoCaixa.class)
-                .setParameter("uid", uid)
-                .setMaxResults(limite > 0 ? limite : 50)
-                .getResultList());
+        return listarHistorico(uid, null, null, limite);
+    }
+
+    public List<SessaoCaixa> listarHistorico(Long uid, java.time.LocalDate inicio, java.time.LocalDate fim, int limite) {
+        LocalDateTime inicioTs = inicio != null ? inicio.atStartOfDay() : null;
+        LocalDateTime fimExclusive = fim != null ? fim.plusDays(1).atStartOfDay() : null;
+        return JPAUtil.emTransacao(uid, em -> {
+            StringBuilder jpql = new StringBuilder("SELECT s FROM SessaoCaixa s WHERE s.usuarioId = :uid");
+            if (inicioTs != null) jpql.append(" AND s.abertaEm >= :inicio");
+            if (fimExclusive != null) jpql.append(" AND s.abertaEm < :fimExclusive");
+            jpql.append(" ORDER BY s.abertaEm DESC");
+            var query = em.createQuery(jpql.toString(), SessaoCaixa.class).setParameter("uid", uid);
+            if (inicioTs != null) query.setParameter("inicio", inicioTs);
+            if (fimExclusive != null) query.setParameter("fimExclusive", fimExclusive);
+            return query.setMaxResults(limite > 0 ? limite : 50).getResultList();
+        });
     }
 
     public BigDecimal calcularVendasDinheiro(EntityManager em, Long sessaoId, Long uid) {

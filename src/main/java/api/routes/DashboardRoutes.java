@@ -49,22 +49,43 @@ public class DashboardRoutes {
     private void getDashboard(Context ctx) {
         Long uid = ApiSecurity.utilizadorId(ctx);
         LocalDate hoje = util.Fuso.hoje();
+        LocalDate inicio = ApiHelpers.dataQuery(ctx, "inicio");
+        LocalDate fim = ApiHelpers.dataQuery(ctx, "fim");
+        boolean filtroPersonalizado = (inicio != null || fim != null);
+        if (inicio == null) inicio = hoje.minusDays(6);
+        if (fim == null) fim = hoje;
+        if (inicio.isAfter(fim)) {
+            LocalDate tmp = inicio;
+            inicio = fim;
+            fim = tmp;
+        }
 
         Map<LocalDate, BigDecimal> totais;
         try {
-            totais = vendaDAO.totaisPorDia(hoje.minusDays(6), hoje, uid);
+            totais = vendaDAO.totaisPorDia(inicio, fim, uid);
         } catch (Exception e) {
             System.err.println("[DASHBOARD] Falha ao carregar totaisPorDia: " + e.getMessage());
             totais = Collections.emptyMap();
         }
 
         List<Map<String, Object>> vendasPorDia = new ArrayList<>();
-        for (int i = 6; i >= 0; i--) {
-            LocalDate dia = hoje.minusDays(i);
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("dia", dia.format(DateTimeFormatter.ofPattern("dd/MM")));
-            item.put("total", ApiHelpers.decimalJson(totais.getOrDefault(dia, BigDecimal.ZERO), 2));
-            vendasPorDia.add(item);
+        long diasDiff = java.time.temporal.ChronoUnit.DAYS.between(inicio, fim);
+        if (diasDiff <= 90) {
+            for (LocalDate dia = inicio; !dia.isAfter(fim); dia = dia.plusDays(1)) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("dia", dia.format(DateTimeFormatter.ofPattern("dd/MM")));
+                item.put("dataIso", dia.toString());
+                item.put("total", ApiHelpers.decimalJson(totais.getOrDefault(dia, BigDecimal.ZERO), 2));
+                vendasPorDia.add(item);
+            }
+        } else {
+            for (Map.Entry<LocalDate, BigDecimal> entry : totais.entrySet()) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("dia", entry.getKey().format(DateTimeFormatter.ofPattern("dd/MM")));
+                item.put("dataIso", entry.getKey().toString());
+                item.put("total", ApiHelpers.decimalJson(entry.getValue(), 2));
+                vendasPorDia.add(item);
+            }
         }
 
         List<Map<String, Object>> alertas;
@@ -86,6 +107,16 @@ public class DashboardRoutes {
         }
 
         Map<String, Object> dashboard = new LinkedHashMap<>();
+        BigDecimal totalVendasPeriodo;
+        BigDecimal lucroPeriodo;
+        try {
+            totalVendasPeriodo = vendaDAO.totalVendasPeriodo(inicio, fim, uid);
+            lucroPeriodo = vendaDAO.lucroEstimadoPeriodo(inicio, fim, uid);
+        } catch (Exception e) {
+            totalVendasPeriodo = BigDecimal.ZERO;
+            lucroPeriodo = BigDecimal.ZERO;
+        }
+
         BigDecimal totalVendasHoje = totais.getOrDefault(hoje, BigDecimal.ZERO);
 
         Map<String, BigDecimal> lucros;
@@ -107,9 +138,14 @@ public class DashboardRoutes {
         }
         if (valorTotalStockCusto == null) valorTotalStockCusto = BigDecimal.ZERO;
 
+        dashboard.put("inicio", inicio.toString());
+        dashboard.put("fim", fim.toString());
+        dashboard.put("filtroPersonalizado", filtroPersonalizado);
         dashboard.put("totalVendasHoje", ApiHelpers.decimalJson(totalVendasHoje, 2));
         dashboard.put("lucroHoje", ApiHelpers.decimalJson(lucroHoje, 2));
         dashboard.put("lucroUltimos7Dias", ApiHelpers.decimalJson(lucro7Dias, 2));
+        dashboard.put("totalVendasPeriodo", ApiHelpers.decimalJson(totalVendasPeriodo, 2));
+        dashboard.put("lucroPeriodo", ApiHelpers.decimalJson(lucroPeriodo, 2));
         dashboard.put("valorTotalStockCusto", ApiHelpers.decimalJson(valorTotalStockCusto, 2));
         try { dashboard.put("totalProdutos", service.totalProdutos(uid)); } catch (Exception e) { dashboard.put("totalProdutos", 0L); }
         try { dashboard.put("totalCategorias", categoriaDAO.contarTodos(uid)); } catch (Exception e) { dashboard.put("totalCategorias", 0L); }
@@ -118,7 +154,7 @@ public class DashboardRoutes {
 
         Map<String, String> metodoFormatado = new LinkedHashMap<>();
         try {
-            Map<String, BigDecimal> totaisMetodo = new PagamentoVendaDAO().totaisPorMetodo(uid, hoje);
+            Map<String, BigDecimal> totaisMetodo = new PagamentoVendaDAO().totaisPorMetodo(uid, inicio, fim);
             if (totaisMetodo != null) {
                 totaisMetodo.forEach((k, v) -> metodoFormatado.put(k, ApiHelpers.decimalJson(v != null ? v : BigDecimal.ZERO, 2)));
             }
@@ -129,7 +165,7 @@ public class DashboardRoutes {
 
         List<Map<String, Object>> maisVendidos = new ArrayList<>();
         try {
-            List<Object[]> maisVendidosRaw = new ItemVendaDAO().produtosMaisVendidos(uid, hoje.minusDays(6), hoje, 5);
+            List<Object[]> maisVendidosRaw = new ItemVendaDAO().produtosMaisVendidos(uid, inicio, fim, 5);
             if (maisVendidosRaw != null) {
                 for (Object[] r : maisVendidosRaw) {
                     Map<String, Object> item = new LinkedHashMap<>();

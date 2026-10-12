@@ -278,6 +278,10 @@ public class BarracaService {
         return caixaService.listarHistoricoSessoes(usuarioId, limite);
     }
 
+    public List<SessaoCaixa> listarHistoricoSessoes(Long usuarioId, LocalDate inicio, LocalDate fim, int limite) {
+        return caixaService.listarHistoricoSessoes(usuarioId, inicio, fim, limite);
+    }
+
     public Map<String, Object> fechoCaixa(LocalDate data, Long usuarioId) {
         return caixaService.fechoCaixa(data, usuarioId);
     }
@@ -344,6 +348,10 @@ public class BarracaService {
 
     public byte[] exportarCaixaCsv(Long usuarioId, int limite) {
         return relatorioService.exportarCaixaCsv(usuarioId, limite);
+    }
+
+    public byte[] exportarCaixaCsv(Long usuarioId, LocalDate inicio, LocalDate fim, int limite) {
+        return relatorioService.exportarCaixaCsv(usuarioId, inicio, fim, limite);
     }
 
     public byte[] exportarDespesasCaixaCsv(Long sessaoId, Long usuarioId) {

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   AlertTriangle,
   ArrowUpRight,
   Banknote,
   BarChart3,
+  Calendar,
   CheckCircle2,
   CreditCard,
   FileText,
@@ -27,9 +28,14 @@ import type { PageId } from '../App';
 import './DashboardPage.css';
 
 interface DashboardData {
+  inicio?: string;
+  fim?: string;
+  filtroPersonalizado?: boolean;
   totalVendasHoje?: string;
   lucroHoje?: string;
   lucroUltimos7Dias?: string;
+  totalVendasPeriodo?: string;
+  lucroPeriodo?: string;
   valorTotalStockCusto?: string;
   totalProdutos?: number;
   totalCategorias?: number;
@@ -50,7 +56,7 @@ interface DashboardData {
     total: string;
     data: string;
   }[];
-  vendasPorDia?: { dia: string; total: string }[];
+  vendasPorDia?: { dia: string; dataIso?: string; total: string }[];
   vendasPorMetodo?: Record<string, string>;
   produtosMaisVendidos?: {
     produtoId: number;
@@ -62,11 +68,80 @@ interface DashboardData {
   }[];
 }
 
-const loadDashboard = (signal: AbortSignal) =>
-  apiRequest<DashboardData>('/api/dashboard', { signal });
+type PeriodoPreset = '7dias' | 'hoje' | 'ontem' | '30dias' | 'mes' | 'custom';
+
+function formatIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function calcularIntervalo(p: PeriodoPreset, customIn: string, customOut: string) {
+  const hoje = new Date();
+  if (p === 'hoje') {
+    const s = formatIsoDate(hoje);
+    return { inicio: s, fim: s, label: 'Hoje' };
+  }
+  if (p === 'ontem') {
+    const ont = new Date();
+    ont.setDate(ont.getDate() - 1);
+    const s = formatIsoDate(ont);
+    return { inicio: s, fim: s, label: 'Ontem' };
+  }
+  if (p === '7dias') {
+    const i = new Date();
+    i.setDate(i.getDate() - 6);
+    return { inicio: formatIsoDate(i), fim: formatIsoDate(hoje), label: 'Últimos 7 dias' };
+  }
+  if (p === '30dias') {
+    const i = new Date();
+    i.setDate(i.getDate() - 29);
+    return { inicio: formatIsoDate(i), fim: formatIsoDate(hoje), label: 'Últimos 30 dias' };
+  }
+  if (p === 'mes') {
+    const i = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    return { inicio: formatIsoDate(i), fim: formatIsoDate(hoje), label: 'Este mês' };
+  }
+  return {
+    inicio: customIn || formatIsoDate(hoje),
+    fim: customOut || formatIsoDate(hoje),
+    label: 'Personalizado',
+  };
+}
+
+function formatarDataCurta(iso: string): string {
+  if (!iso || !iso.includes('-')) return iso;
+  const parts = iso.split('-');
+  return `${parts[2]}/${parts[1]}`;
+}
 
 export default function DashboardPage({ navigate }: { navigate: (page: PageId) => void }) {
-  const { data, loading, error, reload } = useResource(loadDashboard);
+  const [preset, setPreset] = useState<PeriodoPreset>('7dias');
+  const [customInicio, setCustomInicio] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return formatIsoDate(d);
+  });
+  const [customFim, setCustomFim] = useState(() => formatIsoDate(new Date()));
+
+  const intervalo = useMemo(
+    () => calcularIntervalo(preset, customInicio, customFim),
+    [preset, customInicio, customFim]
+  );
+
+  const loader = useCallback(
+    (signal: AbortSignal) => {
+      const url =
+        preset === '7dias'
+          ? '/api/dashboard'
+          : `/api/dashboard?inicio=${intervalo.inicio}&fim=${intervalo.fim}`;
+      return apiRequest<DashboardData>(url, { signal });
+    },
+    [preset, intervalo.inicio, intervalo.fim]
+  );
+
+  const { data, loading, error, reload } = useResource(loader);
   const [tableView, setTableView] = useState(false);
 
   const today = new Intl.DateTimeFormat('pt-MZ', {
@@ -130,37 +205,130 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
         </button>
       </PageHeading>
 
+      <div className="dashboard-filter-bar" role="region" aria-label="Filtrar período da visão geral">
+        <div className="filter-presets" role="group" aria-label="Período de análise">
+          <button
+            type="button"
+            className={`filter-preset-btn${preset === 'hoje' ? ' active' : ''}`}
+            aria-pressed={preset === 'hoje'}
+            onClick={() => setPreset('hoje')}
+          >
+            Hoje
+          </button>
+          <button
+            type="button"
+            className={`filter-preset-btn${preset === 'ontem' ? ' active' : ''}`}
+            aria-pressed={preset === 'ontem'}
+            onClick={() => setPreset('ontem')}
+          >
+            Ontem
+          </button>
+          <button
+            type="button"
+            className={`filter-preset-btn${preset === '7dias' ? ' active' : ''}`}
+            aria-pressed={preset === '7dias'}
+            onClick={() => setPreset('7dias')}
+          >
+            7 Dias
+          </button>
+          <button
+            type="button"
+            className={`filter-preset-btn${preset === '30dias' ? ' active' : ''}`}
+            aria-pressed={preset === '30dias'}
+            onClick={() => setPreset('30dias')}
+          >
+            30 Dias
+          </button>
+          <button
+            type="button"
+            className={`filter-preset-btn${preset === 'mes' ? ' active' : ''}`}
+            aria-pressed={preset === 'mes'}
+            onClick={() => setPreset('mes')}
+          >
+            Este Mês
+          </button>
+          <button
+            type="button"
+            className={`filter-preset-btn${preset === 'custom' ? ' active' : ''}`}
+            aria-pressed={preset === 'custom'}
+            onClick={() => setPreset('custom')}
+          >
+            <Calendar size={13} style={{ display: 'inline-block', verticalAlign: '-1px', marginRight: 4 }} aria-hidden="true" />
+            Personalizado
+          </button>
+        </div>
+
+        {preset === 'custom' && (
+          <div className="custom-date-inputs">
+            <label className="date-input-label">
+              <span>De:</span>
+              <input
+                type="date"
+                aria-label="Data inicial"
+                value={customInicio}
+                max={customFim || undefined}
+                onChange={(e) => setCustomInicio(e.target.value)}
+              />
+            </label>
+            <label className="date-input-label">
+              <span>Até:</span>
+              <input
+                type="date"
+                aria-label="Data final"
+                value={customFim}
+                min={customInicio || undefined}
+                onChange={(e) => setCustomFim(e.target.value)}
+              />
+            </label>
+          </div>
+        )}
+      </div>
+
       {error && <LoadError message={error} retry={reload} />}
 
       <section className="store-overview" aria-label="Resumo da loja">
         <div className="today-sales">
           <span className="today-label">
-            <Banknote size={17} strokeWidth={2} aria-hidden="true" /> Vendas de Hoje
+            <Banknote size={17} strokeWidth={2} aria-hidden="true" />{' '}
+            {preset === 'hoje' ? 'Vendas de Hoje' : 'Vendas no Período'}
           </span>
           <p className="today-value">
             <AnimatedNumber
-              value={decimalSeguro(data.totalVendasHoje).toNumber()}
+              value={decimalSeguro(
+                preset === 'hoje'
+                  ? data.totalVendasHoje
+                  : (data.totalVendasPeriodo ?? data.totalVendasHoje)
+              ).toNumber()}
               formatter={(v) => formatMoney(v.toFixed(2))}
             />
           </p>
-          <span className="today-description">Total registado no dia</span>
+          <span className="today-description">
+            {preset === 'hoje'
+              ? 'Total registado no dia'
+              : `${intervalo.label}: ${formatarDataCurta(intervalo.inicio)} a ${formatarDataCurta(intervalo.fim)}`}
+          </span>
         </div>
 
-        {data.lucroHoje !== undefined && (
+        {(data.lucroHoje !== undefined || data.lucroPeriodo !== undefined) && (
           <div className="today-sales">
             <span className="today-label">
-              <Coins size={17} strokeWidth={2} aria-hidden="true" /> Lucro Estimado de Hoje
+              <Coins size={17} strokeWidth={2} aria-hidden="true" />{' '}
+              {preset === 'hoje' ? 'Lucro Estimado de Hoje' : 'Lucro no Período'}
             </span>
             <p className="today-value">
               <AnimatedNumber
-                value={decimalSeguro(data.lucroHoje).toNumber()}
+                value={decimalSeguro(
+                  preset === 'hoje'
+                    ? data.lucroHoje
+                    : (data.lucroPeriodo ?? data.lucroHoje)
+                ).toNumber()}
                 formatter={(v) => formatMoney(v.toFixed(2))}
               />
             </p>
             <span className="today-description">
-              {data.lucroUltimos7Dias
-                ? `7 dias: ${formatMoney(data.lucroUltimos7Dias)}`
-                : 'Vendas menos custo'}
+              {preset === 'hoje'
+                ? (data.lucroUltimos7Dias ? `7 dias: ${formatMoney(data.lucroUltimos7Dias)}` : 'Vendas menos custo')
+                : 'Vendas com custo conhecido menos custo'}
             </span>
             <small
               style={{

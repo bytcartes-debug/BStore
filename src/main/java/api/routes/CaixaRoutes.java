@@ -90,12 +90,10 @@ public class CaixaRoutes {
 
     private void listarHistoricoCaixa(Context ctx) {
         Long uid = ApiSecurity.utilizadorId(ctx);
-        int limite = 50;
-        String limStr = ctx.queryParam("limite");
-        if (limStr != null && !limStr.isBlank()) {
-            try { limite = Integer.parseInt(limStr); } catch (NumberFormatException ignored) {}
-        }
-        List<SessaoCaixa> sessoes = service.listarHistoricoSessoes(uid, limite);
+        int limite = ApiHelpers.inteiroQuery(ctx, "limite", 50);
+        LocalDate inicio = ApiHelpers.dataQuery(ctx, "inicio");
+        LocalDate fim = ApiHelpers.dataQuery(ctx, "fim");
+        List<SessaoCaixa> sessoes = service.listarHistoricoSessoes(uid, inicio, fim, limite);
         List<Map<String, Object>> res = new ArrayList<>();
         for (SessaoCaixa s : sessoes) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -117,7 +115,9 @@ public class CaixaRoutes {
     private void exportarCaixaCsv(Context ctx) {
         Long uid = ApiSecurity.utilizadorId(ctx);
         int limite = ApiHelpers.inteiroQuery(ctx, "limite", 200);
-        byte[] bytes = service.exportarCaixaCsv(uid, limite);
+        LocalDate inicio = ApiHelpers.dataQuery(ctx, "inicio");
+        LocalDate fim = ApiHelpers.dataQuery(ctx, "fim");
+        byte[] bytes = service.exportarCaixaCsv(uid, inicio, fim, limite);
         String nomeFicheiro = "fechos_caixa_" + util.Fuso.hoje() + ".csv";
         ctx.contentType("text/csv; charset=UTF-8")
            .header("Content-Disposition", "attachment; filename=\"" + nomeFicheiro + "\"")

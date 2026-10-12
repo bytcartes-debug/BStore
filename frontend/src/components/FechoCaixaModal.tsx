@@ -70,6 +70,8 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
   const [historico, setHistorico] = useState<SessaoHistorico[]>([]);
   const [carregandoHistorico, setCarregandoHistorico] = useState(false);
   const [exportandoHistorico, setExportandoHistorico] = useState(false);
+  const [histInicio, setHistInicio] = useState('');
+  const [histFim, setHistFim] = useState('');
 
   const [erro, setErro] = useState<string | null>(null);
 
@@ -103,17 +105,21 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
     }
   }, []);
 
-  const carregarHistorico = useCallback(async () => {
+  const carregarHistorico = useCallback(async (inicio = histInicio, fim = histFim) => {
     setCarregandoHistorico(true);
     try {
-      const res = await apiRequest<SessaoHistorico[]>('/api/caixa/historico');
+      const params = new URLSearchParams();
+      if (inicio) params.set('inicio', inicio);
+      if (fim) params.set('fim', fim);
+      const query = params.toString() ? `?${params.toString()}` : '';
+      const res = await apiRequest<SessaoHistorico[]>(`/api/caixa/historico${query}`);
       setHistorico(res || []);
     } catch {
       setHistorico([]);
     } finally {
       setCarregandoHistorico(false);
     }
-  }, []);
+  }, [histInicio, histFim]);
 
   useEffect(() => {
     void carregarSessao();
@@ -134,8 +140,11 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
   const handleExportarHistorico = async () => {
     try {
       setExportandoHistorico(true);
+      const params = new URLSearchParams({ limite: '200' });
+      if (histInicio) params.set('inicio', histInicio);
+      if (histFim) params.set('fim', histFim);
       await descarregarFicheiro(
-        '/api/caixa/exportar?limite=200',
+        `/api/caixa/exportar?${params.toString()}`,
         `fechos_caixa_${new Date().toISOString().slice(0, 10)}.csv`,
       );
       toast('Histórico de fechos exportado com sucesso.');
@@ -454,7 +463,7 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
       {/* ABA 2: RESUMO DIÁRIO */}
       {abaAtiva === 'diario' && (
         <div>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
             <label htmlFor="fecho-data" style={{ fontWeight: 600 }}>
               Data:
             </label>
@@ -469,6 +478,28 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
                 border: '1px solid var(--border-color, #ccc)',
               }}
             />
+            <div style={{ display: 'inline-flex', gap: 6 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ fontSize: 12, padding: '5px 9px' }}
+                onClick={() => setDataSelecionada(new Date().toISOString().slice(0, 10))}
+              >
+                Hoje
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ fontSize: 12, padding: '5px 9px' }}
+                onClick={() => {
+                  const d = new Date();
+                  d.setDate(d.getDate() - 1);
+                  setDataSelecionada(d.toISOString().slice(0, 10));
+                }}
+              >
+                Ontem
+              </button>
+            </div>
             <button
               type="button"
               className="btn-secondary"
@@ -611,13 +642,96 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
       {/* ABA 3: HISTÓRICO DE SESSÕES */}
       {abaAtiva === 'historico' && (
         <div>
+          <div
+            style={{
+              display: 'flex',
+              gap: 10,
+              alignItems: 'center',
+              marginBottom: 16,
+              flexWrap: 'wrap',
+            }}
+          >
+            <label
+              style={{
+                fontSize: 13,
+                color: 'var(--text-secondary)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              De:
+              <input
+                type="date"
+                aria-label="Data inicial das sessões"
+                value={histInicio}
+                max={histFim || undefined}
+                onChange={(e) => setHistInicio(e.target.value)}
+                style={{
+                  padding: '6px 8px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border-color, #ccc)',
+                }}
+              />
+            </label>
+            <label
+              style={{
+                fontSize: 13,
+                color: 'var(--text-secondary)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              Até:
+              <input
+                type="date"
+                aria-label="Data final das sessões"
+                value={histFim}
+                min={histInicio || undefined}
+                onChange={(e) => setHistFim(e.target.value)}
+                style={{
+                  padding: '6px 8px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border-color, #ccc)',
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ fontSize: 13, padding: '6px 12px' }}
+              onClick={() => void carregarHistorico(histInicio, histFim)}
+              disabled={carregandoHistorico}
+            >
+              {carregandoHistorico ? <Spinner size="small" /> : 'Filtrar'}
+            </button>
+            {(histInicio || histFim) && (
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ fontSize: 13, padding: '6px 12px' }}
+                onClick={() => {
+                  setHistInicio('');
+                  setHistFim('');
+                  void carregarHistorico('', '');
+                }}
+                disabled={carregandoHistorico}
+              >
+                Limpar
+              </button>
+            )}
+          </div>
+
           {carregandoHistorico ? (
             <div style={{ textAlign: 'center', padding: 24 }}>
               <Spinner />
             </div>
           ) : historico.length === 0 ? (
             <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 24 }}>
-              Nenhum fecho de caixa registado até ao momento.
+              {histInicio || histFim
+                ? 'Nenhum fecho de caixa encontrado no período selecionado.'
+                : 'Nenhum fecho de caixa registado até ao momento.'}
             </p>
           ) : (
             <div className="table-wrapper">
