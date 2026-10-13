@@ -28,7 +28,12 @@ import { Confetti, type ConfettiHandle } from '../components/ui/Confetti';
 import {
   salvarVendaPendente,
   listarVendasPendentes,
+  removerVendaPendente,
   sincronizarVendasPendentes,
+  guardarCacheLocal,
+  obterCacheLocal,
+  abaterStockProdutosLocais,
+  gerarNumeroProvisorioOffline,
   type VendaPendente,
 } from '../utils/offlineQueue';
 import type Decimal from 'decimal.js';
@@ -56,7 +61,9 @@ import {
   Share2,
   ShoppingCart,
   Trash2,
+  Wifi,
   WifiOff,
+  CloudUpload,
   XCircle,
 } from 'lucide-react';
 import {
@@ -87,25 +94,65 @@ import { ProductCatalog } from '../components/vendas/ProductCatalog';
 import { PaymentDialog } from '../components/vendas/PaymentDialog';
 import { SaleDetailsModal } from '../components/vendas/SaleDetailsModal';
 import { FastSaleAvulsaModal } from '../components/vendas/FastSaleAvulsaModal';
+import { VendasPendentesModal } from '../components/vendas/VendasPendentesModal';
 
-const loadSalesData = async (signal: AbortSignal) => {
-  const [vendas, produtos, categorias, devedores, metodos, definicoes, sessaoCaixa] =
-    await Promise.all([
-      apiRequest<VendaDocumento[]>('/api/vendas', { signal }),
-      apiRequest<Produto[]>('/api/produtos', { signal }),
-      apiRequest<Categoria[]>('/api/categorias', { signal }).catch(() => [] as Categoria[]),
-      apiRequest<Devedor[]>('/api/devedores', { signal }).catch(() => [] as Devedor[]),
-      apiRequest<MetodoPagamentoConfig[]>('/api/metodos-pagamento?apenasAtivos=true', {
-        signal,
-      }).catch(() => [] as MetodoPagamentoConfig[]),
-      apiRequest<DefinicoesLoja>('/api/definicoes', { signal }).catch(
-        () => ({ controloCaixa: false, nomeLoja: 'BStore' }) as DefinicoesLoja,
-      ),
-      apiRequest<SessaoCaixaAtual>('/api/caixa/atual', { signal }).catch(
-        () => ({ aberta: false }) as SessaoCaixaAtual,
-      ),
-    ]);
-  return { vendas, produtos, categorias, devedores, metodos, definicoes, sessaoCaixa };
+interface SalesDataInit {
+  vendas: VendaDocumento[];
+  produtos: Produto[];
+  categorias: Categoria[];
+  devedores: Devedor[];
+  metodos: MetodoPagamentoConfig[];
+  definicoes: DefinicoesLoja;
+  sessaoCaixa: SessaoCaixaAtual;
+  offlineMode?: boolean;
+}
+
+const loadSalesData = async (signal: AbortSignal): Promise<SalesDataInit> => {
+  try {
+    const [vendas, produtos, categorias, devedores, metodos, definicoes, sessaoCaixa] =
+      await Promise.all([
+        apiRequest<VendaDocumento[]>('/api/vendas', { signal }),
+        apiRequest<Produto[]>('/api/produtos', { signal }),
+        apiRequest<Categoria[]>('/api/categorias', { signal }).catch(() => [] as Categoria[]),
+        apiRequest<Devedor[]>('/api/devedores', { signal }).catch(() => [] as Devedor[]),
+        apiRequest<MetodoPagamentoConfig[]>('/api/metodos-pagamento?apenasAtivos=true', {
+          signal,
+        }).catch(() => [] as MetodoPagamentoConfig[]),
+        apiRequest<DefinicoesLoja>('/api/definicoes', { signal }).catch(
+          () => ({ controloCaixa: false, nomeLoja: 'BStore' }) as DefinicoesLoja,
+        ),
+        apiRequest<SessaoCaixaAtual>('/api/caixa/atual', { signal }).catch(
+          () => ({ aberta: false }) as SessaoCaixaAtual,
+        ),
+      ]);
+    const res: SalesDataInit = {
+      vendas,
+      produtos,
+      categorias,
+      devedores,
+      metodos,
+      definicoes,
+      sessaoCaixa,
+      offlineMode: false,
+    };
+    void guardarCacheLocal('vendas_init_data', res);
+    return res;
+  } catch (err: unknown) {
+    const cache = await obterCacheLocal<SalesDataInit>('vendas_init_data');
+    if (cache && Array.isArray(cache.produtos) && cache.produtos.length > 0) {
+      return {
+        vendas: cache.vendas || [],
+        produtos: cache.produtos || [],
+        categorias: cache.categorias || [],
+        devedores: cache.devedores || [],
+        metodos: cache.metodos || [],
+        definicoes: cache.definicoes || { controloCaixa: false, nomeLoja: 'BStore' },
+        sessaoCaixa: cache.sessaoCaixa || { aberta: false },
+        offlineMode: true,
+      };
+    }
+    throw err;
+  }
 };
 
 interface VendasPageProps {
@@ -252,11 +299,13 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
   const [observacao, setObservacao] = useState('');
   const [idempotencyKey, setIdempotencyKey] = useState<string>(() => crypto.randomUUID());
 
-  // Offline / Resiliência
+  // Offline / Resiliência Local-First
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [vendasPendentes, setVendasPendentes] = useState<VendaPendente[]>([]);
+  const [showModalPendentes, setShowModalPendentes] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
   const [exportandoVendas, setExportandoVendas] = useState(false);
+  const [produtosLocais, setProdutosLocais] = useState<Produto[] | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLUListElement>(null);
@@ -266,8 +315,14 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
   const anularMutation = useMutation();
   const toast = useToast();
 
+  useEffect(() => {
+    if (data?.produtos) {
+      setProdutosLocais(data.produtos);
+    }
+  }, [data?.produtos]);
+
   const vendas = useMemo(() => data?.vendas || [], [data?.vendas]);
-  const produtos = useMemo(() => data?.produtos || [], [data?.produtos]);
+  const produtos = useMemo(() => produtosLocais || data?.produtos || [], [produtosLocais, data?.produtos]);
   const categorias = useMemo(() => data?.categorias || [], [data?.categorias]);
   const devedores = useMemo(() => data?.devedores || [], [data?.devedores]);
   const metodosDisponiveis = useMemo(() => {
@@ -337,6 +392,25 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
       window.removeEventListener('bstore:pendentes-atualizadas', handlePendentesAtualizadas);
     };
   }, [carregarPendentes, sincronizarFilaOffline]);
+
+  // Sincronização periódica em segundo plano a cada 25 segundos
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (navigator.onLine && vendasPendentes.length > 0 && !sincronizando) {
+        void sincronizarFilaOffline();
+      }
+    }, 25000);
+    return () => clearInterval(timer);
+  }, [vendasPendentes.length, sincronizando, sincronizarFilaOffline]);
+
+  const descartarPendente = useCallback(
+    async (uuid: string) => {
+      await removerVendaPendente(uuid);
+      toast('Venda offline descartada com sucesso.');
+      await carregarPendentes();
+    },
+    [toast, carregarPendentes],
+  );
 
   // Cálculo individual de linha de carrinho (com desconto)
   const calcularLinha = useCallback((item: ItemCarrinho) => {
@@ -1386,13 +1460,26 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
         })),
       };
 
-      // MODO OFFLINE DETETADO ANTES OU DURANTE O PEDIDO
+      // MODO OFFLINE DETETADO ANTES DO ENVIO
+      const numeroOffline = gerarNumeroProvisorioOffline();
+      const resumoItensTexto = carrinho.map((i) => i.produto.nome).slice(0, 3).join(', ');
+      const metodosDesc = pagamentos.map((p) => p.metodo).join(' + ');
+
       if (!navigator.onLine) {
         await salvarVendaPendente({
           uuidCliente: idempotencyKey,
           dataCriacao: new Date().toISOString(),
+          numeroProvisorio: numeroOffline,
+          total: total.toFixed(2),
+          itensQtd: carrinho.length,
+          resumoItens: carrinho.length > 3 ? `${resumoItensTexto} + ${carrinho.length - 3}` : resumoItensTexto,
+          metodos: metodosDesc,
           payload,
         });
+
+        // Abate stock localmente na tela em 0ms
+        setProdutosLocais((prev) => abaterStockProdutosLocais(prev || produtos, payload.itens));
+
         emitirBroadcastCliente('sale_success', {
           total: total.toFixed(2),
           pago: totalPago.toFixed(2),
@@ -1401,10 +1488,15 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
         setShowModal(false);
         resetCart();
         setReciboSucesso(dadosRecibo);
-        toast('Venda guardada no aparelho (sem internet). Será enviada quando a rede voltar.');
+        confettiRef.current?.fire();
+        toast('Venda registada no aparelho (offline). Será enviada assim que a rede voltar.');
         await carregarPendentes();
         return;
       }
+
+      // TENTATIVA ONLINE COM TIMEOUT DE 7S
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 7000);
 
       try {
         const result = await apiRequest<{
@@ -1419,12 +1511,17 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
             'Idempotency-Key': idempotencyKey,
           },
           body: JSON.stringify(payload),
+          signal: controller.signal,
         });
+        clearTimeout(timeoutId);
 
         dadosRecibo.id = result.id;
         dadosRecibo.numero = result.numero;
         dadosRecibo.total = result.total;
         dadosRecibo.troco = result.troco;
+
+        // Abate stock local em 0ms
+        setProdutosLocais((prev) => abaterStockProdutosLocais(prev || produtos, payload.itens));
 
         emitirBroadcastCliente('sale_success', {
           total: result.total,
@@ -1440,18 +1537,31 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
         void reload();
         void notificarVendaRegistada(`${result.itens} produtos`, result.total).catch(() => {});
       } catch (err: unknown) {
+        clearTimeout(timeoutId);
         const msg = err instanceof Error ? err.message : '';
-        if (
+        const isNetworkErr =
           !navigator.onLine ||
+          msg.includes('abort') ||
           msg.includes('fetch') ||
           msg.includes('Network') ||
-          msg.includes('Failed to')
-        ) {
+          msg.includes('Failed to') ||
+          msg.includes('timeout');
+
+        if (isNetworkErr) {
           await salvarVendaPendente({
             uuidCliente: idempotencyKey,
             dataCriacao: new Date().toISOString(),
+            numeroProvisorio: numeroOffline,
+            total: total.toFixed(2),
+            itensQtd: carrinho.length,
+            resumoItens: carrinho.length > 3 ? `${resumoItensTexto} + ${carrinho.length - 3}` : resumoItensTexto,
+            metodos: metodosDesc,
             payload,
           });
+
+          // Abate stock localmente na tela
+          setProdutosLocais((prev) => abaterStockProdutosLocais(prev || produtos, payload.itens));
+
           emitirBroadcastCliente('sale_success', {
             total: total.toFixed(2),
             pago: totalPago.toFixed(2),
@@ -1460,7 +1570,8 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
           setShowModal(false);
           resetCart();
           setReciboSucesso(dadosRecibo);
-          toast('Falha de rede: venda guardada no aparelho para envio posterior.');
+          confettiRef.current?.fire();
+          toast('Falha de rede: venda guardada no aparelho (offline). Sincronização automática em segundo plano.');
           await carregarPendentes();
         } else {
           throw err;
@@ -1567,6 +1678,60 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
         description="Ponto de venda simples, pagamentos múltiplos, descontos e tela do cliente."
       >
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* BADGE DE CONEXÃO E FILA LOCAL-FIRST */}
+          <button
+            type="button"
+            onClick={() => vendasPendentes.length > 0 && setShowModalPendentes(true)}
+            title={
+              !isOnline
+                ? 'Aparelho offline: vendas a gravar em base de dados local'
+                : vendasPendentes.length > 0
+                  ? `${vendasPendentes.length} venda(s) pendente(s) de sincronização. Clique para gerir.`
+                  : 'Ligação online ativa'
+            }
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 12px',
+              borderRadius: 20,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: vendasPendentes.length > 0 ? 'pointer' : 'default',
+              background: !isOnline
+                ? '#fffbeb'
+                : vendasPendentes.length > 0
+                  ? '#fef3c7'
+                  : '#f0fdf4',
+              color: !isOnline
+                ? '#b45309'
+                : vendasPendentes.length > 0
+                  ? '#b45309'
+                  : '#15803d',
+              border: `1px solid ${
+                !isOnline
+                  ? '#fde68a'
+                  : vendasPendentes.length > 0
+                    ? '#fcd34d'
+                    : '#bbf7d0'
+              }`,
+            }}
+          >
+            {!isOnline ? (
+              <>
+                <WifiOff size={14} /> Modo Offline
+              </>
+            ) : vendasPendentes.length > 0 ? (
+              <>
+                <CloudUpload size={14} /> {vendasPendentes.length} pendente(s)
+              </>
+            ) : (
+              <>
+                <Wifi size={14} /> Online
+              </>
+            )}
+          </button>
+
           {typeof BroadcastChannel !== 'undefined' && (
             <button
               type="button"
@@ -1741,17 +1906,29 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
                 : `${vendasPendentes.length} venda(s) guardadas no aparelho à espera de sincronização.`}
             </span>
           </div>
-          {isOnline && vendasPendentes.length > 0 && (
-            <button
-              type="button"
-              className="btn-secondary"
-              style={{ fontSize: 12, padding: '3px 8px' }}
-              disabled={sincronizando}
-              onClick={() => void sincronizarFilaOffline()}
-            >
-              {sincronizando ? <Spinner size="small" /> : 'Sincronizar agora'}
-            </button>
-          )}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {vendasPendentes.length > 0 && (
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ fontSize: 12, padding: '3px 8px' }}
+                onClick={() => setShowModalPendentes(true)}
+              >
+                Ver fila offline ({vendasPendentes.length})
+              </button>
+            )}
+            {isOnline && vendasPendentes.length > 0 && (
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ fontSize: 12, padding: '3px 8px' }}
+                disabled={sincronizando}
+                onClick={() => void sincronizarFilaOffline()}
+              >
+                {sincronizando ? <Spinner size="small" /> : 'Sincronizar agora'}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -3142,6 +3319,18 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* MODAL DE VENDAS OFFLINE / FILA PENDENTE */}
+      {showModalPendentes && (
+        <VendasPendentesModal
+          vendas={vendasPendentes}
+          isOnline={isOnline}
+          isSincronizando={sincronizando}
+          onSincronizar={() => void sincronizarFilaOffline()}
+          onDescartar={(uuid) => void descartarPendente(uuid)}
+          onClose={() => setShowModalPendentes(false)}
+        />
       )}
 
       {/* CELEBRAÇÃO DE VENDA */}
