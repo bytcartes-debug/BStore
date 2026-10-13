@@ -1,4 +1,5 @@
 import { BarcodeScanner, BarcodeFormat } from '@capacitor-mlkit/barcode-scanning';
+import { validarChecksumCodigo } from './barcodeChecksum';
 
 /** Devolve true se o plugin de câmara nativo está disponível (Android nativo Capacitor) */
 export const isNative = (): boolean =>
@@ -59,10 +60,105 @@ export const pedirPermissaoCamara = async (): Promise<boolean> => {
   }
 };
 
+/** Formatos restritos para velocidade e precisão da loja */
+export const FORMATOS_BARCODE_WEB = [
+  'ean_13',
+  'ean_8',
+  'upc_a',
+  'upc_e',
+  'code_128',
+  'code_39',
+  'qr_code',
+] as const;
+
+export interface IBarcodeDetector {
+  detect(image: ImageBitmapSource): Promise<Array<{ rawValue: string; format: string }>>;
+}
+
+/**
+ * Obtém o motor de BarcodeDetector para web:
+ * 1. Nativo da janela do navegador (Chrome, Edge no Android e PC) - zero overhead.
+ * 2. Polyfill WebAssembly (zxing-wasm) via barcode-detector para Safari iOS e Firefox.
+ */
+export const obterDetectorWeb = async (): Promise<IBarcodeDetector> => {
+  if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+    const NativeDetector = (window as unknown as { BarcodeDetector: new (opts: { formats: string[] }) => IBarcodeDetector }).BarcodeDetector;
+    return new NativeDetector({ formats: [...FORMATOS_BARCODE_WEB] });
+  }
+
+  // Import dinâmico do polyfill WebAssembly para navegadores sem BarcodeDetector nativo (Safari/Firefox)
+  const { BarcodeDetector } = await import('barcode-detector/pure');
+  return new BarcodeDetector({ formats: [...FORMATOS_BARCODE_WEB] }) as unknown as IBarcodeDetector;
+};
+
+/**
+ * Emite som Web Audio positivo (beep de produto adicionado) e vibração.
+ */
+export function tocarBeepSucesso() {
+  try {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (AudioCtx) {
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.08);
+
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.08);
+    }
+  } catch {}
+
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    try {
+      navigator.vibrate(60);
+    } catch {}
+  }
+}
+
+/**
+ * Emite som Web Audio diferenciado para código não encontrado e vibração dupla.
+ */
+export function tocarBeepDesconhecido() {
+  try {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (AudioCtx) {
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.linearRampToValueAtTime(310, ctx.currentTime + 0.15);
+
+      gain.gain.setValueAtTime(0.14, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    }
+  } catch {}
+
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    try {
+      navigator.vibrate([60, 40, 60]);
+    } catch {}
+  }
+}
+
 /**
  * Abre o scanner de código de barras ou QR code.
  * No telemóvel nativo (Android) usa o Google ML Kit do Capacitor.
- * No navegador / computador abre o modal de câmara integrado.
+ * No navegador / computador abre o leitor com detetor nativo ou Wasm sob demanda.
  * Devolve o código lido (string) ou null se cancelado.
  */
 export const abrirScanner = async (): Promise<string | null> => {
@@ -76,22 +172,18 @@ export const abrirScanner = async (): Promise<string | null> => {
       if (abrirDef) {
         try {
           await BarcodeScanner.openSettings();
-        } catch {
-          // Ignorar erro ao abrir definições
-        }
+        } catch {}
       }
       return null;
     }
 
-    // 2. Verificar se o módulo Google ML Kit está pronto ou precisa de descarregar
+    // 2. Verificar se o módulo Google ML Kit está pronto
     try {
       const { available } = await BarcodeScanner.isGoogleBarcodeScannerModuleAvailable();
       if (!available) {
         await BarcodeScanner.installGoogleBarcodeScannerModule();
       }
-    } catch {
-      // Em alguns dispositivos sem Google Play Services ou emuladores, prosseguir diretamente
-    }
+    } catch {}
 
     try {
       const { barcodes } = await BarcodeScanner.scan({
@@ -105,7 +197,14 @@ export const abrirScanner = async (): Promise<string | null> => {
           BarcodeFormat.UpcE,
         ],
       });
-      return barcodes.length > 0 ? (barcodes[0].rawValue ?? null) : null;
+      if (barcodes.length > 0 && barcodes[0].rawValue) {
+        const raw = barcodes[0].rawValue.trim();
+        if (validarChecksumCodigo(raw)) {
+          tocarBeepSucesso();
+          return raw;
+        }
+      }
+      return null;
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.toLowerCase().includes('cancel')) return null;

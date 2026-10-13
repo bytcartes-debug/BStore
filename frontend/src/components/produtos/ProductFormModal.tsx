@@ -1,7 +1,9 @@
-import React from 'react';
-import { ArrowDownLeft, Camera, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
+import React, { useState } from 'react';
+import { ArrowDownLeft, Camera, ChevronDown, ChevronUp, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { Modal, Field, Notice, Spinner } from '../UI';
 import { formatQuantity } from '../../utils/decimal';
+import { apiRequest } from '../../utils/api';
+import { useToast } from '../../utils/toast';
 import { UNIDADES, type Categoria, type Produto, type ProdutoFormData } from './types';
 
 interface ProductFormModalProps {
@@ -41,6 +43,48 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   onOpenEntrada,
   onOpenAjuste,
 }) => {
+  const toast = useToast();
+  const [iaNormalizando, setIaNormalizando] = useState(false);
+
+  const handleCompletarComIa = async () => {
+    if (!form.nome.trim()) {
+      toast('Digite pelo menos o início do nome do produto para a IA completar.');
+      return;
+    }
+    setIaNormalizando(true);
+    try {
+      const res = await apiRequest<{
+        nomeNormalizado?: string;
+        unidadeSugerida?: string;
+        categoriaSugerida?: string;
+      }>('/api/ia/produto-por-texto', {
+        method: 'POST',
+        body: JSON.stringify({
+          nome: form.nome.trim(),
+          categorias: categorias.map((c) => c.nome),
+        }),
+      });
+
+      const patch: Partial<ProdutoFormData> = {};
+      if (res.nomeNormalizado) patch.nome = res.nomeNormalizado;
+      if (res.unidadeSugerida && UNIDADES.includes(res.unidadeSugerida as any)) {
+        patch.unidade = res.unidadeSugerida;
+      }
+      if (res.categoriaSugerida) {
+        const catMatch = categorias.find(
+          (c) => c.nome.toLowerCase() === res.categoriaSugerida!.toLowerCase()
+        );
+        if (catMatch) patch.categoriaId = String(catMatch.id);
+      }
+      onChangeForm(patch);
+      toast('Nome normalizado e categoria sugerida pela IA.');
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Falha ao consultar IA.');
+    } finally {
+      setIaNormalizando(false);
+    }
+  };
+
   return (
     <Modal
       title={editing ? 'Editar produto' : 'Adicionar produto'}
@@ -78,13 +122,38 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
             </button>
           </div>
           <Field id="product-name" label="Nome *">
-            <input
-              id="product-name"
-              value={form.nome}
-              onChange={(e) => onChangeForm({ nome: e.target.value })}
-              placeholder="Nome do produto"
-              required
-            />
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
+                id="product-name"
+                value={form.nome}
+                onChange={(e) => onChangeForm({ nome: e.target.value })}
+                placeholder="Nome do produto"
+                required
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{
+                  padding: '6px 10px',
+                  fontSize: 12,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  whiteSpace: 'nowrap',
+                }}
+                onClick={handleCompletarComIa}
+                disabled={iaNormalizando || isSaving}
+                title="Normalizar nome e sugerir categoria com IA"
+              >
+                {iaNormalizando ? (
+                  <Spinner size="small" />
+                ) : (
+                  <Sparkles size={14} style={{ color: 'var(--color-brand)' }} />
+                )}
+                Completar IA
+              </button>
+            </div>
           </Field>
 
           <Field id="product-price" label="Preço (MT) *">

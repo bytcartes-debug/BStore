@@ -1,11 +1,12 @@
 import { useToast } from '../utils/toast';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { apiFetch, apiRequest, descarregarFicheiro } from '../utils/api';
 import { useMutation, useResource } from '../utils/useResource';
 import { abrirScanner } from '../utils/scanner';
 import { buscarNaOpenFoodFacts } from '../utils/openFoodFacts';
+import { useBarcodeScannerInput } from '../utils/useBarcodeScannerInput';
 import { decimal, formatMoney, formatQuantity, parseDecimalInput } from '../utils/decimal';
-import { ArrowDownLeft, Camera, ClipboardList, Download, Plus, SlidersHorizontal, X } from 'lucide-react';
+import { ArrowDownLeft, Camera, ClipboardList, Download, Plus, SlidersHorizontal, X, Sparkles, Receipt } from 'lucide-react';
 import {
   PageHeading,
   Loading,
@@ -98,6 +99,128 @@ export default function ProdutosPage() {
   const stockAction = useMutation();
   const toast = useToast();
 
+  const [analisandoFotoIa, setAnalisandoFotoIa] = useState(false);
+  const [analisandoFaturaIa, setAnalisandoFaturaIa] = useState(false);
+  const fotoIaInputRef = useRef<HTMLInputElement>(null);
+  const faturaIaInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFotoIaSelecionada = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setAnalisandoFotoIa(true);
+      toast('A analisar produto com IA...');
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+      });
+      reader.readAsDataURL(file);
+      const b64 = await base64Promise;
+
+      const resultado = await apiRequest<{
+        nome?: string;
+        precoSugerido?: string;
+        precoCusto?: string;
+        codigoBarras?: string;
+        categoriaSugerida?: string;
+        unidade?: string;
+      }>('/api/ia/produto-por-foto', {
+        method: 'POST',
+        body: JSON.stringify({ imagemBase64: b64, mimeType: file.type || 'image/jpeg' }),
+      });
+
+      let catId = categorias[0]?.id.toString() || '';
+      if (resultado.categoriaSugerida) {
+        const encontrada = categorias.find((c) =>
+          c.nome.toLowerCase().includes(resultado.categoriaSugerida!.toLowerCase())
+        );
+        if (encontrada) catId = encontrada.id.toString();
+      }
+
+      setEditing(null);
+      setShowDetails(false);
+      setForm({
+        nome: resultado.nome || '',
+        preco: resultado.precoSugerido || '',
+        custo: resultado.precoCusto || '0.00',
+        stock: '1',
+        stockMinimo: '5',
+        unidade: resultado.unidade || 'un',
+        categoriaId: catId,
+        codigoBarras: resultado.codigoBarras || '',
+      });
+      setOffMsg('Dados sugeridos pela IA. Confirme as informações antes de guardar.');
+      setShowModal(true);
+      toast('Produto identificado! Reveja e confirme o cadastro.');
+    } catch (err) {
+      toast('Não foi possível identificar o produto: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setAnalisandoFotoIa(false);
+      if (fotoIaInputRef.current) fotoIaInputRef.current.value = '';
+    }
+  };
+
+  const handleFaturaIaSelecionada = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setAnalisandoFaturaIa(true);
+      toast('A analisar fatura com IA...');
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+      });
+      reader.readAsDataURL(file);
+      const b64 = await base64Promise;
+
+      const resultado = await apiRequest<{
+        fornecedor?: string;
+        total?: string;
+        itens?: {
+          descricao: string;
+          quantidade: number;
+          precoUnitario: string;
+          subtotal: string;
+        }[];
+      }>('/api/ia/fatura-por-foto', {
+        method: 'POST',
+        body: JSON.stringify({ imagemBase64: b64, mimeType: file.type || 'image/jpeg' }),
+      });
+
+      if (resultado.itens && resultado.itens.length > 0) {
+        const novosItens: ItemEntrada[] = [];
+        for (const item of resultado.itens) {
+          const prodExistente = produtos.find((p) =>
+            p.nome.toLowerCase().includes(item.descricao.toLowerCase()) ||
+            item.descricao.toLowerCase().includes(p.nome.toLowerCase())
+          );
+          if (prodExistente) {
+            novosItens.push({
+              produtoId: prodExistente.id,
+              produtoNome: prodExistente.nome,
+              quantidade: String(item.quantidade || 1),
+              custoUnitario: item.precoUnitario || '0.00',
+              motivo: 'Fatura Fornecedor (IA)',
+            });
+          }
+        }
+        if (novosItens.length > 0) {
+          setEntradaItens((prev) => [...prev, ...novosItens]);
+          toast(`${novosItens.length} produto(s) da fatura identificados e adicionados.`);
+        } else {
+          toast('Fatura analisada, mas nenhum produto coincidiu diretamente com o catálogo atual.');
+        }
+      }
+    } catch (err) {
+      toast('Erro ao analisar fatura: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setAnalisandoFaturaIa(false);
+      if (faturaIaInputRef.current) faturaIaInputRef.current.value = '';
+    }
+  };
+
   const filtered = produtos
     .filter((p) => {
       const matchSearch =
@@ -156,24 +279,27 @@ export default function ProdutosPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showModal, showEntradaModal, showAjusteModal, showInventarioModal, movimentoProduto, openNew]);
 
-  const openEdit = (p: Produto) => {
-    setEditing(p);
-    setShowDetails(false);
-    setForm({
-      nome: p.nome,
-      preco: p.preco,
-      custo: p.custo || '0.00',
-      stock: p.stock,
-      stockMinimo: p.stockMinimo,
-      unidade: p.unidade || 'un',
-      categoriaId: p.categoriaId.toString(),
-      codigoBarras: p.codigoBarras || '',
-    });
-    save.setError(null);
-    scan.setError(null);
-    setOffMsg(null);
-    setShowModal(true);
-  };
+  const openEdit = useCallback(
+    (p: Produto) => {
+      setEditing(p);
+      setShowDetails(false);
+      setForm({
+        nome: p.nome,
+        preco: p.preco,
+        custo: p.custo || '0.00',
+        stock: p.stock,
+        stockMinimo: p.stockMinimo,
+        unidade: p.unidade || 'un',
+        categoriaId: p.categoriaId.toString(),
+        codigoBarras: p.codigoBarras || '',
+      });
+      save.setError(null);
+      scan.setError(null);
+      setOffMsg(null);
+      setShowModal(true);
+    },
+    [save, scan],
+  );
 
   const openEntradaPara = (p?: Produto) => {
     setEntradaItens([]);
@@ -257,15 +383,21 @@ export default function ProdutosPage() {
       }
     });
 
-  const handleScanFromToolbar = () =>
-    void scan.run(async () => {
-      setOffMsg(null);
-      const codigo = await abrirScanner();
+  const processarCodigoLido = useCallback(
+    async (codigo: string) => {
       if (!codigo) return;
+      setOffMsg(null);
+
+      // Se o modal de cadastro/edição já estiver aberto, preenche o campo de código
+      if (showModal) {
+        setF({ codigoBarras: codigo });
+        return;
+      }
 
       // Se já existe localmente, abre para visualização/edição
+      const clean = codigo.trim().toLowerCase();
       const existing = produtos.find(
-        (p) => (p.codigoBarras || '').trim().toLowerCase() === codigo.trim().toLowerCase(),
+        (p) => (p.codigoBarras || '').trim().toLowerCase() === clean,
       );
       if (existing) {
         openEdit(existing);
@@ -293,6 +425,19 @@ export default function ProdutosPage() {
       } else {
         setOffMsg(`Novo produto com código ${codigo}. Preencha o nome e preço.`);
       }
+    },
+    [showModal, produtos, openEdit, openNew],
+  );
+
+  useBarcodeScannerInput({
+    onScan: (codigo) => void processarCodigoLido(codigo),
+  });
+
+  const handleScanFromToolbar = () =>
+    void scan.run(async () => {
+      const codigo = await abrirScanner();
+      if (!codigo) return;
+      await processarCodigoLido(codigo);
     });
 
   const handleSave = (event: React.FormEvent) => {
@@ -494,6 +639,23 @@ export default function ProdutosPage() {
           <button className="btn-primary" onClick={openNew} disabled={!data}>
             <Plus size={16} strokeWidth={2.2} aria-hidden="true" /> Adicionar produto
           </button>
+          <input
+            type="file"
+            ref={fotoIaInputRef}
+            accept="image/*"
+            capture="environment"
+            style={{ display: 'none' }}
+            onChange={handleFotoIaSelecionada}
+          />
+          <button
+            className="btn-secondary"
+            onClick={() => fotoIaInputRef.current?.click()}
+            disabled={!data || analisandoFotoIa}
+            title="Fotografar embalagem para identificar e pré-preencher com IA"
+            style={{ color: 'var(--color-brand, #ea580c)', fontWeight: 600 }}
+          >
+            {analisandoFotoIa ? <Spinner size="small" /> : <Sparkles size={16} strokeWidth={2} aria-hidden="true" />} Foto IA
+          </button>
           <button
             className="btn-secondary"
             onClick={handleScanFromToolbar}
@@ -669,7 +831,25 @@ export default function ProdutosPage() {
                   />
                 </Field>
               </div>
-              <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="file"
+                  ref={faturaIaInputRef}
+                  accept="image/*"
+                  capture="environment"
+                  style={{ display: 'none' }}
+                  onChange={handleFaturaIaSelecionada}
+                />
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => faturaIaInputRef.current?.click()}
+                  disabled={analisandoFaturaIa}
+                  title="Fotografar fatura do fornecedor para extrair itens com IA"
+                  style={{ color: '#0284c7', fontWeight: 600 }}
+                >
+                  {analisandoFaturaIa ? <Spinner size="small" /> : <Receipt size={15} strokeWidth={2} />} Fatura IA
+                </button>
                 <button type="button" className="btn-secondary" onClick={adicionarLinhaEntrada}>
                   <Plus size={15} strokeWidth={2} aria-hidden="true" /> Adicionar à lista
                 </button>

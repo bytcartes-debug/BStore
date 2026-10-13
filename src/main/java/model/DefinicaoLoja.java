@@ -23,6 +23,21 @@ public class DefinicaoLoja {
     @Column(name = "ultimo_numero_venda", nullable = false)
     private Long ultimoNumeroVenda = 0L;
 
+    @Column(name = "ia_activa", nullable = false)
+    private Boolean iaActiva = false;
+
+    @Column(name = "ia_provedor", length = 32, nullable = false)
+    private String iaProvedor = "gemini";
+
+    @Column(name = "ia_api_key", length = 255)
+    private String iaApiKey;
+
+    @Column(name = "ia_limite_diario", nullable = false)
+    private Integer iaLimiteDiario = 50;
+
+    @Column(name = "ia_limite_mensal", nullable = false)
+    private Integer iaLimiteMensal = 500;
+
     @PrePersist
     @PreUpdate
     public void prePersist() {
@@ -38,6 +53,10 @@ public class DefinicaoLoja {
         this.controloCaixa = controloCaixa != null ? controloCaixa : false;
         this.nomeLoja = nomeLoja;
         this.ultimoNumeroVenda = 0L;
+        this.iaActiva = false;
+        this.iaProvedor = "gemini";
+        this.iaLimiteDiario = 50;
+        this.iaLimiteMensal = 500;
         this.atualizadoEm = util.Fuso.agora();
     }
 
@@ -52,6 +71,21 @@ public class DefinicaoLoja {
 
     public Long getUltimoNumeroVenda() { return ultimoNumeroVenda != null ? ultimoNumeroVenda : 0L; }
     public void setUltimoNumeroVenda(Long ultimoNumeroVenda) { this.ultimoNumeroVenda = ultimoNumeroVenda != null ? ultimoNumeroVenda : 0L; }
+
+    public Boolean getIaActiva() { return iaActiva != null ? iaActiva : false; }
+    public void setIaActiva(Boolean iaActiva) { this.iaActiva = iaActiva != null ? iaActiva : false; }
+
+    public String getIaProvedor() { return iaProvedor != null ? iaProvedor : "gemini"; }
+    public void setIaProvedor(String iaProvedor) { this.iaProvedor = iaProvedor != null ? iaProvedor : "gemini"; }
+
+    public String getIaApiKey() { return iaApiKey; }
+    public void setIaApiKey(String iaApiKey) { this.iaApiKey = iaApiKey; }
+
+    public Integer getIaLimiteDiario() { return iaLimiteDiario != null ? iaLimiteDiario : 50; }
+    public void setIaLimiteDiario(Integer iaLimiteDiario) { this.iaLimiteDiario = iaLimiteDiario != null ? iaLimiteDiario : 50; }
+
+    public Integer getIaLimiteMensal() { return iaLimiteMensal != null ? iaLimiteMensal : 500; }
+    public void setIaLimiteMensal(Integer iaLimiteMensal) { this.iaLimiteMensal = iaLimiteMensal != null ? iaLimiteMensal : 500; }
 
     public LocalDateTime getAtualizadoEm() { return atualizadoEm; }
     public void setAtualizadoEm(LocalDateTime atualizadoEm) { this.atualizadoEm = atualizadoEm; }

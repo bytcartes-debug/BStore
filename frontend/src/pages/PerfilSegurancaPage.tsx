@@ -1,11 +1,12 @@
 import { useToast } from '../utils/toast';
 import { useEffect, useRef, useState } from 'react';
-import { User, Camera, Save, KeyRound, Eye, EyeOff, Store, Plus, Power, CreditCard, Download, CheckCircle, Smartphone } from 'lucide-react';
+import { User, Camera, Save, KeyRound, Eye, EyeOff, Store, Plus, Power, CreditCard, Download, CheckCircle, Smartphone, Bot, Sparkles } from 'lucide-react';
 import type { UserSession } from '../App';
 import { apiRequest } from '../utils/api';
 import { useMutation } from '../utils/useResource';
 import { PageHeading, Field, Notice, Spinner } from '../components/UI';
 import { usePwaInstall } from '../utils/usePwaInstall';
+import { useIa } from '../utils/useIa';
 
 export default function PerfilSegurancaPage({ user }: { user: UserSession | null }) {
   const { canInstall, isStandalone, isIos, promptInstall } = usePwaInstall();
@@ -23,6 +24,33 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
   const fileRef = useRef<HTMLInputElement>(null);
   const password = useMutation();
   const toast = useToast();
+
+  const ia = useIa();
+  const [iaAtiva, setIaAtiva] = useState(false);
+  const [iaProvedor, setIaProvedor] = useState('gemini');
+  const [iaApiKey, setIaApiKey] = useState('');
+  const [iaLimiteDiario, setIaLimiteDiario] = useState(50);
+  const [iaLimiteMensal, setIaLimiteMensal] = useState(500);
+
+  useEffect(() => {
+    if (ia.status) {
+      setIaAtiva(ia.status.ativa);
+      setIaProvedor(ia.status.provedor || 'gemini');
+      setIaLimiteDiario(ia.status.limiteDiario || 50);
+      setIaLimiteMensal(ia.status.limiteMensal || 500);
+    }
+  }, [ia.status]);
+
+  const salvarConfigIa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await ia.atualizarConfig({
+      activa: iaAtiva,
+      provedor: iaProvedor,
+      apiKey: iaApiKey.trim() || undefined,
+      limiteDiario: iaLimiteDiario,
+      limiteMensal: iaLimiteMensal,
+    });
+  };
 
   const carregarDefinicoes = async () => {
     try {
@@ -416,6 +444,127 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
           <button type="submit" className="btn-secondary" disabled={!novoMetodoNome.trim()} style={{ minHeight: '44px' }}>
             <Plus size={16} /> Adicionar
           </button>
+        </form>
+      </section>
+
+      {/* PAINEL DE INTELIGÊNCIA ARTIFICIAL */}
+      <section className="panel" style={{ marginTop: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <h3 style={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Sparkles size={20} color="#ea580c" /> Inteligência Artificial (BStore IA)
+          </h3>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setIaAtiva(!iaAtiva)}
+            style={{
+              minHeight: '44px',
+              minWidth: '100px',
+              background: iaAtiva ? '#10b981' : undefined,
+              color: iaAtiva ? '#ffffff' : undefined,
+              borderColor: iaAtiva ? '#10b981' : undefined,
+              fontWeight: 600,
+            }}
+          >
+            <Power size={16} />
+            {iaAtiva ? 'Ativa' : 'Desativada'}
+          </button>
+        </div>
+
+        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '1.25rem' }}>
+          Ativa o assistente de cadastro por foto, extração de faturas, resumos do dia e mensagens de cobrança inteligentes.
+        </p>
+
+        {ia.status && (
+          <div
+            style={{
+              background: 'var(--bg-subtle, rgba(255,255,255,0.03))',
+              border: '1px solid var(--border-color, rgba(255,255,255,0.08))',
+              borderRadius: '0.75rem',
+              padding: '1rem 1.25rem',
+              marginBottom: '1.5rem',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+              <span>Consumo de hoje: <strong>{ia.status.usadosHoje} / {ia.status.limiteDiario} chamadas</strong></span>
+              <span>Mês: <strong>{ia.status.usadosMes} / {ia.status.limiteMensal}</strong></span>
+            </div>
+            <div style={{ height: '6px', borderRadius: '3px', background: 'var(--border-color)', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${Math.min(100, Math.round((ia.status.usadosHoje / (ia.status.limiteDiario || 1)) * 100))}%`,
+                  background: ia.status.usadosHoje >= ia.status.limiteDiario ? '#dc2626' : '#10b981',
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={salvarConfigIa} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+            <Field id="ia-provedor" label="Provedor de IA">
+              <select
+                id="ia-provedor"
+                value={iaProvedor}
+                onChange={(e) => setIaProvedor(e.target.value)}
+              >
+                <option value="gemini">Google Gemini 1.5 Flash (Padrão)</option>
+                <option value="openai">OpenAI (GPT-4o mini)</option>
+                <option value="anthropic">Anthropic (Claude 3.5 Haiku)</option>
+              </select>
+            </Field>
+
+            <Field id="ia-key" label="Chave de API da loja (opcional)">
+              <input
+                id="ia-key"
+                type="password"
+                placeholder={ia.status?.temApiKey ? 'Chave configurada no servidor' : 'Cole a sua chave aqui'}
+                value={iaApiKey}
+                onChange={(e) => setIaApiKey(e.target.value)}
+              />
+            </Field>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+            <Field id="ia-lim-dia" label="Limite Diário de Chamadas">
+              <input
+                id="ia-lim-dia"
+                type="number"
+                min="5"
+                max="500"
+                value={iaLimiteDiario}
+                onChange={(e) => setIaLimiteDiario(Number(e.target.value))}
+              />
+            </Field>
+
+            <Field id="ia-lim-mes" label="Limite Mensal de Chamadas">
+              <input
+                id="ia-lim-mes"
+                type="number"
+                min="50"
+                max="5000"
+                value={iaLimiteMensal}
+                onChange={(e) => setIaLimiteMensal(Number(e.target.value))}
+              />
+            </Field>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+            <button type="submit" className="btn-primary" style={{ minHeight: '44px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+              <Save size={16} /> Salvar Definições de IA
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => void ia.testarLigacao()}
+              disabled={ia.testando}
+              style={{ minHeight: '44px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+            >
+              {ia.testando ? <Spinner size="small" /> : <Bot size={16} />}
+              Testar Ligação com a IA
+            </button>
+          </div>
         </form>
       </section>
 

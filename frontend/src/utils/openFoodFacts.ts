@@ -28,7 +28,7 @@ export const buscarNaOpenFoodFacts = async (codigo: string): Promise<DadosProdut
   try {
     const r = await fetch(
       `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(codigo)}.json?fields=product_name,brands,quantity`,
-      { signal: AbortSignal.timeout(6000) }
+      { signal: AbortSignal.timeout(3000) }
     );
     if (!r.ok) return null;
     const data = await r.json();

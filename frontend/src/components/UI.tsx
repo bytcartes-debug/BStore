@@ -10,7 +10,7 @@ import {
   Search,
   X,
 } from 'lucide-react';
-import { ToastContext } from '../utils/toast';
+import { ToastContext, type ToastInput } from '../utils/toast';
 import { useDialog } from '../utils/useDialog';
 
 export function Spinner({ size = 'normal' }: { size?: 'small' | 'normal' | 'large' }) {
@@ -309,14 +309,34 @@ export function ConfirmDialog({
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
+  const [toast, setToast] = useState<{
+    message: string;
+    id: number;
+    actionLabel?: string;
+    onAction?: () => void;
+  } | null>(null);
+
   useEffect(() => {
     if (!toast) return;
-    const timer = window.setTimeout(() => setToast(null), 6000);
+    const timer = window.setTimeout(() => setToast(null), 5000);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  const handleShowToast = (input: ToastInput) => {
+    if (typeof input === 'string') {
+      setToast({ message: input, id: Date.now() });
+    } else {
+      setToast({
+        message: input.message,
+        id: Date.now(),
+        actionLabel: input.actionLabel,
+        onAction: input.onAction,
+      });
+    }
+  };
+
   return (
-    <ToastContext.Provider value={(message) => setToast({ message, id: Date.now() })}>
+    <ToastContext.Provider value={handleShowToast}>
       {children}
       <div className="toast-region" aria-live="polite" aria-atomic="true">
         {toast && (
@@ -325,6 +345,29 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <CheckCircle2 size={18} strokeWidth={2.2} />
             </span>
             <p>{toast.message}</p>
+            {toast.actionLabel && toast.onAction && (
+              <button
+                type="button"
+                className="toast-action-btn"
+                onClick={() => {
+                  toast.onAction?.();
+                  setToast(null);
+                }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
+                  color: 'inherit',
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  marginLeft: 8,
+                }}
+              >
+                {toast.actionLabel}
+              </button>
+            )}
             <button
               className="icon-btn"
               aria-label="Fechar notificação"
@@ -338,3 +381,4 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     </ToastContext.Provider>
   );
 }
+

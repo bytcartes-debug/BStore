@@ -7,11 +7,14 @@ import {
   Banknote,
   Check,
   CheckCircle2,
+  Copy,
   History,
   Plus,
   RefreshCw,
   Save,
   Search,
+  Send,
+  Sparkles,
   Users,
 } from 'lucide-react';
 import {
@@ -67,6 +70,15 @@ export default function DevedoresPage() {
   const [historicoPagamentos, setHistoricoPagamentos] = useState<PagamentoDividaItem[]>([]);
   const [historicoCarregando, setHistoricoCarregando] = useState(false);
   const [historicoErro, setHistoricoErro] = useState<string | null>(null);
+
+  // Modal de cobrança com IA
+  const [cobrancaDevedor, setCobrancaDevedor] = useState<Devedor | null>(null);
+  const [cobrancaTom, setCobrancaTom] = useState<'cordial' | 'firme' | 'curto'>('cordial');
+  const [cobrancaVariantes, setCobrancaVariantes] = useState<string[]>([]);
+  const [cobrancaTexto, setCobrancaTexto] = useState('');
+  const [cobrancaTelefone, setCobrancaTelefone] = useState('');
+  const [cobrancaCarregando, setCobrancaCarregando] = useState(false);
+  const [cobrancaIaUsada, setCobrancaIaUsada] = useState(false);
 
   const save = useMutation();
   const payment = useMutation();
@@ -159,6 +171,57 @@ export default function DevedoresPage() {
     } finally {
       setHistoricoCarregando(false);
     }
+  };
+
+  const carregarSugestaoCobranca = async (item: Devedor, tom: 'cordial' | 'firme' | 'curto') => {
+    setCobrancaCarregando(true);
+    try {
+      const res = await apiRequest<{ variantes: string[]; mensagem: string; iaUsada: boolean }>('/api/ia/sugerir-cobranca', {
+        method: 'POST',
+        body: JSON.stringify({
+          clienteNome: item.nome,
+          saldoDevedor: item.saldo ?? item.divida,
+          tom,
+        }),
+      });
+      const vars = res.variantes && res.variantes.length > 0 ? res.variantes : [res.mensagem];
+      setCobrancaVariantes(vars);
+      setCobrancaTexto(vars[0] || '');
+      setCobrancaIaUsada(Boolean(res.iaUsada));
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : 'Falha ao sugerir mensagem de cobrança.');
+    } finally {
+      setCobrancaCarregando(false);
+    }
+  };
+
+  const abrirCobranca = (item: Devedor) => {
+    setCobrancaDevedor(item);
+    setCobrancaTom('cordial');
+    const telMatch = item.descricao ? item.descricao.match(/(?:\+?258\s?)?(8[2-7]\d{7})/) : null;
+    setCobrancaTelefone(telMatch ? telMatch[1] : '');
+    void carregarSugestaoCobranca(item, 'cordial');
+  };
+
+  const mudarTomCobranca = (novoTom: 'cordial' | 'firme' | 'curto') => {
+    if (!cobrancaDevedor) return;
+    setCobrancaTom(novoTom);
+    void carregarSugestaoCobranca(cobrancaDevedor, novoTom);
+  };
+
+  const copiarMensagemCobranca = () => {
+    if (!cobrancaTexto.trim()) return;
+    navigator.clipboard.writeText(cobrancaTexto.trim());
+    toast('Mensagem copiada para a área de transferência.');
+  };
+
+  const abrirWhatsappCobranca = () => {
+    if (!cobrancaTexto.trim()) return;
+    const textoCodificado = encodeURIComponent(cobrancaTexto.trim());
+    let tel = cobrancaTelefone.replace(/\D/g, '');
+    if (tel.length === 9) tel = `258${tel}`;
+    const url = tel ? `https://wa.me/${tel}?text=${textoCodificado}` : `https://wa.me/?text=${textoCodificado}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const confirmarExclusao = () =>
@@ -318,14 +381,25 @@ export default function DevedoresPage() {
                                 <Check size={15} strokeWidth={2.2} aria-hidden="true" /> Confirmar pagamento
                               </button>
                               {!isQuitado && (
-                                <button
-                                  type="button"
-                                  className="btn-primary"
-                                  style={{ padding: '4px 8px', fontSize: 13 }}
-                                  onClick={() => abrirAmortizacao(item)}
-                                >
-                                  <Banknote size={14} strokeWidth={2} aria-hidden="true" /> Amortizar
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn-primary"
+                                    style={{ padding: '4px 8px', fontSize: 13 }}
+                                    onClick={() => abrirAmortizacao(item)}
+                                  >
+                                    <Banknote size={14} strokeWidth={2} aria-hidden="true" /> Amortizar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-secondary"
+                                    style={{ padding: '4px 8px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                                    onClick={() => abrirCobranca(item)}
+                                    title="Sugerir mensagem de cobrança personalizada"
+                                  >
+                                    <Sparkles size={14} strokeWidth={2} style={{ color: 'var(--color-brand)' }} aria-hidden="true" /> Cobrança IA
+                                  </button>
+                                </>
                               )}
                               <button
                                 type="button"
@@ -601,6 +675,190 @@ export default function DevedoresPage() {
           </p>
           <p>O registo desta dívida será removido. Esta ação não pode ser desfeita.</p>
         </ConfirmDialog>
+      )}
+
+      {cobrancaDevedor && (
+        <Modal
+          title={`Cobrança: ${cobrancaDevedor.nome}`}
+          onClose={() => setCobrancaDevedor(null)}
+          busy={cobrancaCarregando}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 14px',
+                background: 'var(--bg-secondary, #f8fafc)',
+                borderRadius: 8,
+                border: '1px solid var(--border-color, #e2e8f0)',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted, #64748b)' }}>Saldo Devedor Pendente</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-danger, #ef4444)' }}>
+                  {formatMoney(cobrancaDevedor.saldo ?? cobrancaDevedor.divida)}
+                </div>
+              </div>
+              <span
+                className="badge"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 12,
+                  background: cobrancaIaUsada ? '#f0fdf4' : '#f1f5f9',
+                  color: cobrancaIaUsada ? '#166534' : '#475569',
+                  border: `1px solid ${cobrancaIaUsada ? '#bbf7d0' : '#cbd5e1'}`,
+                }}
+              >
+                <Sparkles size={13} aria-hidden="true" />
+                {cobrancaIaUsada ? 'Gerado por IA' : 'Modelo do Sistema'}
+              </span>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                Tom da Mensagem
+              </label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className={cobrancaTom === 'cordial' ? 'btn-primary' : 'btn-secondary'}
+                  style={{ fontSize: 12, padding: '4px 10px' }}
+                  onClick={() => mudarTomCobranca('cordial')}
+                  disabled={cobrancaCarregando}
+                >
+                  Cordial / Amigável
+                </button>
+                <button
+                  type="button"
+                  className={cobrancaTom === 'firme' ? 'btn-primary' : 'btn-secondary'}
+                  style={{ fontSize: 12, padding: '4px 10px' }}
+                  onClick={() => mudarTomCobranca('firme')}
+                  disabled={cobrancaCarregando}
+                >
+                  Firme / Direto
+                </button>
+                <button
+                  type="button"
+                  className={cobrancaTom === 'curto' ? 'btn-primary' : 'btn-secondary'}
+                  style={{ fontSize: 12, padding: '4px 10px' }}
+                  onClick={() => mudarTomCobranca('curto')}
+                  disabled={cobrancaCarregando}
+                >
+                  Lembrete Curto
+                </button>
+              </div>
+            </div>
+
+            {cobrancaVariantes.length > 1 && (
+              <div>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                  Escolha a variante
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {cobrancaVariantes.map((v, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setCobrancaTexto(v)}
+                      style={{
+                        textAlign: 'left',
+                        padding: '8px 12px',
+                        borderRadius: 6,
+                        border: cobrancaTexto === v ? '2px solid var(--color-brand)' : '1px solid var(--border-color, #e2e8f0)',
+                        background: cobrancaTexto === v ? '#f0fdf4' : 'transparent',
+                        cursor: 'pointer',
+                        fontSize: 13,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      <span style={{ fontWeight: 600, color: 'var(--text-muted, #64748b)', marginRight: 6 }}>
+                        Opção {idx + 1}:
+                      </span>
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label htmlFor="msg-cobranca" style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                Mensagem a enviar (editável)
+              </label>
+              <textarea
+                id="msg-cobranca"
+                rows={4}
+                value={cobrancaTexto}
+                onChange={(e) => setCobrancaTexto(e.target.value)}
+                placeholder="A mensagem gerada aparecerá aqui..."
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border-color, #cbd5e1)',
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                  resize: 'vertical',
+                }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: 11, color: 'var(--text-muted, #94a3b8)' }}>
+                {cobrancaTexto.length} caracteres
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="tel-cobranca" style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                Número do WhatsApp (opcional)
+              </label>
+              <input
+                id="tel-cobranca"
+                type="tel"
+                value={cobrancaTelefone}
+                onChange={(e) => setCobrancaTelefone(e.target.value)}
+                placeholder="Ex: 841234567 ou +258..."
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border-color, #cbd5e1)',
+                  fontSize: 13,
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 8 }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={copiarMensagemCobranca}
+                disabled={!cobrancaTexto.trim()}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <Copy size={15} aria-hidden="true" /> Copiar Mensagem
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={abrirWhatsappCobranca}
+                disabled={!cobrancaTexto.trim()}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: '#25D366',
+                  borderColor: '#25D366',
+                  color: '#fff',
+                }}
+              >
+                <Send size={15} aria-hidden="true" /> Abrir no WhatsApp
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

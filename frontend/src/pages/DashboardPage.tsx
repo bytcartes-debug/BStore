@@ -14,15 +14,27 @@ import {
   ShoppingCart,
   Coins,
   Tag,
+  Target,
+  Edit2,
   TrendingDown,
   TrendingUp,
   Trophy,
   Users,
+  Bot,
+  Sparkles,
+  Copy,
+  Send,
+  MessageSquare,
+  ChevronDown,
+  ChevronUp,
+  X,
 } from 'lucide-react';
 import { apiRequest } from '../utils/api';
 import { useResource } from '../utils/useResource';
+import { useIa } from '../utils/useIa';
+import { useToast } from '../utils/toast';
 import { decimalSeguro, formatMoney, formatQuantity } from '../utils/decimal';
-import { EmptyState, Loading, LoadError, PageHeading } from '../components/UI';
+import { EmptyState, Loading, LoadError, PageHeading, Spinner } from '../components/UI';
 import { AnimatedNumber } from '../components/ui/AnimatedNumber';
 import type { PageId } from '../App';
 import './DashboardPage.css';
@@ -143,6 +155,95 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
 
   const { data, loading, error, reload } = useResource(loader);
   const [tableView, setTableView] = useState(false);
+  const [metaDiaria, setMetaDiaria] = useState<number>(() => {
+    try {
+      return Number(localStorage.getItem('bstore_meta_diaria') || '5000');
+    } catch {
+      return 5000;
+    }
+  });
+
+  const handleEditarMeta = () => {
+    const val = window.prompt('Definir meta diária de vendas (MT):', String(metaDiaria));
+    if (val === null) return;
+    const num = parseFloat(val.replace(',', '.'));
+    if (!isNaN(num) && num > 0) {
+      setMetaDiaria(num);
+      try {
+        localStorage.setItem('bstore_meta_diaria', String(num));
+      } catch {}
+    }
+  };
+
+  const { status: iaStatus } = useIa();
+  const toast = useToast();
+
+  const [resumoDia, setResumoDia] = useState<string | null>(null);
+  const [gerandoResumo, setGerandoResumo] = useState(false);
+
+  // Assistente "Pergunte à BStore"
+  const [perguntaTexto, setPerguntaTexto] = useState('');
+  const [perguntaCarregando, setPerguntaCarregando] = useState(false);
+  const [perguntaResposta, setPerguntaResposta] = useState<{
+    resposta: string;
+    comoCalculei: Array<{ ferramenta: string; parametros: Record<string, unknown>; resumo: string }>;
+    foraDoAmbito?: boolean;
+  } | null>(null);
+  const [mostrarComoCalculei, setMostrarComoCalculei] = useState(false);
+
+  const handleGerarResumoDia = async (forcar = false) => {
+    if (!data) return;
+    try {
+      setGerandoResumo(true);
+      const metricas = {
+        data: today,
+        totalVendasHoje: data.totalVendasHoje || '0',
+        lucroHoje: data.lucroHoje || '0',
+        alertasStock: alertasStock.slice(0, 5).map((a) => a.nome),
+        produtosMaisVendidos: produtosMaisVendidos.slice(0, 3).map((p) => p.nome),
+        totalDevedores: data.totalDevedores || 0,
+        forcar,
+      };
+      const res = await apiRequest<{ resumo: string }>('/api/ia/resumo-dia', {
+        method: 'POST',
+        body: JSON.stringify(metricas),
+      });
+      setResumoDia(res.resumo);
+    } catch (err) {
+      toast('Não foi possível gerar resumo: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setGerandoResumo(false);
+    }
+  };
+
+  const handlePartilharResumoWhatsapp = () => {
+    if (!resumoDia) return;
+    const url = `https://wa.me/?text=${encodeURIComponent(resumoDia)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleEnviarPergunta = async (perguntaDireta?: string) => {
+    const p = (perguntaDireta || perguntaTexto).trim();
+    if (!p) return;
+    if (perguntaDireta) setPerguntaTexto(perguntaDireta);
+    setPerguntaCarregando(true);
+    try {
+      const res = await apiRequest<{
+        resposta: string;
+        comoCalculei: Array<{ ferramenta: string; parametros: Record<string, unknown>; resumo: string }>;
+        foraDoAmbito?: boolean;
+      }>('/api/ia/perguntar-negocio', {
+        method: 'POST',
+        body: JSON.stringify({ pergunta: p }),
+      });
+      setPerguntaResposta(res);
+      setMostrarComoCalculei(false);
+    } catch (err: unknown) {
+      toast(err instanceof Error ? err.message : 'Falha ao responder à pergunta.');
+    } finally {
+      setPerguntaCarregando(false);
+    }
+  };
 
   const today = new Intl.DateTimeFormat('pt-MZ', {
     weekday: 'long',
@@ -200,10 +301,235 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
   return (
     <div className="dashboard-page">
       <PageHeading title="A sua loja, hoje" description={today}>
-        <button className="btn-primary" onClick={() => navigate('vendas')}>
-          <ShoppingCart size={16} strokeWidth={2.2} aria-hidden="true" /> Nova Venda
-        </button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void handleGerarResumoDia(false)}
+            disabled={gerandoResumo}
+            style={{ color: 'var(--color-brand, #ea580c)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            {gerandoResumo ? <Spinner size="small" /> : <Sparkles size={16} />}
+            Resumo do Dia (IA)
+          </button>
+          <button className="btn-primary" onClick={() => navigate('vendas')}>
+            <ShoppingCart size={16} strokeWidth={2.2} aria-hidden="true" /> Nova Venda
+          </button>
+        </div>
       </PageHeading>
+
+      {resumoDia && (
+        <section
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-color)',
+            borderLeft: '4px solid #ea580c',
+            borderRadius: 8,
+            padding: '16px 20px',
+            marginBottom: 20,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}
+          aria-label="Resumo inteligente do dia"
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Bot size={20} color="#ea580c" />
+              <strong style={{ fontSize: 15 }}>Análise Executiva da BStore IA</strong>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ padding: '4px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                onClick={() => {
+                  navigator.clipboard.writeText(resumoDia);
+                  toast('Resumo copiado para a área de transferência.');
+                }}
+              >
+                <Copy size={13} /> Copiar
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                style={{
+                  padding: '4px 8px',
+                  fontSize: 12,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  background: '#25D366',
+                  borderColor: '#25D366',
+                  color: '#fff',
+                }}
+                onClick={handlePartilharResumoWhatsapp}
+                title="Partilhar resumo no WhatsApp"
+              >
+                <Send size={13} /> WhatsApp
+              </button>
+              <button
+                type="button"
+                className="icon-btn"
+                style={{ padding: 4 }}
+                onClick={() => setResumoDia(null)}
+                title="Fechar resumo"
+              >
+                <X size={15} />
+              </button>
+            </div>
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text-primary)' }}>
+            {resumoDia}
+          </div>
+        </section>
+      )}
+
+      {/* RECURSO 3: PERGUNTE À BSTORE (ASSISTENTE EXECUTIVO) */}
+      {iaStatus?.ativa && (
+        <section
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-color)',
+            borderRadius: 8,
+            padding: '14px 18px',
+            marginBottom: 20,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+          }}
+          aria-label="Pergunte à BStore"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <MessageSquare size={18} color="var(--color-brand, #ea580c)" />
+              <strong style={{ fontSize: 14 }}>Pergunte à BStore</strong>
+              <span className="badge badge-success" style={{ fontSize: 11, padding: '2px 6px' }}>
+                Assistente de Gestão
+              </span>
+            </div>
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              Perguntas sobre vendas, lucros, reposição e saldos em aberto
+            </span>
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleEnviarPergunta();
+            }}
+            style={{ display: 'flex', gap: 8 }}
+          >
+            <input
+              type="text"
+              value={perguntaTexto}
+              onChange={(e) => setPerguntaTexto(e.target.value)}
+              placeholder="Ex: Quanto vendi esta semana? Quais os 5 produtos com mais lucro? O que devo repor?"
+              disabled={perguntaCarregando}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: 6,
+                border: '1px solid var(--border-color, #cbd5e1)',
+                fontSize: 13,
+              }}
+            />
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={perguntaCarregando || !perguntaTexto.trim()}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px' }}
+            >
+              {perguntaCarregando ? <Spinner size="small" /> : <Send size={14} />}
+              Perguntar
+            </button>
+          </form>
+
+          {/* CHIPS DE SUGESTÕES RÁPIDAS */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-muted, #64748b)' }}>Sugestões rápidas:</span>
+            {[
+              'Quanto vendi esta semana?',
+              'Quais os produtos com mais lucro?',
+              'O que devo repor de stock?',
+              'Quem me deve mais?',
+            ].map((sug) => (
+              <button
+                key={sug}
+                type="button"
+                className="badge"
+                style={{
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  padding: '3px 8px',
+                  background: 'var(--bg-secondary, #f1f5f9)',
+                  border: '1px solid var(--border-color, #e2e8f0)',
+                  color: 'var(--text-primary)',
+                }}
+                onClick={() => void handleEnviarPergunta(sug)}
+                disabled={perguntaCarregando}
+              >
+                {sug}
+              </button>
+            ))}
+          </div>
+
+          {/* RESPOSTA DO ASSISTENTE */}
+          {perguntaResposta && (
+            <div
+              style={{
+                marginTop: 4,
+                padding: '12px 14px',
+                background: 'var(--bg-secondary, #f8fafc)',
+                borderRadius: 6,
+                border: '1px solid var(--border-color, #e2e8f0)',
+                fontSize: 13,
+                lineHeight: 1.5,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+                <Bot size={16} color="var(--color-brand, #ea580c)" style={{ marginTop: 2, flexShrink: 0 }} />
+                <div style={{ flex: 1, whiteSpace: 'pre-wrap', color: 'var(--text-primary)' }}>
+                  {perguntaResposta.resposta}
+                </div>
+              </div>
+
+              {perguntaResposta.comoCalculei && perguntaResposta.comoCalculei.length > 0 && (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed var(--border-color, #cbd5e1)' }}>
+                  <button
+                    type="button"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: 11,
+                      color: 'var(--text-muted, #64748b)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: 0,
+                    }}
+                    onClick={() => setMostrarComoCalculei(!mostrarComoCalculei)}
+                  >
+                    {mostrarComoCalculei ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    Como calculei isto ({perguntaResposta.comoCalculei.length} consulta(s) auditadas)
+                  </button>
+
+                  {mostrarComoCalculei && (
+                    <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-secondary)' }}>
+                      {perguntaResposta.comoCalculei.map((c, i) => (
+                        <div key={i} style={{ marginBottom: 4, fontFamily: 'monospace' }}>
+                          • {c.ferramenta}: {JSON.stringify(c.parametros)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       <div className="dashboard-filter-bar" role="region" aria-label="Filtrar período da visão geral">
         <div className="filter-presets" role="group" aria-label="Período de análise">
@@ -373,6 +699,77 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
           </div>
         )}
 
+        {/* CARD DE METAS DO DIA */}
+        <div className="today-sales">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span className="today-label">
+              <Target size={17} strokeWidth={2} aria-hidden="true" /> Meta de Hoje
+            </span>
+            <button
+              type="button"
+              onClick={handleEditarMeta}
+              title="Ajustar meta diária de vendas"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-muted)',
+                padding: 2,
+                display: 'inline-flex',
+                alignItems: 'center',
+              }}
+            >
+              <Edit2 size={13} />
+            </button>
+          </div>
+          <p className="today-value" style={{ fontSize: '1.4rem' }}>
+            {formatMoney(data.totalVendasHoje || '0')}
+            <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-muted)', marginLeft: 6 }}>
+              / {formatMoney(metaDiaria)}
+            </span>
+          </p>
+          <div style={{ marginTop: 6 }}>
+            {(() => {
+              const hojeNum = decimalSeguro(data.totalVendasHoje).toNumber();
+              const pct = metaDiaria > 0 ? Math.min(100, Math.round((hojeNum / metaDiaria) * 100)) : 0;
+              const concluida = hojeNum >= metaDiaria;
+              return (
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      fontSize: 11,
+                      color: 'var(--text-secondary)',
+                      marginBottom: 4,
+                    }}
+                  >
+                    <span>{pct}% concluído</span>
+                    <span>{concluida ? 'Meta alcançada!' : `Faltam ${formatMoney(Math.max(0, metaDiaria - hojeNum))}`}</span>
+                  </div>
+                  <div
+                    style={{
+                      height: 6,
+                      borderRadius: 3,
+                      background: 'var(--border-color)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: '100%',
+                        width: `${pct}%`,
+                        background: concluida ? '#16a34a' : 'var(--color-brand, #ea580c)',
+                        transition: 'width 0.4s ease',
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+
         <div className="store-metrics">
           {metrics.map(({ label, value, icon: Icon, page }) => (
             <button key={label} className="store-metric" onClick={() => navigate(page)}>
@@ -395,6 +792,94 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
           ))}
         </div>
       </section>
+
+      {/* PAINEL ATENÇÃO HOJE */}
+      {((alertasStock && alertasStock.length > 0) || (data.totalDevedores && data.totalDevedores > 0)) && (
+        <section
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-color)',
+            borderLeft: '4px solid #ea580c',
+            borderRadius: 8,
+            padding: '14px 18px',
+            marginBottom: 20,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}
+          aria-label="Atenção hoje"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <AlertTriangle size={18} color="#ea580c" />
+              <strong style={{ fontSize: 14 }}>Atenção Hoje: Ações Prioritárias</strong>
+            </div>
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Itens que exigem acompanhamento do operador</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+            {alertasStock.length > 0 && (
+              <div
+                style={{
+                  background: 'var(--bg-subtle)',
+                  padding: 10,
+                  borderRadius: 6,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <div>
+                  <span style={{ fontSize: 13, fontWeight: 600, display: 'block' }}>
+                    {alertasStock.length} produto(s) no stock crítico
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                    Ex: {alertasStock.slice(0, 2).map((a) => a.nome).join(', ')}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ fontSize: 11, padding: '4px 8px' }}
+                  onClick={() => navigate('reposicao')}
+                >
+                  Repor Stock
+                </button>
+              </div>
+            )}
+
+            {data.totalDevedores !== undefined && data.totalDevedores > 0 && (
+              <div
+                style={{
+                  background: 'var(--bg-subtle)',
+                  padding: 10,
+                  borderRadius: 6,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <div>
+                  <span style={{ fontSize: 13, fontWeight: 600, display: 'block' }}>
+                    {data.totalDevedores} cliente(s) com fiado pendente
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                    Cobranças pendentes na caderneta
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ fontSize: 11, padding: '4px 8px' }}
+                  onClick={() => navigate('devedores')}
+                >
+                  Ver Devedores
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       <div className="dashboard-grid">
         <section className="card dashboard-chart" aria-labelledby="sales-chart-title">

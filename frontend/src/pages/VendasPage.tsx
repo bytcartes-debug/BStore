@@ -2,7 +2,9 @@ import { useToast } from '../utils/toast';
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { apiFetch, apiRequest, descarregarFicheiro } from '../utils/api';
 import { useMutation, useResource } from '../utils/useResource';
-import { abrirScanner } from '../utils/scanner';
+import { abrirScanner, tocarBeepSucesso, tocarBeepDesconhecido } from '../utils/scanner';
+import { useBarcodeScannerInput } from '../utils/useBarcodeScannerInput';
+import { buscarNaOpenFoodFacts } from '../utils/openFoodFacts';
 import { notificarVendaRegistada } from '../utils/notificacoes';
 import {
   decimal,
@@ -84,6 +86,7 @@ import type {
 import { ProductCatalog } from '../components/vendas/ProductCatalog';
 import { PaymentDialog } from '../components/vendas/PaymentDialog';
 import { SaleDetailsModal } from '../components/vendas/SaleDetailsModal';
+import { FastSaleAvulsaModal } from '../components/vendas/FastSaleAvulsaModal';
 
 const loadSalesData = async (signal: AbortSignal) => {
   const [vendas, produtos, categorias, devedores, metodos, definicoes, sessaoCaixa] =
@@ -189,8 +192,10 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
   const [larguraTermica, setLarguraTermica] = useState<'58mm' | '80mm'>('58mm');
   const confettiRef = useRef<ConfettiHandle>(null);
 
-  // Despesa de Caixa
+  // Despesa de Caixa e Modais Rápidos
   const [showDespesaModal, setShowDespesaModal] = useState(false);
+  const [showAvulsaModal, setShowAvulsaModal] = useState(false);
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
 
   // Vendas em Espera (Hold Cart) por utilizador
   const [carrinhosEmEspera, setCarrinhosEmEspera] = useState<CarrinhoEmEspera[]>(() => {
@@ -556,13 +561,26 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
         return previous;
       }
       setCartError(null);
-      return qty.lte(0)
-        ? previous.filter((entry) => entry.produto.id !== id)
-        : previous.map((entry) =>
-            entry.produto.id === id ? { ...entry, quantidade: qty } : entry,
-          );
+      if (qty.lte(0)) {
+        if (item) {
+          toast({
+            message: `${item.produto.nome} removido do carrinho.`,
+            actionLabel: 'Desfazer',
+            onAction: () => {
+              setCarrinho((prev) => {
+                if (prev.some((it) => it.produto.id === item.produto.id)) return prev;
+                return [...prev, item];
+              });
+            },
+          });
+        }
+        return previous.filter((entry) => entry.produto.id !== id);
+      }
+      return previous.map((entry) =>
+        entry.produto.id === id ? { ...entry, quantidade: qty } : entry,
+      );
     });
-  }, []);
+  }, [toast]);
 
   const handleQuickAdd = useCallback(
     (p: Produto) => {
@@ -593,6 +611,43 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
     },
     [toast],
   );
+
+  const handleConfirmVendaAvulsa = async (dados: {
+    descricao: string;
+    preco: string;
+    categoriaId?: number | string;
+  }) => {
+    try {
+      const nomeLimpo = dados.descricao.trim();
+      const precoNum = dados.preco.trim();
+      let prod = produtos.find((p) => p.nome.toLowerCase() === nomeLimpo.toLowerCase());
+      if (!prod) {
+        prod = await apiRequest<Produto>('/api/produtos', {
+          method: 'POST',
+          body: JSON.stringify({
+            nome: nomeLimpo,
+            preco: precoNum,
+            precoCusto: '0.00',
+            quantidadeStock: '9999.000',
+            stockMinimo: '0.000',
+            unidade: 'un',
+            categoriaId: dados.categoriaId ? Number(dados.categoriaId) : null,
+            codigoBarras: '',
+          }),
+        });
+        if (data && prod) {
+          data.produtos.push(prod);
+        }
+      }
+      if (prod) {
+        handleQuickAdd(prod);
+        setShowAvulsaModal(false);
+        toast(`Item avulso "${nomeLimpo}" adicionado ao carrinho.`);
+      }
+    } catch (err) {
+      toast('Não foi possível adicionar o item avulso: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
 
   useEffect(() => {
     // Foco automático inicial na pesquisa
@@ -664,6 +719,13 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
         if (carrinho.length > 0) {
           setShowModal(true);
         }
+        return;
+      }
+
+      // '?' abre ajuda com atalhos de teclado
+      if ((e.key === '?' || (e.key === '/' && e.shiftKey)) && !isInputFocused) {
+        e.preventDefault();
+        setShowShortcutsModal((prev) => !prev);
         return;
       }
 
@@ -923,10 +985,145 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
   };
 
   const handleDescartarCarrinhoEmEspera = (id: string) => {
-    if (!window.confirm('Tem a certeza que deseja eliminar este carrinho em espera?')) return;
+    const carrinhoAlvo = carrinhosEmEspera.find((c) => c.id === id);
+    if (!carrinhoAlvo) return;
     setCarrinhosEmEspera((prev) => prev.filter((c) => c.id !== id));
-    toast('Carrinho em espera removido.');
+    toast({
+      message: `Carrinho "${carrinhoAlvo.identificador}" descartado.`,
+      actionLabel: 'Desfazer',
+      onAction: () => {
+        setCarrinhosEmEspera((prev) => [carrinhoAlvo, ...prev]);
+      },
+    });
   };
+
+  const produtosPorCodigo = useMemo(() => {
+    const map = new Map<string, Produto>();
+    for (const p of produtos) {
+      if (p.codigoBarras) {
+        map.set(p.codigoBarras.trim().toLowerCase(), p);
+      }
+    }
+    return map;
+  }, [produtos]);
+
+  const barcodeCacheKey = `bstore_barcode_cache_${usuarioId}`;
+
+  const obterBarcodeCache = useCallback((): Record<string, { produto: Produto; expiraEm: number }> => {
+    try {
+      const raw = localStorage.getItem(barcodeCacheKey);
+      if (!raw) return {};
+      const data = JSON.parse(raw);
+      const agora = Date.now();
+      const filtrado: Record<string, { produto: Produto; expiraEm: number }> = {};
+      for (const [k, v] of Object.entries(data)) {
+        if ((v as any)?.expiraEm && (v as any).expiraEm > agora) {
+          filtrado[k] = v as any;
+        }
+      }
+      return filtrado;
+    } catch {
+      return {};
+    }
+  }, [barcodeCacheKey]);
+
+  const salvarBarcodeCache = useCallback(
+    (codigo: string, prod: Produto) => {
+      try {
+        const cache = obterBarcodeCache();
+        cache[codigo.toLowerCase()] = {
+          produto: prod,
+          expiraEm: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 dias
+        };
+        localStorage.setItem(barcodeCacheKey, JSON.stringify(cache));
+      } catch {}
+    },
+    [barcodeCacheKey, obterBarcodeCache],
+  );
+
+  const handleScanRef = useRef<() => void>(() => {});
+
+  const processarCodigoVenda = useCallback(
+    async (code: string) => {
+      const clean = code.trim();
+      if (!clean) return;
+      setScanMessage(null);
+      setCartError(null);
+
+      // 1. Procurar no catálogo em memória (< 10ms)
+      let product: Produto | undefined = produtosPorCodigo.get(clean.toLowerCase());
+
+      // 2. Se não estiver em memória, verificar cache localStorage (30 dias)
+      if (!product) {
+        const cache = obterBarcodeCache();
+        const cached = cache[clean.toLowerCase()];
+        if (cached && cached.produto) {
+          product = cached.produto;
+        }
+      }
+
+      // 3. Se ainda não encontrado, consultar backend
+      if (!product) {
+        try {
+          const response = await apiFetch(`/api/produtos/barcode/${encodeURIComponent(clean)}`);
+          if (response.ok) {
+            product = await response.json();
+            if (product) salvarBarcodeCache(clean, product);
+          }
+        } catch {}
+      }
+
+      // 4. Se o produto existe, adiciona de imediato ao carrinho
+      if (product) {
+        const existing = carrinho.some((item) => item.produto.id === product!.id);
+        const step = decimal(
+          existing && ['kg', 'g', 'L', 'ml'].includes(product.unidade) ? '0.5' : '1',
+        );
+        if (addProduct(product, step)) {
+          tocarBeepSucesso();
+          setScanMessage(`${product.nome} adicionado ao carrinho.`);
+          if (continuousScan) {
+            setTimeout(() => void handleScanRef.current(), 300);
+          }
+        }
+        return;
+      }
+
+      // 5. Código desconhecido: som diferente e abre cartão rápido para criar
+      tocarBeepDesconhecido();
+      setQuickCreateBarcode(clean);
+      setQuickNome('');
+      setQuickPreco('');
+      setQuickCusto('0.00');
+      setQuickStock('10.000');
+      setQuickCategoriaId(categorias[0]?.id || '');
+
+      // Consulta Open Food Facts em segundo plano com timeout de 3s
+      void buscarNaOpenFoodFacts(clean).then((result) => {
+        if (result && result.nome) {
+          setQuickNome(
+            result.nome +
+              (result.marca && !result.nome.toLowerCase().includes(result.marca.toLowerCase())
+                ? ` ${result.marca}`
+                : ''),
+          );
+        }
+      });
+    },
+    [
+      produtosPorCodigo,
+      obterBarcodeCache,
+      salvarBarcodeCache,
+      carrinho,
+      addProduct,
+      continuousScan,
+      categorias,
+    ],
+  );
+
+  useBarcodeScannerInput({
+    onScan: (code) => void processarCodigoVenda(code),
+  });
 
   const handleScan = useCallback(async () => {
     setScanMessage(null);
@@ -934,35 +1131,12 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
     try {
       const code = await abrirScanner();
       if (!code) return;
-
-      const response = await apiFetch(`/api/produtos/barcode/${encodeURIComponent(code)}`);
-      if (response.status === 404) {
-        setQuickCreateBarcode(code);
-        setQuickNome('');
-        setQuickPreco('');
-        setQuickCusto('0.00');
-        setQuickStock('10.000');
-        setQuickCategoriaId(categorias[0]?.id || '');
-        return;
-      }
-      if (!response.ok) {
-        throw new Error('Não foi possível consultar este código. Tente novamente.');
-      }
-      const product: Produto = await response.json();
-      const existing = carrinho.some((item) => item.produto.id === product.id);
-      const step = decimal(
-        existing && ['kg', 'g', 'L', 'ml'].includes(product.unidade) ? '0.5' : '1',
-      );
-      if (addProduct(product, step)) {
-        setScanMessage(`${product.nome} adicionado ao carrinho.`);
-        if (continuousScan) {
-          setTimeout(() => void handleScan(), 300);
-        }
-      }
+      await processarCodigoVenda(code);
     } catch (e: unknown) {
       setCartError(e instanceof Error ? e.message : 'Falha na leitura do código.');
     }
-  }, [addProduct, carrinho, categorias, continuousScan]);
+  }, [processarCodigoVenda]);
+  handleScanRef.current = handleScan;
 
   const handleSalvarProdutoRapido = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1943,6 +2117,7 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
                 selectedCategoriaId={selectedCategoriaId}
                 onSelectCategoria={setSelectedCategoriaId}
                 onQuickAdd={handleQuickAdd}
+                onOpenVendaAvulsa={() => setShowAvulsaModal(true)}
                 loading={loading}
                 viewMode={viewMode}
                 onToggleViewMode={() => setViewMode((m) => (m === 'grid' ? 'list' : 'grid'))}
@@ -2903,6 +3078,70 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
             <ShoppingCart size={16} /> Ver Carrinho / Pagar
           </div>
         </aside>
+      )}
+
+      {/* MODAL DE VENDA AVULSA */}
+      {showAvulsaModal && (
+        <FastSaleAvulsaModal
+          categorias={categorias}
+          onClose={() => setShowAvulsaModal(false)}
+          onConfirm={handleConfirmVendaAvulsa}
+        />
+      )}
+
+      {/* MODAL DE ATALHOS DE TECLADO */}
+      {showShortcutsModal && (
+        <Modal
+          title="Atalhos de Teclado (POS)"
+          onClose={() => setShowShortcutsModal(false)}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: 13 }}>
+            <p style={{ margin: 0, color: 'var(--text-secondary)' }}>
+              Utilize o teclado para operar o ponto de venda com máxima velocidade:
+            </p>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <tbody>
+                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <td style={{ padding: '8px 4px' }}><kbd style={{ background: 'var(--bg-subtle)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border-color)', fontWeight: 600 }}>F2</kbd> ou <kbd style={{ background: 'var(--bg-subtle)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border-color)', fontWeight: 600 }}>/</kbd></td>
+                  <td style={{ padding: '8px 4px' }}>Focar campo de pesquisa de produto</td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <td style={{ padding: '8px 4px' }}><kbd style={{ background: 'var(--bg-subtle)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border-color)', fontWeight: 600 }}>F4</kbd></td>
+                  <td style={{ padding: '8px 4px' }}>Abrir ecrã de pagamento / finalizar venda</td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <td style={{ padding: '8px 4px' }}><kbd style={{ background: 'var(--bg-subtle)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border-color)', fontWeight: 600 }}>Delete</kbd></td>
+                  <td style={{ padding: '8px 4px' }}>Remover item selecionado do carrinho</td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <td style={{ padding: '8px 4px' }}><kbd style={{ background: 'var(--bg-subtle)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border-color)', fontWeight: 600 }}>+</kbd> / <kbd style={{ background: 'var(--bg-subtle)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border-color)', fontWeight: 600 }}>-</kbd></td>
+                  <td style={{ padding: '8px 4px' }}>Aumentar ou diminuir quantidade do item ativo</td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <td style={{ padding: '8px 4px' }}><kbd style={{ background: 'var(--bg-subtle)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border-color)', fontWeight: 600 }}>↑</kbd> / <kbd style={{ background: 'var(--bg-subtle)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border-color)', fontWeight: 600 }}>↓</kbd></td>
+                  <td style={{ padding: '8px 4px' }}>Navegar entre itens do carrinho ou sugestões</td>
+                </tr>
+                <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <td style={{ padding: '8px 4px' }}><kbd style={{ background: 'var(--bg-subtle)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border-color)', fontWeight: 600 }}>Esc</kbd></td>
+                  <td style={{ padding: '8px 4px' }}>Fechar janela atual ou cancelar</td>
+                </tr>
+                <tr>
+                  <td style={{ padding: '8px 4px' }}><kbd style={{ background: 'var(--bg-subtle)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border-color)', fontWeight: 600 }}>?</kbd></td>
+                  <td style={{ padding: '8px 4px' }}>Abrir este painel de atalhos</td>
+                </tr>
+              </tbody>
+            </table>
+            <div className="modal-actions" style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => setShowShortcutsModal(false)}
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* CELEBRAÇÃO DE VENDA */}

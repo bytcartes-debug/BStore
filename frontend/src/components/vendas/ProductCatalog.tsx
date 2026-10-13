@@ -1,5 +1,5 @@
-import React from 'react';
-import { LayoutGrid, List, Plus, ScanLine, Search, Sparkles } from 'lucide-react';
+import React, { useState } from 'react';
+import { LayoutGrid, List, Plus, ScanLine, Search, Sparkles, Star, Zap } from 'lucide-react';
 import { Field, Spinner } from '../UI';
 import { decimalSeguro, formatMoney, formatQuantity } from '../../utils/decimal';
 import type { Categoria, Produto } from './types';
@@ -28,6 +28,7 @@ interface ProductCatalogProps {
   selectedCategoriaId?: number | string | null;
   onSelectCategoria?: (id: number | string | null) => void;
   onQuickAdd?: (p: Produto) => void;
+  onOpenVendaAvulsa?: () => void;
   loading?: boolean;
   viewMode?: 'grid' | 'list';
   onToggleViewMode?: () => void;
@@ -58,15 +59,38 @@ const ProductCatalogComponent: React.FC<ProductCatalogProps> = ({
   selectedCategoriaId = null,
   onSelectCategoria,
   onQuickAdd,
+  onOpenVendaAvulsa,
   loading = false,
   viewMode = 'grid',
   onToggleViewMode,
   showGrid = true,
 }) => {
+  const [favoritosIds, setFavoritosIds] = useState<number[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('bstore_favoritos_ids') || '[]');
+    } catch {
+      return [];
+    }
+  });
+  const [mostrarApenasFavoritos, setMostrarApenasFavoritos] = useState(false);
+
+  const toggleFavorito = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFavoritosIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      try {
+        localStorage.setItem('bstore_favoritos_ids', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
   // Filtro de produtos para grelha visual rápida
   const gridProdutos = React.useMemo(() => {
     let lista = produtos;
-    if (selectedCategoriaId !== null && selectedCategoriaId !== undefined && selectedCategoriaId !== 'todas') {
+    if (mostrarApenasFavoritos) {
+      lista = lista.filter((p) => favoritosIds.includes(p.id));
+    } else if (selectedCategoriaId !== null && selectedCategoriaId !== undefined && selectedCategoriaId !== 'todas') {
       lista = lista.filter((p) => String(p.categoriaId) === String(selectedCategoriaId));
     }
     if (busca.trim()) {
@@ -78,7 +102,7 @@ const ProductCatalogComponent: React.FC<ProductCatalogProps> = ({
       );
     }
     return lista;
-  }, [produtos, selectedCategoriaId, busca]);
+  }, [produtos, selectedCategoriaId, busca, mostrarApenasFavoritos, favoritosIds]);
 
   const handleCardClick = (p: Produto) => {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -247,6 +271,17 @@ const ProductCatalogComponent: React.FC<ProductCatalogProps> = ({
               )}{' '}
               Ler código
             </button>
+            {onOpenVendaAvulsa && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={onOpenVendaAvulsa}
+                title="Registar item rápido ou não cadastrado"
+                style={{ color: 'var(--primary, #059669)', fontWeight: 600 }}
+              >
+                <Zap size={15} strokeWidth={2.2} aria-hidden="true" /> Venda Avulsa
+              </button>
+            )}
             <label
               style={{
                 display: 'flex',
@@ -281,23 +316,40 @@ const ProductCatalogComponent: React.FC<ProductCatalogProps> = ({
       </div>
 
       {/* 2. FILTRO DE CATEGORIAS EM CHIPS HORIZONTAIS */}
-      {showGrid && categorias.length > 0 && onSelectCategoria && (
+      {showGrid && (categorias.length > 0 || favoritosIds.length > 0) && (
         <div className="category-chips-bar" role="toolbar" aria-label="Filtro de categorias de produtos">
           <button
             type="button"
-            className={`category-chip ${selectedCategoriaId === null || selectedCategoriaId === 'todas' ? 'active' : ''}`}
-            onClick={() => onSelectCategoria(null)}
+            className={`category-chip ${!mostrarApenasFavoritos && (selectedCategoriaId === null || selectedCategoriaId === 'todas') ? 'active' : ''}`}
+            onClick={() => {
+              setMostrarApenasFavoritos(false);
+              onSelectCategoria?.(null);
+            }}
           >
             <Sparkles size={14} /> Todas as categorias
           </button>
+          <button
+            type="button"
+            className={`category-chip ${mostrarApenasFavoritos ? 'active' : ''}`}
+            onClick={() => {
+              const next = !mostrarApenasFavoritos;
+              setMostrarApenasFavoritos(next);
+              if (next && onSelectCategoria) onSelectCategoria(null);
+            }}
+          >
+            <Star size={13} fill={mostrarApenasFavoritos ? 'currentColor' : 'none'} /> Favoritos ({favoritosIds.length})
+          </button>
           {categorias.map((cat) => {
-            const isSelected = String(selectedCategoriaId) === String(cat.id);
+            const isSelected = !mostrarApenasFavoritos && String(selectedCategoriaId) === String(cat.id);
             return (
               <button
                 key={cat.id}
                 type="button"
                 className={`category-chip ${isSelected ? 'active' : ''}`}
-                onClick={() => onSelectCategoria(isSelected ? null : cat.id)}
+                onClick={() => {
+                  setMostrarApenasFavoritos(false);
+                  onSelectCategoria?.(isSelected ? null : cat.id);
+                }}
               >
                 {cat.nome}
               </button>
@@ -362,9 +414,27 @@ const ProductCatalogComponent: React.FC<ProductCatalogProps> = ({
                   }}
                   aria-label={`${p.nome}, Preço: ${formatMoney(p.preco)}, Stock: ${formatQuantity(p.stock, p.unidade || 'un')}`}
                 >
-                  <div className="prod-info">
-                    <span className="prod-title">{p.nome}</span>
-                    {catObj && <span className="prod-category">{catObj.nome}</span>}
+                  <div className="prod-info" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
+                    <div>
+                      <span className="prod-title">{p.nome}</span>
+                      {catObj && <span className="prod-category">{catObj.nome}</span>}
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={favoritosIds.includes(p.id) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+                      onClick={(e) => toggleFavorito(p.id, e)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: 2,
+                        cursor: 'pointer',
+                        color: favoritosIds.includes(p.id) ? '#f59e0b' : 'var(--text-muted, #94a3b8)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Star size={14} fill={favoritosIds.includes(p.id) ? '#f59e0b' : 'none'} strokeWidth={1.8} />
+                    </button>
                   </div>
                   <div className="prod-footer">
                     <span className="prod-price">{formatMoney(p.preco)}</span>

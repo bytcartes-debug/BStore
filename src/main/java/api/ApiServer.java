@@ -6,8 +6,10 @@ import api.routes.CategoriaRoutes;
 import api.routes.ConfiguracaoRoutes;
 import api.routes.DashboardRoutes;
 import api.routes.DevedorRoutes;
+import api.routes.IaRoutes;
 import api.routes.ProdutoRoutes;
 import api.routes.VendaRoutes;
+import service.ia.IaControloService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import dao.CategoriaDAO;
@@ -40,6 +42,7 @@ public class ApiServer {
     private final VendaDAO vendaDAO = new VendaDAO();
     private final StockService stockService = new StockService();
     private final RateLimiterLogin rateLimiterLogin = new RateLimiterLogin();
+    private final IaControloService iaControloService = new IaControloService();
     private final Javalin app;
 
     public ApiServer() {
@@ -121,6 +124,7 @@ public class ApiServer {
         new CaixaRoutes(service).register(app);
         new DevedorRoutes(service, devedorDAO).register(app);
         new ConfiguracaoRoutes(service).register(app);
+        new IaRoutes(iaControloService).register(app);
 
         app.error(HttpStatus.NOT_FOUND, ctx -> {
             if (!ctx.path().startsWith("/api")) {
