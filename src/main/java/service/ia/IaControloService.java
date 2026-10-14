@@ -64,11 +64,14 @@ public class IaControloService {
                     .setParameter("inicioMes", inicioMes)
                     .getSingleResult();
 
+            String globalKey = util.EnvUtil.get("GEMINI_API_KEY");
             boolean temChave = (def.getIaApiKey() != null && !def.getIaApiKey().trim().isEmpty())
-                    || (System.getenv("GEMINI_API_KEY") != null && !System.getenv("GEMINI_API_KEY").trim().isEmpty());
+                    || (globalKey != null && !globalKey.trim().isEmpty());
+
+            boolean ativa = def.getIaActiva() == null || Boolean.TRUE.equals(def.getIaActiva());
 
             Map<String, Object> res = new LinkedHashMap<>();
-            res.put("ativa", def.getIaActiva());
+            res.put("ativa", ativa);
             res.put("provedor", def.getIaProvedor());
             res.put("temApiKey", temChave);
             res.put("usadosHoje", usadosHoje);
@@ -96,7 +99,7 @@ public class IaControloService {
     public boolean isIaAtivaParaUsuario(Long usuarioId) {
         return JPAUtil.emTransacao(usuarioId, em -> {
             DefinicaoLoja def = definicaoLojaDAO.obterOuCriar(em, usuarioId);
-            return Boolean.TRUE.equals(def.getIaActiva());
+            return def.getIaActiva() == null || Boolean.TRUE.equals(def.getIaActiva());
         });
     }
 
@@ -113,7 +116,8 @@ public class IaControloService {
         JPAUtil.emTransacao(usuarioId, em -> {
             DefinicaoLoja d = definicaoLojaDAO.obterOuCriar(em, usuarioId);
 
-            if (!Boolean.TRUE.equals(d.getIaActiva())) {
+            boolean ativa = d.getIaActiva() == null || Boolean.TRUE.equals(d.getIaActiva());
+            if (!ativa) {
                 throw new IllegalArgumentException("As funcionalidades de Inteligência Artificial estão desligadas para esta loja. Ative nas Definições.");
             }
 

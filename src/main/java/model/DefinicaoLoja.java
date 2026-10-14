@@ -24,7 +24,7 @@ public class DefinicaoLoja {
     private Long ultimoNumeroVenda = 0L;
 
     @Column(name = "ia_activa", nullable = false)
-    private Boolean iaActiva = false;
+    private Boolean iaActiva = true;
 
     @Column(name = "ia_provedor", length = 32, nullable = false)
     private String iaProvedor = "gemini";
@@ -53,7 +53,7 @@ public class DefinicaoLoja {
         this.controloCaixa = controloCaixa != null ? controloCaixa : false;
         this.nomeLoja = nomeLoja;
         this.ultimoNumeroVenda = 0L;
-        this.iaActiva = false;
+        this.iaActiva = true;
         this.iaProvedor = "gemini";
         this.iaLimiteDiario = 50;
         this.iaLimiteMensal = 500;
@@ -72,8 +72,8 @@ public class DefinicaoLoja {
     public Long getUltimoNumeroVenda() { return ultimoNumeroVenda != null ? ultimoNumeroVenda : 0L; }
     public void setUltimoNumeroVenda(Long ultimoNumeroVenda) { this.ultimoNumeroVenda = ultimoNumeroVenda != null ? ultimoNumeroVenda : 0L; }
 
-    public Boolean getIaActiva() { return iaActiva != null ? iaActiva : false; }
-    public void setIaActiva(Boolean iaActiva) { this.iaActiva = iaActiva != null ? iaActiva : false; }
+    public Boolean getIaActiva() { return iaActiva != null ? iaActiva : true; }
+    public void setIaActiva(Boolean iaActiva) { this.iaActiva = iaActiva != null ? iaActiva : true; }
 
     public String getIaProvedor() { return iaProvedor != null ? iaProvedor : "gemini"; }
     public void setIaProvedor(String iaProvedor) { this.iaProvedor = iaProvedor != null ? iaProvedor : "gemini"; }

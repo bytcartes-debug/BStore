@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import util.EnvUtil;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -17,7 +19,7 @@ import java.util.Base64;
 public class GeminiAiClient implements AiClient {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiAiClient.class);
-    private static final String DEFAULT_MODEL = "gemini-1.5-flash";
+    private static final String DEFAULT_MODEL = "gemini-3.5-flash-lite";
     private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
 
     private final HttpClient httpClient;
@@ -34,7 +36,7 @@ public class GeminiAiClient implements AiClient {
         if (apiKey != null && !apiKey.trim().isEmpty()) {
             return apiKey.trim();
         }
-        String envKey = System.getenv("GEMINI_API_KEY");
+        String envKey = EnvUtil.get("GEMINI_API_KEY");
         if (envKey != null && !envKey.trim().isEmpty()) {
             return envKey.trim();
         }
@@ -57,7 +59,8 @@ public class GeminiAiClient implements AiClient {
             return AiResposta.falha("Chave de API do Gemini não configurada na loja nem no servidor.");
         }
 
-        String modelName = (modelo != null && !modelo.trim().isEmpty()) ? modelo.trim() : DEFAULT_MODEL;
+        String fallbackModel = EnvUtil.get("GEMINI_MODEL", DEFAULT_MODEL);
+        String modelName = (modelo != null && !modelo.trim().isEmpty()) ? modelo.trim() : fallbackModel;
         String endpoint = BASE_URL + modelName + ":generateContent?key=" + key;
 
         try {
