@@ -68,7 +68,8 @@ public class IaControloService {
             boolean temChave = (def.getIaApiKey() != null && !def.getIaApiKey().trim().isEmpty())
                     || (globalKey != null && !globalKey.trim().isEmpty());
 
-            boolean ativa = def.getIaActiva() == null || Boolean.TRUE.equals(def.getIaActiva());
+            boolean ativa = (globalKey != null && !globalKey.trim().isEmpty())
+                    || (def.getIaActiva() == null || Boolean.TRUE.equals(def.getIaActiva()));
 
             Map<String, Object> res = new LinkedHashMap<>();
             res.put("ativa", ativa);
@@ -97,6 +98,10 @@ public class IaControloService {
     }
 
     public boolean isIaAtivaParaUsuario(Long usuarioId) {
+        String globalKey = util.EnvUtil.get("GEMINI_API_KEY");
+        if (globalKey != null && !globalKey.trim().isEmpty()) {
+            return true;
+        }
         return JPAUtil.emTransacao(usuarioId, em -> {
             DefinicaoLoja def = definicaoLojaDAO.obterOuCriar(em, usuarioId);
             return def.getIaActiva() == null || Boolean.TRUE.equals(def.getIaActiva());
@@ -116,7 +121,9 @@ public class IaControloService {
         JPAUtil.emTransacao(usuarioId, em -> {
             DefinicaoLoja d = definicaoLojaDAO.obterOuCriar(em, usuarioId);
 
-            boolean ativa = d.getIaActiva() == null || Boolean.TRUE.equals(d.getIaActiva());
+            String globalKey = util.EnvUtil.get("GEMINI_API_KEY");
+            boolean ativa = (globalKey != null && !globalKey.trim().isEmpty())
+                    || (d.getIaActiva() == null || Boolean.TRUE.equals(d.getIaActiva()));
             if (!ativa) {
                 throw new IllegalArgumentException("As funcionalidades de Inteligência Artificial estão desligadas para esta loja. Ative nas Definições.");
             }
@@ -176,17 +183,36 @@ public class IaControloService {
     }
 
     public String extrairJsonPuro(String texto) {
-        if (texto == null) return "{}";
+        if (texto == null || texto.isBlank()) return "{}";
         String s = texto.trim();
-        if (s.startsWith("```json")) {
-            s = s.substring(7);
-        } else if (s.startsWith("```")) {
-            s = s.substring(3);
+
+        // 1. Tentar bloco de código com ```json ... ``` ou ``` ... ```
+        int startCode = s.indexOf("```");
+        if (startCode >= 0) {
+            int startJson = s.indexOf("\n", startCode);
+            if (startJson > 0) {
+                int endCode = s.lastIndexOf("```");
+                if (endCode > startJson) {
+                    s = s.substring(startJson + 1, endCode).trim();
+                }
+            }
         }
-        if (s.endsWith("```")) {
-            s = s.substring(0, s.length() - 3);
+
+        // 2. Extrair objeto JSON {...}
+        int firstBrace = s.indexOf('{');
+        int lastBrace = s.lastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+            return s.substring(firstBrace, lastBrace + 1).trim();
         }
-        return s.trim();
+
+        // 3. Extrair array JSON [...]
+        int firstBracket = s.indexOf('[');
+        int lastBracket = s.lastIndexOf(']');
+        if (firstBracket >= 0 && lastBracket > firstBracket) {
+            return s.substring(firstBracket, lastBracket + 1).trim();
+        }
+
+        return s;
     }
 
     public Map<String, Object> analisarProdutoPorFoto(Long usuarioId, byte[] imagemBytes, String mimeType) {
