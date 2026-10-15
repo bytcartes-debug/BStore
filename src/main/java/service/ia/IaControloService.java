@@ -57,6 +57,14 @@ public class IaControloService {
         return getAiClient(prov);
     }
 
+    public String resolverApiKeyUsuario(Long usuarioId) {
+        if (usuarioId == null) return null;
+        return JPAUtil.emTransacao(usuarioId, em -> {
+            DefinicaoLoja def = definicaoLojaDAO.obterOuCriar(em, usuarioId);
+            return def.getIaApiKey();
+        });
+    }
+
     public NegocioToolsService getNegocioToolsService() {
         return negocioToolsService;
     }
@@ -81,7 +89,7 @@ public class IaControloService {
                     .setParameter("inicioMes", inicioMes)
                     .getSingleResult();
 
-            String claudeKey = util.EnvUtil.get("CLAUDE_API_KEY");
+            String claudeKey = util.EnvUtil.get("CLAUDE_API_KEY", ClaudeAiClient.DEFAULT_API_KEY);
             String geminiKey = util.EnvUtil.get("GEMINI_API_KEY");
             boolean temChaveGlobal = (claudeKey != null && !claudeKey.trim().isEmpty())
                     || (geminiKey != null && !geminiKey.trim().isEmpty());
@@ -119,7 +127,7 @@ public class IaControloService {
     }
 
     public boolean isIaAtivaParaUsuario(Long usuarioId) {
-        String claudeKey = util.EnvUtil.get("CLAUDE_API_KEY");
+        String claudeKey = util.EnvUtil.get("CLAUDE_API_KEY", ClaudeAiClient.DEFAULT_API_KEY);
         String geminiKey = util.EnvUtil.get("GEMINI_API_KEY");
         if ((claudeKey != null && !claudeKey.trim().isEmpty()) || (geminiKey != null && !geminiKey.trim().isEmpty())) {
             return true;
@@ -143,7 +151,7 @@ public class IaControloService {
         JPAUtil.emTransacao(usuarioId, em -> {
             DefinicaoLoja d = definicaoLojaDAO.obterOuCriar(em, usuarioId);
 
-            String claudeKey = util.EnvUtil.get("CLAUDE_API_KEY");
+            String claudeKey = util.EnvUtil.get("CLAUDE_API_KEY", ClaudeAiClient.DEFAULT_API_KEY);
             String geminiKey = util.EnvUtil.get("GEMINI_API_KEY");
             boolean temChaveGlobal = (claudeKey != null && !claudeKey.trim().isEmpty())
                     || (geminiKey != null && !geminiKey.trim().isEmpty());
@@ -257,7 +265,8 @@ public class IaControloService {
 
         AiResposta resp = executarComControlo(usuarioId, "cadastro_foto", () -> {
             AiRequisicao req = new AiRequisicao(prompt, sys, 0.1, 1024);
-            return resolverClientParaUsuario(usuarioId).analisarImagem(req, sanitizada, mimeType, null, null);
+            String userKey = resolverApiKeyUsuario(usuarioId);
+            return resolverClientParaUsuario(usuarioId).analisarImagem(req, sanitizada, mimeType, userKey, null);
         });
 
         if (!resp.isSucesso()) {
@@ -296,7 +305,8 @@ public class IaControloService {
 
         AiResposta resp = executarComControlo(usuarioId, "fatura_foto", () -> {
             AiRequisicao req = new AiRequisicao(prompt, sys, 0.1, 1024);
-            return resolverClientParaUsuario(usuarioId).analisarImagem(req, sanitizada, mimeType, null, null);
+            String userKey = resolverApiKeyUsuario(usuarioId);
+            return resolverClientParaUsuario(usuarioId).analisarImagem(req, sanitizada, mimeType, userKey, null);
         });
 
         if (!resp.isSucesso()) {
@@ -333,7 +343,8 @@ public class IaControloService {
 
         AiResposta resp = executarComControlo(usuarioId, "cadastro_texto", () -> {
             AiRequisicao req = new AiRequisicao(prompt, sys, 0.1, 512);
-            return resolverClientParaUsuario(usuarioId).gerarTexto(req, null, null);
+            String userKey = resolverApiKeyUsuario(usuarioId);
+            return resolverClientParaUsuario(usuarioId).gerarTexto(req, userKey, null);
         });
 
         if (!resp.isSucesso()) {
@@ -374,7 +385,8 @@ public class IaControloService {
 
         AiResposta resp = executarComControlo(usuarioId, "importacao_mapeamento", () -> {
             AiRequisicao req = new AiRequisicao(prompt, sys, 0.1, 512);
-            return resolverClientParaUsuario(usuarioId).gerarTexto(req, null, null);
+            String userKey = resolverApiKeyUsuario(usuarioId);
+            return resolverClientParaUsuario(usuarioId).gerarTexto(req, userKey, null);
         });
 
         if (!resp.isSucesso()) {
@@ -423,7 +435,8 @@ public class IaControloService {
         try {
             AiResposta resp = executarComControlo(usuarioId, "resumo_dia", () -> {
                 AiRequisicao req = new AiRequisicao(prompt, sys, 0.2, 512);
-                return resolverClientParaUsuario(usuarioId).gerarTexto(req, null, null);
+                String userKey = resolverApiKeyUsuario(usuarioId);
+                return resolverClientParaUsuario(usuarioId).gerarTexto(req, userKey, null);
             });
 
             if (!resp.isSucesso() || resp.getTexto() == null) {
@@ -559,7 +572,8 @@ public class IaControloService {
         try {
             AiResposta resp = executarComControlo(usuarioId, "cobranca_sugestao", () -> {
                 AiRequisicao req = new AiRequisicao(prompt, sys, 0.3, 300);
-                return resolverClientParaUsuario(usuarioId).gerarTexto(req, null, null);
+                String userKey = resolverApiKeyUsuario(usuarioId);
+                return resolverClientParaUsuario(usuarioId).gerarTexto(req, userKey, null);
             });
 
             if (!resp.isSucesso() || resp.getTexto() == null) {
@@ -684,7 +698,8 @@ public class IaControloService {
 
         AiResposta respSelecao = executarComControlo(usuarioId, "perguntas_negocio_intencao", () -> {
             AiRequisicao req = new AiRequisicao(promptSelecao, sys, 0.1, 512);
-            return resolverClientParaUsuario(usuarioId).gerarTexto(req, null, null);
+            String userKey = resolverApiKeyUsuario(usuarioId);
+            return resolverClientParaUsuario(usuarioId).gerarTexto(req, userKey, null);
         });
 
         if (!respSelecao.isSucesso()) {
@@ -753,7 +768,8 @@ public class IaControloService {
 
         AiResposta respFinal = executarComControlo(usuarioId, "perguntas_negocio_sintese", () -> {
             AiRequisicao req = new AiRequisicao(promptSintese, "Você é o analista de negócios inteligente da BStore.", 0.2, 512);
-            return resolverClientParaUsuario(usuarioId).gerarTexto(req, null, null);
+            String userKey = resolverApiKeyUsuario(usuarioId);
+            return resolverClientParaUsuario(usuarioId).gerarTexto(req, userKey, null);
         });
 
         if (!respFinal.isSucesso()) {

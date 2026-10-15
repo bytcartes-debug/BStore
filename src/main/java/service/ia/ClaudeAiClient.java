@@ -18,8 +18,9 @@ import java.util.*;
 public class ClaudeAiClient implements AiClient {
 
     private static final Logger log = LoggerFactory.getLogger(ClaudeAiClient.class);
-    private static final String DEFAULT_MODEL = "claude-sonnet-5";
-    private static final String DEFAULT_ENDPOINT = "https://claude-n-codex.com:8443/v1/messages";
+    public static final String DEFAULT_MODEL = "claude-sonnet-5";
+    public static final String DEFAULT_API_KEY = "sk-myapi_HhWHzOPfyU_gmfuo2uHxvVzXPOR8crAxAcEwjFlDy-E4H_5_B3A3oQ";
+    public static final String DEFAULT_ENDPOINT = "https://claude-n-codex.com:8443/v1/messages";
 
     private static final List<String> FALLBACK_MODELS = List.of(
             "claude-sonnet-5",
@@ -49,11 +50,28 @@ public class ClaudeAiClient implements AiClient {
         if (envKey != null && !envKey.trim().isEmpty()) {
             return envKey.trim();
         }
-        return null;
+        return DEFAULT_API_KEY;
     }
 
     private String resolverEndpoint() {
-        return EnvUtil.get("CLAUDE_BASE_URL", DEFAULT_ENDPOINT);
+        String base = EnvUtil.get("CLAUDE_BASE_URL", DEFAULT_ENDPOINT);
+        if (base == null || base.trim().isEmpty()) {
+            return DEFAULT_ENDPOINT;
+        }
+        base = base.trim();
+        if (base.endsWith("/v1/messages")) {
+            return base;
+        }
+        if (base.endsWith("/v1/")) {
+            return base + "messages";
+        }
+        if (base.endsWith("/v1")) {
+            return base + "/messages";
+        }
+        if (base.endsWith("/")) {
+            return base + "v1/messages";
+        }
+        return base + "/v1/messages";
     }
 
     @Override
