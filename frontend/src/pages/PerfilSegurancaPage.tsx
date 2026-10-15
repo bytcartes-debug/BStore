@@ -27,7 +27,7 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
 
   const ia = useIa();
   const [iaAtiva, setIaAtiva] = useState(false);
-  const [iaProvedor, setIaProvedor] = useState('gemini');
+  const [iaProvedor, setIaProvedor] = useState('claude');
   const [iaApiKey, setIaApiKey] = useState('');
   const [iaLimiteDiario, setIaLimiteDiario] = useState(50);
   const [iaLimiteMensal, setIaLimiteMensal] = useState(500);
@@ -35,7 +35,7 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
   useEffect(() => {
     if (ia.status) {
       setIaAtiva(ia.status.ativa);
-      setIaProvedor(ia.status.provedor || 'gemini');
+      setIaProvedor(ia.status.provedor || 'claude');
       setIaLimiteDiario(ia.status.limiteDiario || 50);
       setIaLimiteMensal(ia.status.limiteMensal || 500);
     }
@@ -509,9 +509,9 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
                 value={iaProvedor}
                 onChange={(e) => setIaProvedor(e.target.value)}
               >
-                <option value="gemini">Google Gemini 1.5 Flash (Padrão)</option>
+                <option value="claude">Anthropic Claude (Sonnet 5 - Padrão)</option>
+                <option value="gemini">Google Gemini</option>
                 <option value="openai">OpenAI (GPT-4o mini)</option>
-                <option value="anthropic">Anthropic (Claude 3.5 Haiku)</option>
               </select>
             </Field>
 

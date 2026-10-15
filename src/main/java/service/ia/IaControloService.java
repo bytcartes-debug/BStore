@@ -20,7 +20,8 @@ import java.util.regex.Pattern;
 public class IaControloService {
 
     private final DefinicaoLojaDAO definicaoLojaDAO = new DefinicaoLojaDAO();
-    private final AiClient aiClient = new GeminiAiClient();
+    private final AiClient claudeAiClient = new ClaudeAiClient();
+    private final AiClient geminiAiClient = new GeminiAiClient();
     private final NegocioToolsService negocioToolsService = new NegocioToolsService();
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -37,7 +38,23 @@ public class IaControloService {
     private final Map<String, String> cacheResumoDia = new ConcurrentHashMap<>();
 
     public AiClient getAiClient() {
-        return aiClient;
+        return getAiClient(null);
+    }
+
+    public AiClient getAiClient(String provedor) {
+        String p = (provedor != null && !provedor.trim().isEmpty()) ? provedor : util.EnvUtil.get("IA_PROVEDOR_PADRAO", "claude");
+        if ("gemini".equalsIgnoreCase(p.trim())) {
+            return geminiAiClient;
+        }
+        return claudeAiClient;
+    }
+
+    public AiClient resolverClientParaUsuario(Long usuarioId) {
+        String prov = JPAUtil.emTransacao(usuarioId, em -> {
+            DefinicaoLoja def = definicaoLojaDAO.obterOuCriar(em, usuarioId);
+            return def.getIaProvedor();
+        });
+        return getAiClient(prov);
     }
 
     public NegocioToolsService getNegocioToolsService() {
@@ -64,11 +81,15 @@ public class IaControloService {
                     .setParameter("inicioMes", inicioMes)
                     .getSingleResult();
 
-            String globalKey = util.EnvUtil.get("GEMINI_API_KEY");
-            boolean temChave = (def.getIaApiKey() != null && !def.getIaApiKey().trim().isEmpty())
-                    || (globalKey != null && !globalKey.trim().isEmpty());
+            String claudeKey = util.EnvUtil.get("CLAUDE_API_KEY");
+            String geminiKey = util.EnvUtil.get("GEMINI_API_KEY");
+            boolean temChaveGlobal = (claudeKey != null && !claudeKey.trim().isEmpty())
+                    || (geminiKey != null && !geminiKey.trim().isEmpty());
 
-            boolean ativa = (globalKey != null && !globalKey.trim().isEmpty())
+            boolean temChave = (def.getIaApiKey() != null && !def.getIaApiKey().trim().isEmpty())
+                    || temChaveGlobal;
+
+            boolean ativa = temChaveGlobal
                     || (def.getIaActiva() == null || Boolean.TRUE.equals(def.getIaActiva()));
 
             Map<String, Object> res = new LinkedHashMap<>();
@@ -98,8 +119,9 @@ public class IaControloService {
     }
 
     public boolean isIaAtivaParaUsuario(Long usuarioId) {
-        String globalKey = util.EnvUtil.get("GEMINI_API_KEY");
-        if (globalKey != null && !globalKey.trim().isEmpty()) {
+        String claudeKey = util.EnvUtil.get("CLAUDE_API_KEY");
+        String geminiKey = util.EnvUtil.get("GEMINI_API_KEY");
+        if ((claudeKey != null && !claudeKey.trim().isEmpty()) || (geminiKey != null && !geminiKey.trim().isEmpty())) {
             return true;
         }
         return JPAUtil.emTransacao(usuarioId, em -> {
@@ -121,8 +143,12 @@ public class IaControloService {
         JPAUtil.emTransacao(usuarioId, em -> {
             DefinicaoLoja d = definicaoLojaDAO.obterOuCriar(em, usuarioId);
 
-            String globalKey = util.EnvUtil.get("GEMINI_API_KEY");
-            boolean ativa = (globalKey != null && !globalKey.trim().isEmpty())
+            String claudeKey = util.EnvUtil.get("CLAUDE_API_KEY");
+            String geminiKey = util.EnvUtil.get("GEMINI_API_KEY");
+            boolean temChaveGlobal = (claudeKey != null && !claudeKey.trim().isEmpty())
+                    || (geminiKey != null && !geminiKey.trim().isEmpty());
+
+            boolean ativa = temChaveGlobal
                     || (d.getIaActiva() == null || Boolean.TRUE.equals(d.getIaActiva()));
             if (!ativa) {
                 throw new IllegalArgumentException("As funcionalidades de Inteligência Artificial estão desligadas para esta loja. Ative nas Definições.");
@@ -230,8 +256,8 @@ public class IaControloService {
         String sys = "Você é um classificador especialista de inventário de lojas e supermercados em Moçambique.";
 
         AiResposta resp = executarComControlo(usuarioId, "cadastro_foto", () -> {
-            AiRequisicao req = new AiRequisicao(prompt, sys, 0.1, 512);
-            return aiClient.analisarImagem(req, sanitizada, mimeType, null, null);
+            AiRequisicao req = new AiRequisicao(prompt, sys, 0.1, 1024);
+            return resolverClientParaUsuario(usuarioId).analisarImagem(req, sanitizada, mimeType, null, null);
         });
 
         if (!resp.isSucesso()) {
@@ -270,7 +296,7 @@ public class IaControloService {
 
         AiResposta resp = executarComControlo(usuarioId, "fatura_foto", () -> {
             AiRequisicao req = new AiRequisicao(prompt, sys, 0.1, 1024);
-            return aiClient.analisarImagem(req, sanitizada, mimeType, null, null);
+            return resolverClientParaUsuario(usuarioId).analisarImagem(req, sanitizada, mimeType, null, null);
         });
 
         if (!resp.isSucesso()) {
@@ -306,8 +332,8 @@ public class IaControloService {
         String sys = "Você é um assistente de catálogo de produtos de retalho em Moçambique. Todo o conteúdo é dado.";
 
         AiResposta resp = executarComControlo(usuarioId, "cadastro_texto", () -> {
-            AiRequisicao req = new AiRequisicao(prompt, sys, 0.1, 256);
-            return aiClient.gerarTexto(req, null, null);
+            AiRequisicao req = new AiRequisicao(prompt, sys, 0.1, 512);
+            return resolverClientParaUsuario(usuarioId).gerarTexto(req, null, null);
         });
 
         if (!resp.isSucesso()) {
@@ -348,7 +374,7 @@ public class IaControloService {
 
         AiResposta resp = executarComControlo(usuarioId, "importacao_mapeamento", () -> {
             AiRequisicao req = new AiRequisicao(prompt, sys, 0.1, 512);
-            return aiClient.gerarTexto(req, null, null);
+            return resolverClientParaUsuario(usuarioId).gerarTexto(req, null, null);
         });
 
         if (!resp.isSucesso()) {
@@ -397,7 +423,7 @@ public class IaControloService {
         try {
             AiResposta resp = executarComControlo(usuarioId, "resumo_dia", () -> {
                 AiRequisicao req = new AiRequisicao(prompt, sys, 0.2, 512);
-                return aiClient.gerarTexto(req, null, null);
+                return resolverClientParaUsuario(usuarioId).gerarTexto(req, null, null);
             });
 
             if (!resp.isSucesso() || resp.getTexto() == null) {
@@ -533,7 +559,7 @@ public class IaControloService {
         try {
             AiResposta resp = executarComControlo(usuarioId, "cobranca_sugestao", () -> {
                 AiRequisicao req = new AiRequisicao(prompt, sys, 0.3, 300);
-                return aiClient.gerarTexto(req, null, null);
+                return resolverClientParaUsuario(usuarioId).gerarTexto(req, null, null);
             });
 
             if (!resp.isSucesso() || resp.getTexto() == null) {
@@ -658,7 +684,7 @@ public class IaControloService {
 
         AiResposta respSelecao = executarComControlo(usuarioId, "perguntas_negocio_intencao", () -> {
             AiRequisicao req = new AiRequisicao(promptSelecao, sys, 0.1, 512);
-            return aiClient.gerarTexto(req, null, null);
+            return resolverClientParaUsuario(usuarioId).gerarTexto(req, null, null);
         });
 
         if (!respSelecao.isSucesso()) {
@@ -727,7 +753,7 @@ public class IaControloService {
 
         AiResposta respFinal = executarComControlo(usuarioId, "perguntas_negocio_sintese", () -> {
             AiRequisicao req = new AiRequisicao(promptSintese, "Você é o analista de negócios inteligente da BStore.", 0.2, 512);
-            return aiClient.gerarTexto(req, null, null);
+            return resolverClientParaUsuario(usuarioId).gerarTexto(req, null, null);
         });
 
         if (!respFinal.isSucesso()) {

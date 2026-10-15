@@ -27,7 +27,7 @@ public class DefinicaoLoja {
     private Boolean iaActiva = true;
 
     @Column(name = "ia_provedor", length = 32, nullable = false)
-    private String iaProvedor = "gemini";
+    private String iaProvedor = "claude";
 
     @Column(name = "ia_api_key", length = 255)
     private String iaApiKey;
@@ -54,7 +54,7 @@ public class DefinicaoLoja {
         this.nomeLoja = nomeLoja;
         this.ultimoNumeroVenda = 0L;
         this.iaActiva = true;
-        this.iaProvedor = "gemini";
+        this.iaProvedor = "claude";
         this.iaLimiteDiario = 50;
         this.iaLimiteMensal = 500;
         this.atualizadoEm = util.Fuso.agora();
@@ -75,8 +75,8 @@ public class DefinicaoLoja {
     public Boolean getIaActiva() { return iaActiva != null ? iaActiva : true; }
     public void setIaActiva(Boolean iaActiva) { this.iaActiva = iaActiva != null ? iaActiva : true; }
 
-    public String getIaProvedor() { return iaProvedor != null ? iaProvedor : "gemini"; }
-    public void setIaProvedor(String iaProvedor) { this.iaProvedor = iaProvedor != null ? iaProvedor : "gemini"; }
+    public String getIaProvedor() { return iaProvedor != null ? iaProvedor : "claude"; }
+    public void setIaProvedor(String iaProvedor) { this.iaProvedor = iaProvedor != null ? iaProvedor : "claude"; }
 
     public String getIaApiKey() { return iaApiKey; }
     public void setIaApiKey(String iaApiKey) { this.iaApiKey = iaApiKey; }
