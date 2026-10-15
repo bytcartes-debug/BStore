@@ -110,4 +110,37 @@ public class UsuarioDAO extends GenericDAO<Usuario> {
             em.close();
         }
     }
+
+    @Override
+    public void eliminar(Long id) {
+        if (id == null) return;
+        EntityManager em = getEM();
+        try {
+            em.getTransaction().begin();
+            if (util.JPAUtil.isPostgres()) {
+                try {
+                    em.createNativeQuery("SELECT bstore_eliminar_usuario(:id)")
+                      .setParameter("id", id)
+                      .getSingleResult();
+                    em.getTransaction().commit();
+                    return;
+                } catch (Exception e) {
+                    if (em.getTransaction().isActive()) em.getTransaction().rollback();
+                    em.getTransaction().begin();
+                }
+            }
+            Usuario u = em.find(Usuario.class, id);
+            if (u != null) {
+                em.createQuery("DELETE FROM DefinicaoLoja d WHERE d.usuarioId = :uid").setParameter("uid", id).executeUpdate();
+                em.createQuery("DELETE FROM Sessao s WHERE s.usuarioId = :uid").setParameter("uid", id).executeUpdate();
+                em.remove(u);
+            }
+            em.getTransaction().commit();
+        } catch (Exception e) {
+            if (em.getTransaction().isActive()) em.getTransaction().rollback();
+            throw e;
+        } finally {
+            em.close();
+        }
+    }
 }

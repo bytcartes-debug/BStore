@@ -406,8 +406,7 @@ export default function UsuariosPage({ user }: { user: UserSession }) {
           danger
         >
           <p>
-            O utilizador <strong>{deleting.nome}</strong> deixará de ter acesso ao sistema. Esta
-            ação é permanente.
+            O utilizador <strong>{deleting.nome}</strong> deixará de ter acesso ao sistema e os seus registos serão removidos. Esta ação é permanente.
           </p>
         </ConfirmDialog>
       )}

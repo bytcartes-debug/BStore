@@ -173,8 +173,17 @@ public class AuthRoutes {
         if (usuarioDAO.contarTodos() <= 1) {
             throw new IllegalStateException("Não é possível apagar o único utilizador.");
         }
-        if (usuarioDAO.buscarPorId(id) == null) {
+        Usuario alvo = usuarioDAO.buscarPorId(id);
+        if (alvo == null) {
             throw new BarracaService.RecursoNaoEncontradoException("Utilizador não encontrado.");
+        }
+        if ("superuser".equals(alvo.getRole())) {
+            long totalSuperusers = usuarioDAO.listarTodos().stream()
+                    .filter(u -> "superuser".equals(u.getRole()))
+                    .count();
+            if (totalSuperusers <= 1) {
+                throw new IllegalStateException("Não é possível apagar o único super-administrador do sistema.");
+            }
         }
         sessaoDAO.revogarDoUtilizador(id);
         usuarioDAO.eliminar(id);
