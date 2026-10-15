@@ -7,6 +7,7 @@ import { buscarNaOpenFoodFacts } from '../utils/openFoodFacts';
 import { useBarcodeScannerInput } from '../utils/useBarcodeScannerInput';
 import { decimal, formatMoney, formatQuantity, parseDecimalInput } from '../utils/decimal';
 import { ArrowDownLeft, Camera, ClipboardList, Download, Plus, SlidersHorizontal, X, Sparkles, Receipt } from 'lucide-react';
+import { comprimirImagemParaIa } from '../utils/imagemIa';
 import {
   PageHeading,
   Loading,
@@ -109,14 +110,8 @@ export default function ProdutosPage() {
     if (!file) return;
     try {
       setAnalisandoFotoIa(true);
-      toast('A analisar produto com IA...');
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-      });
-      reader.readAsDataURL(file);
-      const b64 = await base64Promise;
+      toast('A preparar e analisar produto com IA...');
+      const { base64, mimeType } = await comprimirImagemParaIa(file);
 
       const resultado = await apiRequest<{
         nome?: string;
@@ -127,7 +122,7 @@ export default function ProdutosPage() {
         unidade?: string;
       }>('/api/ia/produto-por-foto', {
         method: 'POST',
-        body: JSON.stringify({ imagemBase64: b64, mimeType: file.type || 'image/jpeg' }),
+        body: JSON.stringify({ imagemBase64: base64, mimeType }),
       });
 
       let catId = categorias[0]?.id.toString() || '';
@@ -166,14 +161,8 @@ export default function ProdutosPage() {
     if (!file) return;
     try {
       setAnalisandoFaturaIa(true);
-      toast('A analisar fatura com IA...');
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-      });
-      reader.readAsDataURL(file);
-      const b64 = await base64Promise;
+      toast('A preparar e analisar fatura com IA...');
+      const { base64, mimeType } = await comprimirImagemParaIa(file, 1600, 0.88);
 
       const resultado = await apiRequest<{
         fornecedor?: string;
@@ -186,7 +175,7 @@ export default function ProdutosPage() {
         }[];
       }>('/api/ia/fatura-por-foto', {
         method: 'POST',
-        body: JSON.stringify({ imagemBase64: b64, mimeType: file.type || 'image/jpeg' }),
+        body: JSON.stringify({ imagemBase64: base64, mimeType }),
       });
 
       if (resultado.itens && resultado.itens.length > 0) {

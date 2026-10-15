@@ -50,6 +50,7 @@ public class ApiServer {
         mapper.registerModule(new JavaTimeModule());
 
         this.app = Javalin.create(config -> {
+            config.http.maxRequestSize = 25 * 1024 * 1024L;
             config.jsonMapper(new JavalinJackson(mapper));
             config.staticFiles.add("/public", io.javalin.http.staticfiles.Location.CLASSPATH);
         });
