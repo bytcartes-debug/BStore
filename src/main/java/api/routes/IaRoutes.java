@@ -58,7 +58,8 @@ public class IaRoutes {
         Long uid = ApiSecurity.utilizadorId(ctx);
         AiResposta resposta = iaControloService.executarComControlo(uid, "teste_ligacao", () -> {
             AiRequisicao req = new AiRequisicao("Diga apenas: 'Ligação bem-sucedida ao serviço de Inteligência Artificial da BStore.' em uma linha.");
-            return iaControloService.getAiClient().gerarTexto(req, null, null);
+            String userKey = iaControloService.resolverApiKeyUsuario(uid);
+            return iaControloService.resolverClientParaUsuario(uid).gerarTexto(req, userKey, null);
         });
 
         if (resposta.isSucesso()) {

@@ -515,11 +515,11 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
               </select>
             </Field>
 
-            <Field id="ia-key" label="Chave de API da loja (opcional)">
+            <Field id="ia-key" label="Chave de API da loja (opcional)" hint="O sistema inclui o Claude Sonnet 5 pré-configurado. Deixe vazio para usar a IA padrão.">
               <input
                 id="ia-key"
                 type="password"
-                placeholder={ia.status?.temApiKey ? 'Chave configurada no servidor' : 'Cole a sua chave aqui'}
+                placeholder="Chave padrão do Claude ativa no servidor"
                 value={iaApiKey}
                 onChange={(e) => setIaApiKey(e.target.value)}
               />

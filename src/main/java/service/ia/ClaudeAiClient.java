@@ -39,16 +39,30 @@ public class ClaudeAiClient implements AiClient {
         this.objectMapper = new ObjectMapper();
     }
 
+    private boolean isChaveValidaClaude(String k) {
+        if (k == null || k.isBlank()) return false;
+        String clean = k.trim();
+        if (clean.startsWith("AQ.") || clean.startsWith("AIza")) return false;
+        return clean.startsWith("sk-") || clean.startsWith("claude-") || clean.length() > 25;
+    }
+
     private String resolverApiKey(String apiKey) {
         if (apiKey != null && !apiKey.trim().isEmpty()) {
-            return apiKey.trim();
+            String k = apiKey.trim();
+            if (isChaveValidaClaude(k)) {
+                return k;
+            }
+            log.warn("Chave informada não é compatível com Claude (detectada chave do Gemini ou inválida). Usando chave padrão.");
         }
         String envKey = EnvUtil.get("CLAUDE_API_KEY");
         if (envKey == null || envKey.trim().isEmpty()) {
             envKey = EnvUtil.get("ANTHROPIC_API_KEY");
         }
         if (envKey != null && !envKey.trim().isEmpty()) {
-            return envKey.trim();
+            String k = envKey.trim();
+            if (isChaveValidaClaude(k)) {
+                return k;
+            }
         }
         return DEFAULT_API_KEY;
     }
@@ -125,7 +139,14 @@ public class ClaudeAiClient implements AiClient {
                 if (imagemBytes != null && imagemBytes.length > 0) {
                     ArrayNode contentArray = userMsg.putArray("content");
 
-                    String safeMime = (mimeType != null && !mimeType.trim().isEmpty()) ? mimeType.trim() : "image/jpeg";
+                    String safeMime = "image/jpeg";
+                    if (mimeType != null) {
+                        String m = mimeType.trim().toLowerCase();
+                        if (m.contains("png")) safeMime = "image/png";
+                        else if (m.contains("webp")) safeMime = "image/webp";
+                        else if (m.contains("gif")) safeMime = "image/gif";
+                        else if (m.contains("jpeg") || m.contains("jpg")) safeMime = "image/jpeg";
+                    }
                     String base64Data = Base64.getEncoder().encodeToString(imagemBytes);
 
                     ObjectNode imgBlock = contentArray.addObject();
@@ -166,15 +187,27 @@ public class ClaudeAiClient implements AiClient {
                         if (usage.has("output_tokens")) candidatesTokens = usage.get("output_tokens").asInt();
                     }
 
-                    if (resNode.has("content") && resNode.get("content").isArray()) {
-                        StringBuilder sb = new StringBuilder();
-                        for (JsonNode block : resNode.get("content")) {
-                            if (block.has("type") && "text".equalsIgnoreCase(block.get("type").asText()) && block.has("text")) {
-                                sb.append(block.get("text").asText());
+                    if (resNode.has("content")) {
+                        JsonNode contentNode = resNode.get("content");
+                        if (contentNode.isArray()) {
+                            StringBuilder sb = new StringBuilder();
+                            for (JsonNode block : contentNode) {
+                                if (block.has("type") && "text".equalsIgnoreCase(block.get("type").asText()) && block.has("text")) {
+                                    sb.append(block.get("text").asText());
+                                }
                             }
+                            if (sb.length() > 0) {
+                                return AiResposta.sucesso(sb.toString().trim(), promptTokens, candidatesTokens);
+                            }
+                        } else if (contentNode.isTextual()) {
+                            return AiResposta.sucesso(contentNode.asText().trim(), promptTokens, candidatesTokens);
                         }
-                        if (sb.length() > 0) {
-                            return AiResposta.sucesso(sb.toString().trim(), promptTokens, candidatesTokens);
+                    }
+
+                    if (resNode.has("choices") && resNode.get("choices").isArray() && resNode.get("choices").size() > 0) {
+                        JsonNode firstChoice = resNode.get("choices").get(0);
+                        if (firstChoice.has("message") && firstChoice.get("message").has("content")) {
+                            return AiResposta.sucesso(firstChoice.get("message").get("content").asText().trim(), promptTokens, candidatesTokens);
                         }
                     }
 
@@ -184,15 +217,22 @@ public class ClaudeAiClient implements AiClient {
                     String msg = "HTTP " + status;
                     try {
                         JsonNode errNode = objectMapper.readTree(response.body());
-                        if (errNode.has("error") && errNode.get("error").has("message")) {
-                            msg = errNode.get("error").get("message").asText();
+                        if (errNode.has("error")) {
+                            JsonNode err = errNode.get("error");
+                            if (err.has("message")) {
+                                msg = err.get("message").asText();
+                            } else if (err.isTextual()) {
+                                msg = err.asText();
+                            }
+                        } else if (errNode.has("message")) {
+                            msg = errNode.get("message").asText();
                         }
                     } catch (Exception ignored) {}
 
                     ultimoErro = msg;
                     log.warn("Claude [{}] falhou (HTTP {}): {}. Verificando fallback...", modelName, status, msg);
 
-                    if ((status == 503 || status == 529 || status == 429 || status == 404 || status == 400) && i + 1 < modelosParaTentar.size()) {
+                    if ((status == 503 || status == 529 || status == 429 || status == 404 || status == 400 || status == 401) && i + 1 < modelosParaTentar.size()) {
                         continue;
                     }
                 }
