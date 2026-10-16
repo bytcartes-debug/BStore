@@ -20,7 +20,6 @@ import {
 import {
   PageHeading,
   SearchField,
-  Loading,
   LoadError,
   EmptyState,
   Modal,
@@ -28,6 +27,7 @@ import {
   Notice,
   Spinner,
   ConfirmDialog,
+  SkeletonRow,
 } from '../components/UI';
 
 interface Devedor {
@@ -266,7 +266,17 @@ export default function DevedoresPage() {
       {error && <LoadError message={error} retry={reload} />}
 
       {loading && !data ? (
-        <Loading label="A carregar a lista de devedores…" />
+        <div className="card" aria-busy="true">
+          <div className="table-wrapper">
+            <table className="responsive-table">
+              <tbody>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <SkeletonRow key={i} cols={4} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
         data && (
           <div className="card">

@@ -17,6 +17,7 @@ import {
   Notice,
   ConfirmDialog,
   Spinner,
+  SkeletonRow,
 } from '../components/UI';
 import type {
   Categoria,
@@ -701,7 +702,17 @@ export default function ProdutosPage() {
 
       {error && <LoadError message={error} retry={reload} />}
       {loading && !data ? (
-        <Loading />
+        <div className="card" aria-busy="true">
+          <div className="table-wrapper">
+            <table className="responsive-table">
+              <tbody>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonRow key={i} cols={8} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
         data && (
           <ProductTable

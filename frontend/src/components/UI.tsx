@@ -17,6 +17,79 @@ export function Spinner({ size = 'normal' }: { size?: 'small' | 'normal' | 'larg
   return <span className={`spinner spinner-${size}`} aria-hidden="true" />;
 }
 
+export function Skeleton({
+  width,
+  height,
+  className = '',
+  style,
+  borderRadius,
+}: {
+  width?: string | number;
+  height?: string | number;
+  className?: string;
+  style?: React.CSSProperties;
+  borderRadius?: string | number;
+}) {
+  return (
+    <span
+      className={`bstore-skeleton ${className}`.trim()}
+      aria-hidden="true"
+      style={{
+        width: width ?? '100%',
+        height: height ?? '16px',
+        borderRadius,
+        ...style,
+      }}
+    />
+  );
+}
+
+export function SkeletonCard({ className = '' }: { className?: string }) {
+  return (
+    <div className={`bstore-skeleton-card ${className}`.trim()} aria-hidden="true">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <Skeleton height={16} width="85%" borderRadius={4} />
+        <Skeleton height={12} width="45%" borderRadius={4} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 12 }}>
+        <Skeleton height={20} width="40%" borderRadius={4} />
+        <Skeleton height={12} width="30%" borderRadius={4} />
+      </div>
+    </div>
+  );
+}
+
+export function SkeletonRow({ cols = 5 }: { cols?: number }) {
+  return (
+    <tr aria-hidden="true">
+      {Array.from({ length: cols }).map((_, i) => (
+        <td key={i} style={{ padding: '12px 16px' }}>
+          <Skeleton height={14} width={i === 0 ? '70%' : i === 1 ? '45%' : '60%'} borderRadius={4} />
+        </td>
+      ))}
+    </tr>
+  );
+}
+
+export function SuccessCheckmark({ size = 40 }: { size?: number }) {
+  return (
+    <div className="bstore-success-seal" aria-hidden="true">
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M20 6L9 17l-5-5" />
+      </svg>
+    </div>
+  );
+}
+
 export function Loading({
   fullScreen = false,
   label = 'A carregar os dados…',
@@ -44,8 +117,9 @@ export function Notice({
   kind?: 'error' | 'success' | 'info';
 }) {
   const Icon = kind === 'success' ? CheckCircle2 : kind === 'info' ? Info : AlertTriangle;
+  const animClass = kind === 'error' ? ' animate-shake' : '';
   return (
-    <div className={`notice notice-${kind}`} role={kind === 'error' ? 'alert' : 'status'}>
+    <div className={`notice notice-${kind}${animClass}`} role={kind === 'error' ? 'alert' : 'status'}>
       <span className="notice-icon" aria-hidden="true">
         <Icon size={18} strokeWidth={2} />
       </span>
@@ -375,6 +449,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             >
               <X size={16} strokeWidth={2} aria-hidden="true" />
             </button>
+            <div key={toast.id} className="toast-progress-bar" aria-hidden="true" />
           </div>
         )}
       </div>

@@ -511,25 +511,16 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
             <div
               style={{
                 position: 'absolute',
-                width: '72%',
-                height: '55%',
+                width: '74%',
+                height: '56%',
                 border: '2px solid rgba(255, 255, 255, 0.85)',
-                borderRadius: 12,
-                boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.45)',
+                borderRadius: 14,
+                boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.52)',
                 pointerEvents: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                overflow: 'hidden',
               }}
             >
-              <div
-                style={{
-                  width: '90%',
-                  height: 2,
-                  background: 'rgba(234, 88, 12, 0.9)',
-                  boxShadow: '0 0 8px rgba(234, 88, 12, 0.8)',
-                }}
-              />
+              <div className="laser-scanner-beam" aria-hidden="true" />
             </div>
           )}
         </div>

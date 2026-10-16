@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../utils/api';
 import { useToast } from '../utils/toast';
-import { PageHeading, Loading, LoadError, EmptyState } from '../components/UI';
+import { PageHeading, LoadError, EmptyState, SkeletonRow } from '../components/UI';
 import { ArrowLeft, Copy, RefreshCw, Share2 } from 'lucide-react';
 import type { PageId } from '../App';
 import './FaltaReporPage.css';
@@ -159,7 +159,19 @@ export default function FaltaReporPage({ navigate }: FaltaReporPageProps) {
         />
       </div>
 
-      {loading && <Loading label="A verificar níveis de stock..." />}
+      {loading && (
+        <div className="card" aria-busy="true">
+          <div className="table-wrapper">
+            <table className="responsive-table repor-tabela">
+              <tbody>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonRow key={i} cols={6} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {error && <LoadError message={error} retry={carregarDados} />}
 
       {!loading && !error && itens.length === 0 && (

@@ -34,7 +34,7 @@ import { useResource } from '../utils/useResource';
 import { useIa } from '../utils/useIa';
 import { useToast } from '../utils/toast';
 import { decimalSeguro, formatMoney, formatQuantity } from '../utils/decimal';
-import { EmptyState, Loading, LoadError, PageHeading, Spinner } from '../components/UI';
+import { EmptyState, LoadError, PageHeading, Spinner, Skeleton, SkeletonCard } from '../components/UI';
 import { AnimatedNumber } from '../components/ui/AnimatedNumber';
 import type { PageId } from '../App';
 import './DashboardPage.css';
@@ -251,7 +251,27 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
     month: 'long',
   }).format(new Date());
 
-  if (loading && !data) return <Loading label="A preparar a visão geral da loja…" />;
+  if (loading && !data) {
+    return (
+      <div className="page-container" aria-busy="true">
+        <div className="page-heading">
+          <div className="page-heading-info" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <Skeleton width={220} height={28} borderRadius={6} />
+            <Skeleton width={320} height={16} borderRadius={4} />
+          </div>
+        </div>
+        <div className="stats-grid" style={{ marginBottom: 24 }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+        <div className="card" style={{ padding: 24, minHeight: 260 }}>
+          <Skeleton width={180} height={20} borderRadius={4} style={{ marginBottom: 16 }} />
+          <Skeleton width="100%" height={180} borderRadius={8} />
+        </div>
+      </div>
+    );
+  }
   if (!data)
     return (
       <LoadError message={error || 'Não foi possível carregar a visão geral.'} retry={reload} />

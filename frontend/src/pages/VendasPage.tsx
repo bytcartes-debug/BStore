@@ -76,6 +76,7 @@ import {
   Field,
   Notice,
   Spinner,
+  SuccessCheckmark,
 } from '../components/UI';
 import './VendasPage.css';
 import type {
@@ -238,6 +239,11 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
   const [telefoneWhatsAppRecibo, setTelefoneWhatsAppRecibo] = useState('');
   const [larguraTermica, setLarguraTermica] = useState<'58mm' | '80mm'>('58mm');
   const confettiRef = useRef<ConfettiHandle>(null);
+  const [cartBounce, setCartBounce] = useState(false);
+  const triggerCartBounce = useCallback(() => {
+    setCartBounce(true);
+    window.setTimeout(() => setCartBounce(false), 420);
+  }, []);
 
   // Despesa de Caixa e Modais Rápidos
   const [showDespesaModal, setShowDespesaModal] = useState(false);
@@ -604,10 +610,11 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
         }
         return [...previous, { produto: product, quantidade: qty }];
       });
+      triggerCartBounce();
       setCartError(null);
       return true;
     },
-    [carrinho],
+    [carrinho, triggerCartBounce],
   );
 
   const addSelected = () => {
@@ -650,11 +657,12 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
         }
         return previous.filter((entry) => entry.produto.id !== id);
       }
+      triggerCartBounce();
       return previous.map((entry) =>
         entry.produto.id === id ? { ...entry, quantidade: qty } : entry,
       );
     });
-  }, [toast]);
+  }, [toast, triggerCartBounce]);
 
   const handleQuickAdd = useCallback(
     (p: Produto) => {
@@ -2353,7 +2361,7 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <h4 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <ShoppingCart size={17} strokeWidth={2} aria-hidden="true" /> Carrinho
+                    <ShoppingCart size={17} strokeWidth={2} aria-hidden="true" className={cartBounce ? 'animate-cart-bounce' : ''} /> Carrinho
                   </h4>
                   <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                     ({carrinho.length} {carrinho.length === 1 ? 'produto' : 'produtos'})
@@ -2831,6 +2839,7 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
             setTelefoneWhatsAppRecibo('');
           }}
         >
+          <SuccessCheckmark size={44} />
           <div
             style={{
               padding: 12,
@@ -3246,7 +3255,7 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
           onClick={() => setShowModal(true)}
         >
           <div className="cart-bar-info" aria-live="polite">
-            <span className="cart-count-badge">
+            <span className={`cart-count-badge${cartBounce ? ' animate-cart-bounce' : ''}`}>
               {carrinho.reduce((acc, it) => acc + it.quantidade.toNumber(), 0)}
             </span>
             <span className="cart-total-text">{formatMoney(total)}</span>

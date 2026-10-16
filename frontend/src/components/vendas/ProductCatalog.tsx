@@ -440,7 +440,7 @@ const ProductCatalogComponent: React.FC<ProductCatalogProps> = ({
                     <span className="prod-price">{formatMoney(p.preco)}</span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       {isStockLow && (
-                        <span className="stock-low-badge" title="Stock baixo">
+                        <span className="stock-low-badge pulse-badge-danger" title="Stock baixo">
                           Baixo
                         </span>
                       )}

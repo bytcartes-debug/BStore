@@ -52,7 +52,7 @@
 }
 
 .bottom-nav-item:active {
-  transform: scale(0.93);
+  transform: scale(0.92);
 }
 
 .bottom-nav-item.active {
@@ -61,18 +61,29 @@
 }
 
 .bottom-nav-item.active .bottom-nav-icon {
-  transform: scale(1.12);
+  transform: translateY(-2px) scale(1.16);
+  color: var(--color-brand);
+}
+
+.bottom-nav-item::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 26%;
+  right: 26%;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--color-brand);
+  opacity: 0;
+  transform: scaleX(0.2);
+  transition:
+    transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 0.2s ease;
 }
 
 .bottom-nav-item.active::before {
-  content: '';
-  position: absolute;
-  top: 1px;
-  left: 25%;
-  right: 25%;
-  height: 2.5px;
-  border-radius: 2px;
-  background: var(--color-brand);
+  opacity: 1;
+  transform: scaleX(1);
 }
 
 /* Esconder em tablet e PC (600px ou mais) */

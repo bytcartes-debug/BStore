@@ -123,7 +123,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({
                       <div className="stock-cell">
                         <span>{formatQuantity(p.stock, p.unidade)}</span>
                         {decimal(p.stock).lte(p.stockMinimo) && (
-                          <span className="badge badge-warning">
+                          <span className="badge badge-warning pulse-badge-danger">
                             <AlertTriangle size={12} strokeWidth={2} aria-hidden="true" /> Stock baixo
                           </span>
                         )}

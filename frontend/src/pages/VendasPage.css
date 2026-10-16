@@ -450,16 +450,18 @@ body.dark-theme .category-chip.active {
   touch-action: manipulation;
   user-select: none;
   position: relative;
-  transition: transform 0.1s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.15s ease, box-shadow 0.15s ease;
   overflow: hidden;
+  will-change: transform;
 }
 .product-card-pos:active {
-  transform: scale(0.97);
+  transform: scale(0.94);
 }
 @media (hover: hover) {
   .product-card-pos:hover {
     border-color: var(--color-brand);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+    transform: translateY(-2px);
   }
 }
 .product-card-pos .prod-info {
