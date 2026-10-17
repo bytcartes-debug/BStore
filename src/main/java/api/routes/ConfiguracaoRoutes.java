@@ -17,9 +17,15 @@ import java.util.stream.Collectors;
 public class ConfiguracaoRoutes {
 
     private final BarracaService service;
+    private final service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService;
 
     public ConfiguracaoRoutes(BarracaService service) {
+        this(service, new service.notificacao.WhatsappNotificacaoService());
+    }
+
+    public ConfiguracaoRoutes(BarracaService service, service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService) {
         this.service = service;
+        this.whatsappNotificacaoService = whatsappNotificacaoService;
     }
 
     public void register(Javalin app) {
@@ -31,6 +37,7 @@ public class ConfiguracaoRoutes {
 
         app.get("/api/definicoes", this::obterDefinicoesLoja);
         app.put("/api/definicoes", this::atualizarDefinicoesLoja);
+        app.post("/api/definicoes/whatsapp/testar", this::testarEnvioWhatsapp);
     }
 
     private Map<String, Object> metodoPagamentoJson(MetodoPagamento m) {
@@ -89,21 +96,57 @@ public class ConfiguracaoRoutes {
     private void obterDefinicoesLoja(Context ctx) {
         Long uid = ApiSecurity.utilizadorId(ctx);
         DefinicaoLoja def = service.obterDefinicoesLoja(uid);
+        service.notificacao.WhatsappNotificacaoService.ConfiguracaoZapi cfg = whatsappNotificacaoService.carregarConfiguracao(uid);
         Map<String, Object> res = new LinkedHashMap<>();
         res.put("controloCaixa", def.getControloCaixa());
         res.put("nomeLoja", def.getNomeLoja() != null ? def.getNomeLoja() : "");
+        res.put("whatsappNotificacoesActivas", cfg.activa);
+        res.put("whatsappTelefoneDono", def.getWhatsappTelefoneDono() != null ? def.getWhatsappTelefoneDono() : (cfg.telefone != null ? cfg.telefone : ""));
+        res.put("zapiInstanceId", def.getZapiInstanceId() != null ? def.getZapiInstanceId() : (cfg.instanceId != null ? cfg.instanceId : ""));
+        res.put("zapiToken", def.getZapiToken() != null ? def.getZapiToken() : (cfg.token != null ? cfg.token : ""));
+        res.put("zapiClientToken", def.getZapiClientToken() != null ? def.getZapiClientToken() : (cfg.clientToken != null ? cfg.clientToken : ""));
+        res.put("zapiConfigurada", cfg.isConfigurada());
         ctx.json(res);
     }
 
     private void atualizarDefinicoesLoja(Context ctx) {
         Long uid = ApiSecurity.utilizadorId(ctx);
         Map<String, Object> body = ApiHelpers.corpo(ctx);
-        boolean controlo = Boolean.TRUE.equals(body.get("controloCaixa"));
+        Boolean controlo = body.containsKey("controloCaixa") ? Boolean.TRUE.equals(body.get("controloCaixa")) : null;
         String nome = ApiHelpers.texto(body, "nomeLoja");
-        DefinicaoLoja def = service.atualizarDefinicoesLoja(controlo, nome, uid);
+        Boolean whatsappActivo = body.containsKey("whatsappNotificacoesActivas") ? Boolean.TRUE.equals(body.get("whatsappNotificacoesActivas")) : null;
+        String whatsappTelefone = ApiHelpers.texto(body, "whatsappTelefoneDono");
+        String zapiInstanceId = ApiHelpers.texto(body, "zapiInstanceId");
+        String zapiToken = ApiHelpers.texto(body, "zapiToken");
+        String zapiClientToken = ApiHelpers.texto(body, "zapiClientToken");
+
+        DefinicaoLoja def = service.atualizarDefinicoesLoja(controlo, nome, whatsappActivo, whatsappTelefone, zapiInstanceId, zapiToken, zapiClientToken, uid);
+        service.notificacao.WhatsappNotificacaoService.ConfiguracaoZapi cfg = whatsappNotificacaoService.carregarConfiguracao(uid);
         Map<String, Object> res = new LinkedHashMap<>();
         res.put("controloCaixa", def.getControloCaixa());
         res.put("nomeLoja", def.getNomeLoja() != null ? def.getNomeLoja() : "");
+        res.put("whatsappNotificacoesActivas", cfg.activa);
+        res.put("whatsappTelefoneDono", def.getWhatsappTelefoneDono() != null ? def.getWhatsappTelefoneDono() : (cfg.telefone != null ? cfg.telefone : ""));
+        res.put("zapiInstanceId", def.getZapiInstanceId() != null ? def.getZapiInstanceId() : (cfg.instanceId != null ? cfg.instanceId : ""));
+        res.put("zapiToken", def.getZapiToken() != null ? def.getZapiToken() : (cfg.token != null ? cfg.token : ""));
+        res.put("zapiClientToken", def.getZapiClientToken() != null ? def.getZapiClientToken() : (cfg.clientToken != null ? cfg.clientToken : ""));
+        res.put("zapiConfigurada", cfg.isConfigurada());
         ctx.json(res);
+    }
+
+    private void testarEnvioWhatsapp(Context ctx) {
+        Long uid = ApiSecurity.utilizadorId(ctx);
+        try {
+            boolean enviado = whatsappNotificacaoService.testarConexao(uid);
+            if (enviado) {
+                ctx.json(Map.of("sucesso", true, "mensagem", "Mensagem de teste enviada com sucesso para o WhatsApp!"));
+            } else {
+                ctx.status(HttpStatus.BAD_GATEWAY).json(Map.of("sucesso", false, "erro", "A Z-API não confirmou o envio. Verifique a instância, token ou número."));
+            }
+        } catch (IllegalArgumentException e) {
+            ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("sucesso", false, "erro", e.getMessage()));
+        } catch (Exception e) {
+            ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(Map.of("sucesso", false, "erro", "Erro ao conectar com Z-API: " + e.getMessage()));
+        }
     }
 }

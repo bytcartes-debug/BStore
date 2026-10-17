@@ -57,7 +57,7 @@ public final class VendaIdempotenteService {
                 Map<String, Object> venda = service.executarVendaLote(em, itens, pagamentos, clienteId, observacao, uuidCliente != null ? uuidCliente : chave, usuarioId);
                 String json = serializar(VendaJson.lote(venda));
                 pedido.setResposta(json);
-                return new Resultado(json, false);
+                return new Resultado(json, false, venda);
             });
         } catch (RuntimeException e) {
             if (!chaveDuplicada(e)) throw e;
@@ -147,6 +147,16 @@ public final class VendaIdempotenteService {
     public static final class Resultado {
         public final String json;
         public final boolean repetido;
-        Resultado(String json, boolean repetido) { this.json = json; this.repetido = repetido; }
+        public final Map<String, Object> dados;
+
+        Resultado(String json, boolean repetido) {
+            this(json, repetido, null);
+        }
+
+        Resultado(String json, boolean repetido, Map<String, Object> dados) {
+            this.json = json;
+            this.repetido = repetido;
+            this.dados = dados;
+        }
     }
 }

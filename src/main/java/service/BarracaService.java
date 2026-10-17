@@ -334,6 +334,13 @@ public class BarracaService {
         return configuracaoService.atualizarDefinicoesLoja(controloCaixa, nomeLoja, usuarioId);
     }
 
+    public DefinicaoLoja atualizarDefinicoesLoja(Boolean controloCaixa, String nomeLoja,
+                                                Boolean whatsappActivo, String whatsappTelefone,
+                                                String zapiInstanceId, String zapiToken, String zapiClientToken,
+                                                Long usuarioId) {
+        return configuracaoService.atualizarDefinicoesLoja(controloCaixa, nomeLoja, whatsappActivo, whatsappTelefone, zapiInstanceId, zapiToken, zapiClientToken, usuarioId);
+    }
+
     // ==========================================
     // Relatórios / Exportações CSV
     // ==========================================

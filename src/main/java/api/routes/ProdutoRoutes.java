@@ -26,11 +26,18 @@ public class ProdutoRoutes {
     private final BarracaService service;
     private final ProdutoDAO produtoDAO;
     private final StockService stockService;
+    private final service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService;
 
     public ProdutoRoutes(BarracaService service, ProdutoDAO produtoDAO, StockService stockService) {
+        this(service, produtoDAO, stockService, new service.notificacao.WhatsappNotificacaoService());
+    }
+
+    public ProdutoRoutes(BarracaService service, ProdutoDAO produtoDAO, StockService stockService,
+                         service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService) {
         this.service = service;
         this.produtoDAO = produtoDAO;
         this.stockService = stockService;
+        this.whatsappNotificacaoService = whatsappNotificacaoService;
     }
 
     public void register(Javalin app) {
@@ -97,6 +104,7 @@ public class ProdutoRoutes {
             ApiHelpers.texto(body, "codigoBarras"),
             uid
         );
+        whatsappNotificacaoService.notificarNovoProdutoAsync(produto, uid);
         ctx.status(HttpStatus.CREATED).json(produtoJson(produto));
     }
 
@@ -187,6 +195,9 @@ public class ProdutoRoutes {
         if (mov == null) {
             ctx.status(HttpStatus.OK).json(Map.of("mensagem", "Sem alteração de stock"));
         } else {
+            if (mov.getProduto() != null && mov.getProduto().stockAbaixoMinimo()) {
+                whatsappNotificacaoService.notificarBaixoEstoqueAsync(List.of(mov.getProduto()), uid);
+            }
             ctx.status(HttpStatus.CREATED).json(movimentoJson(mov));
         }
     }
@@ -225,6 +236,15 @@ public class ProdutoRoutes {
             }
         }
         List<MovimentoStock> movs = stockService.confirmarContagem(uid, contagens, uid);
+        List<Produto> baixos = new ArrayList<>();
+        for (MovimentoStock m : movs) {
+            if (m.getProduto() != null && m.getProduto().stockAbaixoMinimo()) {
+                baixos.add(m.getProduto());
+            }
+        }
+        if (!baixos.isEmpty()) {
+            whatsappNotificacaoService.notificarBaixoEstoqueAsync(baixos, uid);
+        }
         ctx.status(HttpStatus.CREATED).json(movs.stream().map(this::movimentoJson).collect(Collectors.toList()));
     }
 

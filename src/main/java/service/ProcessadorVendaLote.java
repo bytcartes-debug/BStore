@@ -311,9 +311,14 @@ public class ProcessadorVendaLote {
             em.persist(pv);
             venda.addPagamento(pv);
         }
-        em.flush();
+        List<Produto> produtosBaixoStock = new ArrayList<>();
+        for (Produto p : produtos.values()) {
+            if (p.stockAbaixoMinimo()) {
+                produtosBaixoStock.add(p);
+            }
+        }
 
-        return VendaLoteResultado.montarResultadoSucesso(venda, total, totalCusto, troco, itensCriados);
+        return VendaLoteResultado.montarResultadoSucesso(venda, total, totalCusto, troco, itensCriados, produtosBaixoStock);
     }
 
     private MetodoPagamento resolverMetodoPagamento(EntityManager em, Map<String, Object> p, Long usuarioId) {

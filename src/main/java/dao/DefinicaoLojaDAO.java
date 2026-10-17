@@ -27,11 +27,34 @@ public class DefinicaoLojaDAO extends GenericDAO<DefinicaoLoja> {
     }
 
     public DefinicaoLoja atualizar(Long uid, boolean controloCaixa, String nomeLoja) {
+        return atualizar(uid, controloCaixa, nomeLoja, null, null, null, null, null);
+    }
+
+    public DefinicaoLoja atualizar(Long uid, Boolean controloCaixa, String nomeLoja,
+                                   Boolean whatsappActivo, String whatsappTelefone,
+                                   String zapiInstanceId, String zapiToken, String zapiClientToken) {
         return JPAUtil.emTransacao(uid, em -> {
             DefinicaoLoja def = obterOuCriar(em, uid);
-            def.setControloCaixa(controloCaixa);
+            if (controloCaixa != null) {
+                def.setControloCaixa(controloCaixa);
+            }
             if (nomeLoja != null) {
                 def.setNomeLoja(nomeLoja.trim());
+            }
+            if (whatsappActivo != null) {
+                def.setWhatsappNotificacoesActivas(whatsappActivo);
+            }
+            if (whatsappTelefone != null) {
+                def.setWhatsappTelefoneDono(whatsappTelefone.trim());
+            }
+            if (zapiInstanceId != null) {
+                def.setZapiInstanceId(zapiInstanceId.trim());
+            }
+            if (zapiToken != null) {
+                def.setZapiToken(zapiToken.trim());
+            }
+            if (zapiClientToken != null) {
+                def.setZapiClientToken(zapiClientToken.trim());
             }
             def.setAtualizadoEm(util.Fuso.agora());
             return em.merge(def);

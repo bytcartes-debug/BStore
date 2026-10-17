@@ -18,9 +18,15 @@ import java.util.Map;
 public class CaixaRoutes {
 
     private final BarracaService service;
+    private final service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService;
 
     public CaixaRoutes(BarracaService service) {
+        this(service, new service.notificacao.WhatsappNotificacaoService());
+    }
+
+    public CaixaRoutes(BarracaService service, service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService) {
         this.service = service;
+        this.whatsappNotificacaoService = whatsappNotificacaoService;
     }
 
     public void register(Javalin app) {
@@ -50,10 +56,12 @@ public class CaixaRoutes {
     private void abrirSessaoCaixa(Context ctx) {
         Long uid = ApiSecurity.utilizadorId(ctx);
         Long opId = ApiSecurity.utilizador(ctx).usuario.getId();
+        String operadorNome = ApiSecurity.utilizador(ctx).usuario.getNome();
         Map<String, Object> body = ApiHelpers.corpo(ctx);
         BigDecimal inicial = ApiHelpers.decimalComPadrao(body, "valorInicial", "0");
         String nota = ApiHelpers.texto(body, "notaAbertura");
         SessaoCaixa sessao = service.abrirSessaoCaixa(inicial, nota, opId, uid);
+        whatsappNotificacaoService.notificarAberturaCaixaAsync(sessao, operadorNome, uid);
         Map<String, Object> res = new LinkedHashMap<>();
         res.put("id", sessao.getId());
         res.put("abertaEm", sessao.getAbertaEm().toString());
@@ -65,6 +73,7 @@ public class CaixaRoutes {
     private void fecharSessaoCaixa(Context ctx) {
         Long uid = ApiSecurity.utilizadorId(ctx);
         Long opId = ApiSecurity.utilizador(ctx).usuario.getId();
+        String operadorNome = ApiSecurity.utilizador(ctx).usuario.getNome();
         Map<String, Object> body = ApiHelpers.corpo(ctx);
         Long sessaoId = body.containsKey("sessaoId") && body.get("sessaoId") != null ? ApiHelpers.longObrigatorio(body, "sessaoId") : null;
         if (sessaoId == null) {
@@ -72,9 +81,23 @@ public class CaixaRoutes {
             if (aberta == null) throw new BarracaService.RecursoNaoEncontradoException("Não há sessão de caixa aberta.");
             sessaoId = aberta.getId();
         }
+        Map<String, Object> resumo = service.obterResumoSessaoAtual(uid);
         BigDecimal contado = ApiHelpers.decimalComPadrao(body, "valorContado", "0");
         String nota = ApiHelpers.texto(body, "notaFecho");
         SessaoCaixa sessao = service.fecharSessaoCaixa(sessaoId, contado, nota, opId, uid);
+
+        BigDecimal vendasDinheiro = BigDecimal.ZERO;
+        BigDecimal despesasDinheiro = BigDecimal.ZERO;
+        Long totalVendas = 0L;
+        if (resumo != null) {
+            try {
+                if (resumo.get("vendasDinheiro") != null) vendasDinheiro = new BigDecimal(resumo.get("vendasDinheiro").toString().replace(',', '.'));
+                if (resumo.get("despesasDinheiro") != null) despesasDinheiro = new BigDecimal(resumo.get("despesasDinheiro").toString().replace(',', '.'));
+                if (resumo.get("totalVendas") != null) totalVendas = Long.valueOf(resumo.get("totalVendas").toString());
+            } catch (Exception ignored) {}
+        }
+        whatsappNotificacaoService.notificarFechoCaixaAsync(sessao, totalVendas, vendasDinheiro, despesasDinheiro, operadorNome, uid);
+
         Map<String, Object> res = new LinkedHashMap<>();
         res.put("id", sessao.getId());
         res.put("abertaEm", sessao.getAbertaEm().toString());

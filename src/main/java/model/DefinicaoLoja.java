@@ -38,6 +38,21 @@ public class DefinicaoLoja {
     @Column(name = "ia_limite_mensal", nullable = false)
     private Integer iaLimiteMensal = 500;
 
+    @Column(name = "whatsapp_notificacoes_activas", nullable = false)
+    private Boolean whatsappNotificacoesActivas = true;
+
+    @Column(name = "whatsapp_telefone_dono", length = 50)
+    private String whatsappTelefoneDono;
+
+    @Column(name = "zapi_instance_id", length = 100)
+    private String zapiInstanceId;
+
+    @Column(name = "zapi_token", length = 100)
+    private String zapiToken;
+
+    @Column(name = "zapi_client_token", length = 100)
+    private String zapiClientToken;
+
     @PrePersist
     @PreUpdate
     public void prePersist() {
@@ -89,4 +104,19 @@ public class DefinicaoLoja {
 
     public LocalDateTime getAtualizadoEm() { return atualizadoEm; }
     public void setAtualizadoEm(LocalDateTime atualizadoEm) { this.atualizadoEm = atualizadoEm; }
+
+    public Boolean getWhatsappNotificacoesActivas() { return whatsappNotificacoesActivas != null ? whatsappNotificacoesActivas : true; }
+    public void setWhatsappNotificacoesActivas(Boolean whatsappNotificacoesActivas) { this.whatsappNotificacoesActivas = whatsappNotificacoesActivas != null ? whatsappNotificacoesActivas : true; }
+
+    public String getWhatsappTelefoneDono() { return whatsappTelefoneDono; }
+    public void setWhatsappTelefoneDono(String whatsappTelefoneDono) { this.whatsappTelefoneDono = whatsappTelefoneDono; }
+
+    public String getZapiInstanceId() { return zapiInstanceId; }
+    public void setZapiInstanceId(String zapiInstanceId) { this.zapiInstanceId = zapiInstanceId; }
+
+    public String getZapiToken() { return zapiToken; }
+    public void setZapiToken(String zapiToken) { this.zapiToken = zapiToken; }
+
+    public String getZapiClientToken() { return zapiClientToken; }
+    public void setZapiClientToken(String zapiClientToken) { this.zapiClientToken = zapiClientToken; }
 }

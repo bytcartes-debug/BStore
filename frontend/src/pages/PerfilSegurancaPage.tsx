@@ -1,6 +1,6 @@
 import { useToast } from '../utils/toast';
 import { useEffect, useRef, useState } from 'react';
-import { User, Camera, Save, KeyRound, Eye, EyeOff, Store, Plus, Power, CreditCard, Download, CheckCircle, Smartphone, Bot, Sparkles } from 'lucide-react';
+import { User, Camera, Save, KeyRound, Eye, EyeOff, Store, Plus, Power, CreditCard, Download, CheckCircle, Smartphone, Bot, Sparkles, MessageSquare, Send } from 'lucide-react';
 import type { UserSession } from '../App';
 import { apiRequest } from '../utils/api';
 import { useMutation } from '../utils/useResource';
@@ -21,6 +21,17 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
   const [controloCaixa, setControloCaixa] = useState(false);
   const [nomeLoja, setNomeLoja] = useState('');
   const [novoMetodoNome, setNovoMetodoNome] = useState('');
+
+  // Notificações WhatsApp (Z-API)
+  const [whatsappActivo, setWhatsappActivo] = useState(true);
+  const [whatsappTelefone, setWhatsappTelefone] = useState('');
+  const [zapiInstanceId, setZapiInstanceId] = useState('');
+  const [zapiToken, setZapiToken] = useState('');
+  const [zapiClientToken, setZapiClientToken] = useState('');
+  const [zapiConfigurada, setZapiConfigurada] = useState(false);
+  const [testandoWhatsapp, setTestandoWhatsapp] = useState(false);
+  const [salvandoWhatsapp, setSalvandoWhatsapp] = useState(false);
+
   const fileRef = useRef<HTMLInputElement>(null);
   const password = useMutation();
   const toast = useToast();
@@ -61,6 +72,12 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
       setMetodos(listaMetodos || []);
       setControloCaixa(Boolean(def?.controloCaixa));
       setNomeLoja(def?.nomeLoja || '');
+      setWhatsappActivo(def?.whatsappNotificacoesActivas !== false);
+      setWhatsappTelefone(def?.whatsappTelefoneDono || '');
+      setZapiInstanceId(def?.zapiInstanceId || '');
+      setZapiToken(def?.zapiToken || '');
+      setZapiClientToken(def?.zapiClientToken || '');
+      setZapiConfigurada(Boolean(def?.zapiConfigurada));
     } catch {}
   };
 
@@ -120,6 +137,47 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
       toast(`Método ${novo.nome} adicionado.`);
     } catch (err: any) {
       toast(err?.message || 'Erro ao adicionar método de pagamento.');
+    }
+  };
+
+  const salvarConfigWhatsapp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSalvandoWhatsapp(true);
+    try {
+      const res = await apiRequest<any>('/api/definicoes', {
+        method: 'PUT',
+        body: JSON.stringify({
+          whatsappNotificacoesActivas: whatsappActivo,
+          whatsappTelefoneDono: whatsappTelefone.trim(),
+          zapiInstanceId: zapiInstanceId.trim(),
+          zapiToken: zapiToken.trim(),
+          zapiClientToken: zapiClientToken.trim(),
+        }),
+      });
+      setZapiConfigurada(Boolean(res?.zapiConfigurada));
+      toast('Configurações de WhatsApp guardadas com sucesso.');
+    } catch (err: any) {
+      toast(err?.message || 'Erro ao guardar configurações de WhatsApp.');
+    } finally {
+      setSalvandoWhatsapp(false);
+    }
+  };
+
+  const testarWhatsapp = async () => {
+    setTestandoWhatsapp(true);
+    try {
+      const res = await apiRequest<{ sucesso: boolean; mensagem: string; erro?: string }>('/api/definicoes/whatsapp/testar', {
+        method: 'POST',
+      });
+      if (res.sucesso) {
+        toast('✅ ' + (res.mensagem || 'Mensagem de teste enviada!'));
+      } else {
+        toast('❌ ' + (res.erro || 'Falha ao testar envio.'));
+      }
+    } catch (err: any) {
+      toast('❌ ' + (err?.message || 'Erro ao testar envio do WhatsApp.'));
+    } finally {
+      setTestandoWhatsapp(false);
     }
   };
   const updateProfile = () => window.dispatchEvent(new Event('bstore:profile'));
@@ -444,6 +502,137 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
           <button type="submit" className="btn-secondary" disabled={!novoMetodoNome.trim()} style={{ minHeight: '44px' }}>
             <Plus size={16} /> Adicionar
           </button>
+        </form>
+      </section>
+
+      {/* PAINEL DE NOTIFICAÇÕES WHATSAPP (Z-API) */}
+      <section className="panel" style={{ marginTop: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <h3 style={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <MessageSquare size={20} color="#25D366" /> Notificações WhatsApp (Z-API)
+          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span
+              style={{
+                fontSize: '0.8rem',
+                padding: '0.25rem 0.6rem',
+                borderRadius: '999px',
+                fontWeight: 600,
+                background: zapiConfigurada ? 'rgba(16, 185, 129, 0.15)' : 'rgba(234, 88, 12, 0.15)',
+                color: zapiConfigurada ? '#10b981' : '#ea580c',
+                border: `1px solid ${zapiConfigurada ? 'rgba(16, 185, 129, 0.3)' : 'rgba(234, 88, 12, 0.3)'}`,
+              }}
+            >
+              {zapiConfigurada ? 'Pronto para Envio' : 'Configuração Incompleta'}
+            </span>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setWhatsappActivo(!whatsappActivo)}
+              style={{
+                minHeight: '40px',
+                minWidth: '95px',
+                background: whatsappActivo ? '#10b981' : undefined,
+                color: whatsappActivo ? '#ffffff' : undefined,
+                borderColor: whatsappActivo ? '#10b981' : undefined,
+                fontWeight: 600,
+              }}
+            >
+              <Power size={15} />
+              {whatsappActivo ? 'Ativo' : 'Desativado'}
+            </button>
+          </div>
+        </div>
+
+        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '1.25rem', lineHeight: 1.5 }}>
+          Envia relatórios automáticos e imediatos para o WhatsApp do dono da loja em tempo real para:
+          <strong> novas vendas</strong>, <strong>produtos adicionados</strong>, <strong>baixo estoque</strong> e <strong>abertura/fecho de caixa</strong>.
+        </p>
+
+        <form onSubmit={salvarConfigWhatsapp} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <Field
+            id="whatsapp-phone"
+            label="Número de WhatsApp do Dono / Gerente *"
+            hint="Código do país + DDD/Prefixo + Número, apenas dígitos (ex: 258841234567 para Moçambique ou 5511999999999 para o Brasil)."
+          >
+            <input
+              id="whatsapp-phone"
+              type="tel"
+              placeholder="Ex: 258841234567"
+              value={whatsappTelefone}
+              onChange={(e) => setWhatsappTelefone(e.target.value)}
+              style={{ minHeight: '44px' }}
+            />
+          </Field>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+            <Field
+              id="zapi-instance"
+              label="ID da Instância Z-API"
+              hint="Opcional se definido no .env do servidor"
+            >
+              <input
+                id="zapi-instance"
+                type="text"
+                placeholder="Ex: 3B728..."
+                value={zapiInstanceId}
+                onChange={(e) => setZapiInstanceId(e.target.value)}
+                style={{ minHeight: '44px' }}
+              />
+            </Field>
+
+            <Field
+              id="zapi-token"
+              label="Token da Instância Z-API"
+              hint="Opcional se definido no .env do servidor"
+            >
+              <input
+                id="zapi-token"
+                type="password"
+                placeholder="Token Z-API"
+                value={zapiToken}
+                onChange={(e) => setZapiToken(e.target.value)}
+                style={{ minHeight: '44px' }}
+              />
+            </Field>
+
+            <Field
+              id="zapi-client-token"
+              label="Client-Token (Segurança)"
+              hint="Opcional — caso tenha ativado nas definições da Z-API"
+            >
+              <input
+                id="zapi-client-token"
+                type="password"
+                placeholder="Client-Token (opcional)"
+                value={zapiClientToken}
+                onChange={(e) => setZapiClientToken(e.target.value)}
+                style={{ minHeight: '44px' }}
+              />
+            </Field>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={salvandoWhatsapp}
+              style={{ minHeight: '44px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+            >
+              {salvandoWhatsapp ? <Spinner size="small" /> : <Save size={16} />}
+              Guardar Configurações WhatsApp
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={testarWhatsapp}
+              disabled={testandoWhatsapp}
+              style={{ minHeight: '44px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+            >
+              {testandoWhatsapp ? <Spinner size="small" /> : <Send size={16} />}
+              Testar Envio no WhatsApp
+            </button>
+          </div>
         </form>
       </section>
 

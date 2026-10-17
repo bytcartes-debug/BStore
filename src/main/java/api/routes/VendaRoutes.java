@@ -23,11 +23,18 @@ public class VendaRoutes {
     private final BarracaService service;
     private final VendaDAO vendaDAO;
     private final VendaIdempotenteService vendaIdempotente;
+    private final service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService;
 
     public VendaRoutes(BarracaService service, VendaDAO vendaDAO, VendaIdempotenteService vendaIdempotente) {
+        this(service, vendaDAO, vendaIdempotente, new service.notificacao.WhatsappNotificacaoService());
+    }
+
+    public VendaRoutes(BarracaService service, VendaDAO vendaDAO, VendaIdempotenteService vendaIdempotente,
+                       service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService) {
         this.service = service;
         this.vendaDAO = vendaDAO;
         this.vendaIdempotente = vendaIdempotente;
+        this.whatsappNotificacaoService = whatsappNotificacaoService;
     }
 
     public void register(Javalin app) {
@@ -79,18 +86,33 @@ public class VendaRoutes {
     }
 
     private void registarVenda(Context ctx) {
+        Long uid = ApiSecurity.utilizadorId(ctx);
+        String operadorNome = ApiSecurity.utilizador(ctx).usuario.getNome();
         Map<String, Object> body = ApiHelpers.corpo(ctx);
         Venda venda = service.registarVenda(
             ApiHelpers.longObrigatorio(body, "produtoId"),
             ApiHelpers.decimalObrigatorio(body, "quantidade"),
             ApiHelpers.texto(body, "observacao"),
-            ApiSecurity.utilizadorId(ctx));
+            uid);
+        whatsappNotificacaoService.notificarVendaAsync(venda, venda.getItens(), venda.getPagamentos(), BigDecimal.ZERO, operadorNome, uid);
+        if (venda.getItens() != null) {
+            List<model.Produto> baixos = new ArrayList<>();
+            for (model.ItemVenda iv : venda.getItens()) {
+                if (iv.getProduto() != null && iv.getProduto().stockAbaixoMinimo()) {
+                    baixos.add(iv.getProduto());
+                }
+            }
+            if (!baixos.isEmpty()) {
+                whatsappNotificacaoService.notificarBaixoEstoqueAsync(baixos, uid);
+            }
+        }
         ctx.status(HttpStatus.CREATED).json(vendaJson(venda));
     }
 
     @SuppressWarnings("unchecked")
     private void registarVendaLote(Context ctx) {
         Long uid = ApiSecurity.utilizadorId(ctx);
+        String operadorNome = ApiSecurity.utilizador(ctx).usuario.getNome();
         String chave = ctx.header("Idempotency-Key");
 
         Object rawBody = ctx.bodyAsClass(Object.class);
@@ -138,6 +160,9 @@ public class VendaRoutes {
             VendaIdempotenteService.Resultado resultado =
                 vendaIdempotente.registar(itens, pagamentos, clienteId, observacao, uuidCliente, uid, chave);
             ctx.header("Idempotency-Replayed", Boolean.toString(resultado.repetido));
+            if (!resultado.repetido) {
+                dispararNotificacoesVenda(resultado.dados, operadorNome, uid);
+            }
             ctx.status(resultado.repetido ? HttpStatus.OK : HttpStatus.CREATED)
                 .contentType("application/json")
                 .result(resultado.json);
@@ -145,7 +170,23 @@ public class VendaRoutes {
         }
 
         Map<String, Object> resultado = service.registarVendaLote(itens, pagamentos, clienteId, observacao, uuidCliente, uid);
+        dispararNotificacoesVenda(resultado, operadorNome, uid);
         ctx.status(HttpStatus.CREATED).json(VendaJson.lote(resultado));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void dispararNotificacoesVenda(Map<String, Object> resultado, String operadorNome, Long uid) {
+        if (resultado == null) return;
+        Venda venda = (Venda) resultado.get("venda");
+        if (venda == null) return;
+        List<model.ItemVenda> itensCriados = (List<model.ItemVenda>) resultado.get("itensCriados");
+        BigDecimal troco = (BigDecimal) resultado.get("troco");
+        whatsappNotificacaoService.notificarVendaAsync(venda, itensCriados, venda.getPagamentos(), troco, operadorNome, uid);
+
+        List<model.Produto> produtosBaixoStock = (List<model.Produto>) resultado.get("produtosBaixoStock");
+        if (produtosBaixoStock != null && !produtosBaixoStock.isEmpty()) {
+            whatsappNotificacaoService.notificarBaixoEstoqueAsync(produtosBaixoStock, uid);
+        }
     }
 
     private void anularVenda(Context ctx) {

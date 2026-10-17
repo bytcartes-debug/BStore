@@ -59,6 +59,7 @@ public class VendaLoteResultado {
         resultado.put("troco", moeda(troco));
         resultado.put("estado", venda.getEstado());
         resultado.put("venda", venda);
+        resultado.put("itensCriados", itensCriados);
 
         List<Map<String, Object>> itensLegados = new ArrayList<>();
         for (ItemVenda iv : itensCriados) {
@@ -66,6 +67,14 @@ public class VendaLoteResultado {
         }
         resultado.put("vendas", itensLegados);
         return resultado;
+    }
+
+    public static Map<String, Object> montarResultadoSucesso(Venda venda, BigDecimal total, BigDecimal totalCusto, BigDecimal troco, List<ItemVenda> itensCriados, List<Produto> produtosBaixoStock) {
+        Map<String, Object> res = montarResultadoSucesso(venda, total, totalCusto, troco, itensCriados);
+        if (produtosBaixoStock != null) {
+            res.put("produtosBaixoStock", produtosBaixoStock);
+        }
+        return res;
     }
 
     public static String converterMetodoCodigo(String nome, String tipo) {

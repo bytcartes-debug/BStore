@@ -14,4 +14,11 @@ public class ConfiguracaoService {
     public DefinicaoLoja atualizarDefinicoesLoja(boolean controloCaixa, String nomeLoja, Long usuarioId) {
         return definicaoLojaDAO.atualizar(usuarioId, controloCaixa, nomeLoja);
     }
+
+    public DefinicaoLoja atualizarDefinicoesLoja(Boolean controloCaixa, String nomeLoja,
+                                                Boolean whatsappActivo, String whatsappTelefone,
+                                                String zapiInstanceId, String zapiToken, String zapiClientToken,
+                                                Long usuarioId) {
+        return definicaoLojaDAO.atualizar(usuarioId, controloCaixa, nomeLoja, whatsappActivo, whatsappTelefone, zapiInstanceId, zapiToken, zapiClientToken);
+    }
 }
