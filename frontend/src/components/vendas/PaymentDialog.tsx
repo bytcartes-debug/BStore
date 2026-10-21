@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import type Decimal from 'decimal.js';
-import { Check, CreditCard, Delete, Plus, Trash2, User } from 'lucide-react';
+import { AlertTriangle, Check, CreditCard, Delete, Plus, Trash2, User } from 'lucide-react';
 import { Field, Notice, Spinner } from '../UI';
 import { decimalSeguro, formatMoney } from '../../utils/decimal';
 import type { Devedor, LinhaPagamento, MetodoPagamentoConfig } from './types';
@@ -152,7 +152,7 @@ const PaymentDialogComponent: React.FC<PaymentDialogProps> = ({
         <span style={{ fontSize: 13, fontWeight: 600 }}>
           Forma de pagamento rápida:
         </span>
-        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+        <span className="desktop-only-hint" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
           (Atalhos 1 a {metodosDisponiveis.length} no teclado)
         </span>
       </div>
@@ -450,6 +450,35 @@ const PaymentDialogComponent: React.FC<PaymentDialogProps> = ({
               </button>
             </div>
           )}
+
+          {/* ALERTA DE SALDO ACUMULADO DO DEVEDOR */}
+          {(() => {
+            const clienteSel = devedores.find((d) => String(d.id) === String(clienteId));
+            if (!clienteSel || !clienteSel.saldo || Number(clienteSel.saldo) <= 0) return null;
+            const saldoAtual = Number(clienteSel.saldo);
+            const novoSaldoTotal = saldoAtual + total.toNumber();
+            return (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: '10px 12px',
+                  borderRadius: 6,
+                  background: 'var(--color-warning-light)',
+                  border: '1px solid var(--color-warning)',
+                  color: 'var(--text-primary)',
+                  fontSize: 12.5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <AlertTriangle size={18} color="var(--color-warning)" style={{ flexShrink: 0 }} />
+                <span>
+                  <strong>Atenção ao Fiado:</strong> {clienteSel.nome} já tem dívida de <strong>{formatMoney(saldoAtual)}</strong>. Com esta venda, a dívida total subirá para <strong>{formatMoney(novoSaldoTotal)}</strong>.
+                </span>
+              </div>
+            );
+          })()}
         </div>
       )}
 

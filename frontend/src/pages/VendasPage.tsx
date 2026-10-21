@@ -787,28 +787,35 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
         activeEl instanceof HTMLTextAreaElement ||
         activeEl instanceof HTMLSelectElement;
 
-      // F2 ou '/' foca a pesquisa de produtos
-      if (e.key === 'F2' || (e.key === '/' && !isInputFocused)) {
-        e.preventDefault();
-        inputRef.current?.focus();
-        inputRef.current?.select();
-        return;
-      }
+      // Atalhos de teclado activos estritamente em ambiente PC / Desktop
+      const isDesktop =
+        typeof window !== 'undefined' &&
+        (window.matchMedia('(min-width: 900px)').matches || window.matchMedia('(pointer: fine)').matches);
 
-      // F4 abre o diálogo de pagamento se houver carrinho
-      if (e.key === 'F4') {
-        e.preventDefault();
-        if (carrinho.length > 0) {
-          setShowModal(true);
+      if (isDesktop) {
+        // F2 ou '/' foca a pesquisa de produtos
+        if (e.key === 'F2' || (e.key === '/' && !isInputFocused)) {
+          e.preventDefault();
+          inputRef.current?.focus();
+          inputRef.current?.select();
+          return;
         }
-        return;
-      }
 
-      // '?' abre ajuda com atalhos de teclado
-      if ((e.key === '?' || (e.key === '/' && e.shiftKey)) && !isInputFocused) {
-        e.preventDefault();
-        setShowShortcutsModal((prev) => !prev);
-        return;
+        // F4 abre o diálogo de pagamento se houver carrinho
+        if (e.key === 'F4') {
+          e.preventDefault();
+          if (carrinho.length > 0) {
+            setShowModal(true);
+          }
+          return;
+        }
+
+        // '?' abre ajuda com atalhos de teclado
+        if ((e.key === '?' || (e.key === '/' && e.shiftKey)) && !isInputFocused) {
+          e.preventDefault();
+          setShowShortcutsModal((prev) => !prev);
+          return;
+        }
       }
 
       // Leitor de código de barras USB (sequência rápida de caracteres terminada em Enter)
@@ -836,8 +843,8 @@ export default function VendasPage({ currentUser }: VendasPageProps = {}) {
         barcodeBuffer += e.key;
       }
 
-      // Atalhos de navegação do carrinho fora de campos de texto
-      if (!isInputFocused && carrinho.length > 0) {
+      // Atalhos de navegação do carrinho fora de campos de texto (apenas PC)
+      if (isDesktop && !isInputFocused && carrinho.length > 0) {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
           setSelectedCartIndex((idx) => Math.min(idx + 1, carrinho.length - 1));

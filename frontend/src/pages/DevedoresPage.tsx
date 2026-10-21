@@ -700,14 +700,14 @@ export default function DevedoresPage() {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: '10px 14px',
-                background: 'var(--bg-secondary, #f8fafc)',
+                background: 'var(--bg-subtle)',
                 borderRadius: 8,
-                border: '1px solid var(--border-color, #e2e8f0)',
+                border: '1px solid var(--border-color)',
               }}
             >
               <div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted, #64748b)' }}>Saldo Devedor Pendente</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-danger, #ef4444)' }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Saldo Devedor Pendente</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-danger)' }}>
                   {formatMoney(cobrancaDevedor.saldo ?? cobrancaDevedor.divida)}
                 </div>
               </div>
@@ -718,9 +718,9 @@ export default function DevedoresPage() {
                   alignItems: 'center',
                   gap: 4,
                   fontSize: 12,
-                  background: cobrancaIaUsada ? '#f0fdf4' : '#f1f5f9',
-                  color: cobrancaIaUsada ? '#166534' : '#475569',
-                  border: `1px solid ${cobrancaIaUsada ? '#bbf7d0' : '#cbd5e1'}`,
+                  background: cobrancaIaUsada ? 'var(--color-brand-light)' : 'var(--bg-card)',
+                  color: cobrancaIaUsada ? 'var(--color-brand)' : 'var(--text-secondary)',
+                  border: `1px solid ${cobrancaIaUsada ? 'var(--color-brand)' : 'var(--border-color)'}`,
                 }}
               >
                 <Sparkles size={13} aria-hidden="true" />
@@ -778,14 +778,15 @@ export default function DevedoresPage() {
                         textAlign: 'left',
                         padding: '8px 12px',
                         borderRadius: 6,
-                        border: cobrancaTexto === v ? '2px solid var(--color-brand)' : '1px solid var(--border-color, #e2e8f0)',
-                        background: cobrancaTexto === v ? '#f0fdf4' : 'transparent',
+                        border: cobrancaTexto === v ? '2px solid var(--color-brand)' : '1px solid var(--border-color)',
+                        background: cobrancaTexto === v ? 'var(--color-brand-light)' : 'transparent',
+                        color: 'var(--text-primary)',
                         cursor: 'pointer',
                         fontSize: 13,
                         lineHeight: 1.4,
                       }}
                     >
-                      <span style={{ fontWeight: 600, color: 'var(--text-muted, #64748b)', marginRight: 6 }}>
+                      <span style={{ fontWeight: 600, color: 'var(--color-brand)', marginRight: 6 }}>
                         Opção {idx + 1}:
                       </span>
                       {v}

@@ -467,7 +467,7 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
 
           {/* CHIPS DE SUGESTÕES RÁPIDAS */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: 'var(--text-muted, #64748b)' }}>Sugestões rápidas:</span>
+            <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontWeight: 600 }}>Sugestões rápidas:</span>
             {[
               'Quanto vendi esta semana?',
               'Quais os produtos com mais lucro?',
@@ -477,14 +477,17 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
               <button
                 key={sug}
                 type="button"
-                className="badge"
+                className="badge dashboard-suggestion-chip"
                 style={{
                   cursor: 'pointer',
                   fontSize: 11,
-                  padding: '3px 8px',
-                  background: 'var(--bg-secondary, #f1f5f9)',
-                  border: '1px solid var(--border-color, #e2e8f0)',
-                  color: 'var(--text-primary)',
+                  padding: '4px 10px',
+                  background: 'var(--color-brand-light)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--color-brand)',
+                  fontWeight: 650,
+                  borderRadius: 12,
+                  transition: 'all 0.18s ease',
                 }}
                 onClick={() => void handleEnviarPergunta(sug)}
                 disabled={perguntaCarregando}
@@ -500,9 +503,9 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
               style={{
                 marginTop: 4,
                 padding: '12px 14px',
-                background: 'var(--bg-secondary, #f8fafc)',
-                borderRadius: 6,
-                border: '1px solid var(--border-color, #e2e8f0)',
+                background: 'var(--bg-subtle)',
+                borderRadius: 8,
+                border: '1px solid var(--border-color)',
                 fontSize: 13,
                 lineHeight: 1.5,
               }}
@@ -655,39 +658,56 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
           </span>
         </div>
 
-        {(data.lucroHoje !== undefined || data.lucroPeriodo !== undefined) && (
-          <div className="today-sales">
-            <span className="today-label">
-              <Coins size={17} strokeWidth={2} aria-hidden="true" />{' '}
-              {preset === 'hoje' ? 'Lucro Estimado de Hoje' : 'Lucro no Período'}
-            </span>
-            <p className="today-value">
-              <AnimatedNumber
-                value={decimalSeguro(
-                  preset === 'hoje'
-                    ? data.lucroHoje
-                    : (data.lucroPeriodo ?? data.lucroHoje)
-                ).toNumber()}
-                formatter={(v) => formatMoney(v.toFixed(2))}
-              />
-            </p>
-            <span className="today-description">
-              {preset === 'hoje'
-                ? (data.lucroUltimos7Dias ? `7 dias: ${formatMoney(data.lucroUltimos7Dias)}` : 'Vendas menos custo')
-                : 'Vendas com custo conhecido menos custo'}
-            </span>
-            <small
-              style={{
-                display: 'block',
-                fontSize: '0.72rem',
-                color: 'var(--text-muted)',
-                marginTop: '4px',
-              }}
-            >
-              Vendas antigas sem custo não entram no lucro
-            </small>
-          </div>
-        )}
+        {(data.lucroHoje !== undefined || data.lucroPeriodo !== undefined) && (() => {
+          const lucroVal = decimalSeguro(
+            preset === 'hoje'
+              ? data.lucroHoje
+              : (data.lucroPeriodo ?? data.lucroHoje)
+          ).toNumber();
+          const vendasVal = decimalSeguro(
+            preset === 'hoje'
+              ? data.totalVendasHoje
+              : (data.totalVendasPeriodo ?? data.totalVendasHoje)
+          ).toNumber();
+          const margemPct = vendasVal > 0 && lucroVal > 0 ? ((lucroVal / vendasVal) * 100).toFixed(1) : null;
+
+          return (
+            <div className="today-sales">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                <span className="today-label">
+                  <Coins size={17} strokeWidth={2} aria-hidden="true" />{' '}
+                  {preset === 'hoje' ? 'Lucro Estimado de Hoje' : 'Lucro no Período'}
+                </span>
+                {margemPct && (
+                  <span className="badge badge-success" style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px' }}>
+                    +{margemPct}% margem
+                  </span>
+                )}
+              </div>
+              <p className="today-value">
+                <AnimatedNumber
+                  value={lucroVal}
+                  formatter={(v) => formatMoney(v.toFixed(2))}
+                />
+              </p>
+              <span className="today-description">
+                {preset === 'hoje'
+                  ? (data.lucroUltimos7Dias ? `7 dias: ${formatMoney(data.lucroUltimos7Dias)}` : 'Vendas menos custo mercadorias')
+                  : 'Vendas com custo conhecido menos custo'}
+              </span>
+              <small
+                style={{
+                  display: 'block',
+                  fontSize: '0.72rem',
+                  color: 'var(--text-muted)',
+                  marginTop: '4px',
+                }}
+              >
+                Vendas antigas sem custo não entram no lucro
+              </small>
+            </div>
+          );
+        })()}
 
         {data.valorTotalStockCusto !== undefined && (
           <div className="today-sales">
@@ -1024,16 +1044,20 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
           {alertasStock.length > 0 ? (
             <>
               <ul className="alert-list">
-                {alertasStock.slice(0, 5).map((p) => (
-                  <li key={p.id}>
-                    <strong>{p.nome}</strong>
-                    <span className="badge badge-warning">
-                      <AlertTriangle size={12} strokeWidth={2} aria-hidden="true" />{' '}
-                      {formatQuantity(p.stock, p.unidade || '')} disponível
-                    </span>
-                    <small>Mínimo: {formatQuantity(p.stockMinimo, p.unidade || '')}</small>
-                  </li>
-                ))}
+                {alertasStock.slice(0, 5).map((p) => {
+                  const qtdStock = Number(p.stock) || 0;
+                  const esgotado = qtdStock <= 0;
+                  return (
+                    <li key={p.id}>
+                      <strong>{p.nome}</strong>
+                      <span className={`badge ${esgotado ? 'badge-danger' : 'badge-warning'}`}>
+                        <AlertTriangle size={12} strokeWidth={2} aria-hidden="true" />{' '}
+                        {esgotado ? 'Esgotado (0)' : `${formatQuantity(p.stock, p.unidade || '')} (Ruptura iminente)`}
+                      </span>
+                      <small>Mínimo definido: {formatQuantity(p.stockMinimo, p.unidade || '')}</small>
+                    </li>
+                  );
+                })}
               </ul>
               <button className="btn-secondary stock-action" onClick={() => navigate('produtos')}>
                 Consultar stock

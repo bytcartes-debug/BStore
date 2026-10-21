@@ -688,17 +688,29 @@ body.dark-theme .product-card-pos .stock-low-badge {
   font-size: 18px;
 }
 
-/* Atalhos de teclado no PC */
+/* Atalhos de teclado apenas no PC */
 .keyboard-shortcuts-hint {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 12px;
-  border-radius: 6px;
-  background: var(--bg-subtle);
-  color: var(--text-secondary);
-  font-size: 11px;
-  flex-wrap: wrap;
+  display: none;
+}
+.desktop-only-hint {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .keyboard-shortcuts-hint {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    background: var(--bg-subtle);
+    color: var(--text-secondary);
+    font-size: 11px;
+    flex-wrap: wrap;
+  }
+  .desktop-only-hint {
+    display: inline;
+  }
 }
 .shortcut-kbd {
   display: inline-block;
