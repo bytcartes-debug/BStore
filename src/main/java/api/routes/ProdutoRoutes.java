@@ -27,17 +27,25 @@ public class ProdutoRoutes {
     private final ProdutoDAO produtoDAO;
     private final StockService stockService;
     private final service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService;
+    private final service.AuditoriaService auditoriaService;
 
     public ProdutoRoutes(BarracaService service, ProdutoDAO produtoDAO, StockService stockService) {
-        this(service, produtoDAO, stockService, new service.notificacao.WhatsappNotificacaoService());
+        this(service, produtoDAO, stockService, new service.notificacao.WhatsappNotificacaoService(), new service.AuditoriaService());
     }
 
     public ProdutoRoutes(BarracaService service, ProdutoDAO produtoDAO, StockService stockService,
-                         service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService) {
+                         service.AuditoriaService auditoriaService) {
+        this(service, produtoDAO, stockService, new service.notificacao.WhatsappNotificacaoService(), auditoriaService);
+    }
+
+    public ProdutoRoutes(BarracaService service, ProdutoDAO produtoDAO, StockService stockService,
+                         service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService,
+                         service.AuditoriaService auditoriaService) {
         this.service = service;
         this.produtoDAO = produtoDAO;
         this.stockService = stockService;
         this.whatsappNotificacaoService = whatsappNotificacaoService;
+        this.auditoriaService = auditoriaService;
     }
 
     public void register(Javalin app) {
@@ -105,6 +113,16 @@ public class ProdutoRoutes {
             uid
         );
         whatsappNotificacaoService.notificarNovoProdutoAsync(produto, uid);
+        auditoriaService.registrarAsync(
+            uid,
+            ApiSecurity.utilizador(ctx).usuario.getEmail(),
+            "PRODUTO",
+            "CRIAR_PRODUTO",
+            produto.getId(),
+            String.format("Produto criado: %s (%s MT, stock=%s)", produto.getNome(), produto.getPreco(), produto.getQuantidadeStock()),
+            ApiSecurity.obterIpCliente(ctx),
+            ctx.userAgent()
+        );
         ctx.status(HttpStatus.CREATED).json(produtoJson(produto));
     }
 
@@ -128,6 +146,16 @@ public class ProdutoRoutes {
             ApiHelpers.texto(body, "codigoBarras"),
             uid
         );
+        auditoriaService.registrarAsync(
+            uid,
+            ApiSecurity.utilizador(ctx).usuario.getEmail(),
+            "PRODUTO",
+            "ATUALIZAR_PRODUTO",
+            produto.getId(),
+            String.format("Produto atualizado: %s (%s MT, stock=%s)", produto.getNome(), produto.getPreco(), produto.getQuantidadeStock()),
+            ApiSecurity.obterIpCliente(ctx),
+            ctx.userAgent()
+        );
         ctx.json(produtoJson(produto));
     }
 
@@ -140,7 +168,18 @@ public class ProdutoRoutes {
     }
 
     private void deletarProduto(Context ctx) {
-        service.eliminarProduto(ApiHelpers.idPath(ctx), ApiSecurity.utilizadorId(ctx));
+        Long prodId = ApiHelpers.idPath(ctx);
+        service.eliminarProduto(prodId, ApiSecurity.utilizadorId(ctx));
+        auditoriaService.registrarAsync(
+            ApiSecurity.utilizadorId(ctx),
+            ApiSecurity.utilizador(ctx).usuario.getEmail(),
+            "PRODUTO",
+            "ELIMINAR_PRODUTO",
+            prodId,
+            "Produto eliminado/desativado ID=" + prodId,
+            ApiSecurity.obterIpCliente(ctx),
+            ctx.userAgent()
+        );
         ctx.status(HttpStatus.NO_CONTENT);
     }
 
@@ -177,6 +216,16 @@ public class ProdutoRoutes {
         }
 
         List<MovimentoStock> movimentos = stockService.registarEntradaLote(uid, itens, motivoGeral, uid);
+        auditoriaService.registrarAsync(
+            uid,
+            ApiSecurity.utilizador(ctx).usuario.getEmail(),
+            "STOCK",
+            "ENTRADA_STOCK",
+            (Long) null,
+            String.format("Entrada de stock em lote (%d itens). Motivo: %s", itens.size(), motivoGeral),
+            ApiSecurity.obterIpCliente(ctx),
+            ctx.userAgent()
+        );
         ctx.status(HttpStatus.CREATED).json(movimentos.stream().map(this::movimentoJson).collect(Collectors.toList()));
     }
 
@@ -198,6 +247,16 @@ public class ProdutoRoutes {
             if (mov.getProduto() != null && mov.getProduto().stockAbaixoMinimo()) {
                 whatsappNotificacaoService.notificarBaixoEstoqueAsync(List.of(mov.getProduto()), uid);
             }
+            auditoriaService.registrarAsync(
+                uid,
+                ApiSecurity.utilizador(ctx).usuario.getEmail(),
+                "STOCK",
+                "AJUSTE_STOCK",
+                produtoId,
+                String.format("Ajuste de stock no produto ID=%s: novaQtd=%s, dif=%s, motivo=%s", produtoId, novaQtd, diferenca, motivo),
+                ApiSecurity.obterIpCliente(ctx),
+                ctx.userAgent()
+            );
             ctx.status(HttpStatus.CREATED).json(movimentoJson(mov));
         }
     }
@@ -236,6 +295,16 @@ public class ProdutoRoutes {
             }
         }
         List<MovimentoStock> movs = stockService.confirmarContagem(uid, contagens, uid);
+        auditoriaService.registrarAsync(
+            uid,
+            ApiSecurity.utilizador(ctx).usuario.getEmail(),
+            "STOCK",
+            "CONTAGEM_INVENTARIO",
+            (Long) null,
+            String.format("Inventário/Contagem de stock confirmada: %d itens auditados", movs.size()),
+            ApiSecurity.obterIpCliente(ctx),
+            ctx.userAgent()
+        );
         List<Produto> baixos = new ArrayList<>();
         for (MovimentoStock m : movs) {
             if (m.getProduto() != null && m.getProduto().stockAbaixoMinimo()) {

@@ -11,6 +11,7 @@ const CategoriasPage = lazy(() => import('./pages/CategoriasPage'));
 const ProdutosPage = lazy(() => import('./pages/ProdutosPage'));
 const DevedoresPage = lazy(() => import('./pages/DevedoresPage'));
 const UsuariosPage = lazy(() => import('./pages/UsuariosPage'));
+const AuditoriaPage = lazy(() => import('./pages/AuditoriaPage'));
 const PerfilSegurancaPage = lazy(() => import('./pages/PerfilSegurancaPage'));
 const FaltaReporPage = lazy(() => import('./pages/FaltaReporPage'));
 const ClienteDisplayPage = lazy(() => import('./pages/ClienteDisplayPage'));
@@ -37,6 +38,7 @@ export type PageId =
   | 'vendas'
   | 'devedores'
   | 'usuarios'
+  | 'auditoria'
   | 'perfil'
   | 'reposicao';
 export interface UserSession {
@@ -208,6 +210,12 @@ function AppContent() {
       case 'usuarios':
         return user?.role === 'superuser' ? (
           <UsuariosPage user={user} />
+        ) : (
+          <DashboardPage navigate={navigate} />
+        );
+      case 'auditoria':
+        return user?.role === 'superuser' ? (
+          <AuditoriaPage user={user} />
         ) : (
           <DashboardPage navigate={navigate} />
         );

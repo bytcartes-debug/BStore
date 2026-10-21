@@ -1,5 +1,6 @@
 package api;
 
+import api.routes.AuditoriaRoutes;
 import api.routes.AuthRoutes;
 import api.routes.CaixaRoutes;
 import api.routes.CategoriaRoutes;
@@ -9,6 +10,7 @@ import api.routes.DevedorRoutes;
 import api.routes.IaRoutes;
 import api.routes.ProdutoRoutes;
 import api.routes.VendaRoutes;
+import service.AuditoriaService;
 import service.ia.IaControloService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -43,6 +45,7 @@ public class ApiServer {
     private final StockService stockService = new StockService();
     private final RateLimiterLogin rateLimiterLogin = new RateLimiterLogin();
     private final IaControloService iaControloService = new IaControloService();
+    private final AuditoriaService auditoriaService = new AuditoriaService();
     private final Javalin app;
 
     public ApiServer() {
@@ -117,15 +120,16 @@ public class ApiServer {
         app.get("/api/health", ctx -> ctx.json(Map.of("estado", "ok")));
         app.get("/api/saude", ctx -> ctx.json(Map.of("estado", "ok", "fuso", "Africa/Maputo")));
 
-        new AuthRoutes(usuarioDAO, sessaoDAO, rateLimiterLogin).register(app);
+        new AuthRoutes(usuarioDAO, sessaoDAO, rateLimiterLogin, auditoriaService).register(app);
         new DashboardRoutes(service, vendaDAO, stockService, categoriaDAO, devedorDAO).register(app);
         new CategoriaRoutes(service, categoriaDAO).register(app);
-        new ProdutoRoutes(service, produtoDAO, stockService).register(app);
-        new VendaRoutes(service, vendaDAO, vendaIdempotente).register(app);
-        new CaixaRoutes(service).register(app);
+        new ProdutoRoutes(service, produtoDAO, stockService, auditoriaService).register(app);
+        new VendaRoutes(service, vendaDAO, vendaIdempotente, new service.notificacao.WhatsappNotificacaoService(), auditoriaService).register(app);
+        new CaixaRoutes(service, new service.notificacao.WhatsappNotificacaoService(), auditoriaService).register(app);
         new DevedorRoutes(service, devedorDAO).register(app);
         new ConfiguracaoRoutes(service).register(app);
         new IaRoutes(iaControloService).register(app);
+        new AuditoriaRoutes(auditoriaService).register(app);
 
         app.error(HttpStatus.NOT_FOUND, ctx -> {
             if (!ctx.path().startsWith("/api")) {

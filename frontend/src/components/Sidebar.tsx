@@ -94,6 +94,16 @@ export default function Sidebar({
               </span>
               <span>Utilizadores</span>
             </button>
+            <button
+              className={`sidebar-item${currentPage === 'auditoria' ? ' active' : ''}`}
+              aria-current={currentPage === 'auditoria' ? 'page' : undefined}
+              onClick={() => setCurrentPage('auditoria')}
+            >
+              <span className="sidebar-icon" aria-hidden="true">
+                <ShieldCheck size={19} strokeWidth={currentPage === 'auditoria' ? 2.4 : 2} />
+              </span>
+              <span>Auditoria & Logs</span>
+            </button>
           </div>
         )}
       </nav>

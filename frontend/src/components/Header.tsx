@@ -12,6 +12,7 @@ const titles: Record<PageId, string> = {
   vendas: 'Registo de Vendas',
   devedores: 'Gestão de Devedores',
   usuarios: 'Utilizadores & Acessos',
+  auditoria: 'Trilha de Auditoria',
   perfil: 'Perfil & Segurança',
   reposicao: 'Falta Repor',
 };

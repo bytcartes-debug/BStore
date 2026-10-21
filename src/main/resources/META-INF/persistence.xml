@@ -26,6 +26,7 @@
         <class>model.ItemDevolucao</class>
         <class>model.DespesaCaixa</class>
         <class>model.IaUso</class>
+        <class>model.RegistroAuditoria</class>
 
         <properties>
             <!-- Configuração base PostgreSQL / Supabase (sobrescrita em runtime pelo JPAUtil) -->

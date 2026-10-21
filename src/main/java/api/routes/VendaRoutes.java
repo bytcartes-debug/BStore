@@ -24,17 +24,25 @@ public class VendaRoutes {
     private final VendaDAO vendaDAO;
     private final VendaIdempotenteService vendaIdempotente;
     private final service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService;
+    private final service.AuditoriaService auditoriaService;
 
     public VendaRoutes(BarracaService service, VendaDAO vendaDAO, VendaIdempotenteService vendaIdempotente) {
-        this(service, vendaDAO, vendaIdempotente, new service.notificacao.WhatsappNotificacaoService());
+        this(service, vendaDAO, vendaIdempotente, new service.notificacao.WhatsappNotificacaoService(), new service.AuditoriaService());
     }
 
     public VendaRoutes(BarracaService service, VendaDAO vendaDAO, VendaIdempotenteService vendaIdempotente,
                        service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService) {
+        this(service, vendaDAO, vendaIdempotente, whatsappNotificacaoService, new service.AuditoriaService());
+    }
+
+    public VendaRoutes(BarracaService service, VendaDAO vendaDAO, VendaIdempotenteService vendaIdempotente,
+                       service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService,
+                       service.AuditoriaService auditoriaService) {
         this.service = service;
         this.vendaDAO = vendaDAO;
         this.vendaIdempotente = vendaIdempotente;
         this.whatsappNotificacaoService = whatsappNotificacaoService;
+        this.auditoriaService = auditoriaService;
     }
 
     public void register(Javalin app) {
@@ -182,6 +190,15 @@ public class VendaRoutes {
         List<model.ItemVenda> itensCriados = (List<model.ItemVenda>) resultado.get("itensCriados");
         BigDecimal troco = (BigDecimal) resultado.get("troco");
         whatsappNotificacaoService.notificarVendaAsync(venda, itensCriados, venda.getPagamentos(), troco, operadorNome, uid);
+        auditoriaService.registrarAsync(
+            uid,
+            operadorNome,
+            "VENDA",
+            "CRIAR_VENDA",
+            venda.getId(),
+            "Venda #" + venda.getNumero() + " registada no valor de " + venda.getTotal() + " MT",
+            null
+        );
 
         List<model.Produto> produtosBaixoStock = (List<model.Produto>) resultado.get("produtosBaixoStock");
         if (produtosBaixoStock != null && !produtosBaixoStock.isEmpty()) {
@@ -195,6 +212,15 @@ public class VendaRoutes {
         Map<String, Object> body = ApiHelpers.corpo(ctx);
         String motivo = ApiHelpers.textoObrigatorio(body, "motivo");
         Venda venda = service.anularVenda(id, motivo, uid);
+        auditoriaService.registrarAsync(
+            uid,
+            ApiSecurity.utilizador(ctx).usuario.getNome(),
+            "VENDA",
+            "ANULAR_VENDA",
+            venda.getId(),
+            "Venda #" + venda.getNumero() + " ANULADA. Motivo: " + motivo,
+            ApiSecurity.obterIpCliente(ctx)
+        );
         ctx.json(vendaJson(venda));
     }
 
@@ -220,6 +246,15 @@ public class VendaRoutes {
             params.add(new BarracaService.DevolucaoItemParam(itemVendaId, qtd));
         }
         Map<String, Object> devolucao = service.processarDevolucao(vendaId, params, motivo, uuidCliente, opId, uid);
+        auditoriaService.registrarAsync(
+            uid,
+            ApiSecurity.utilizador(ctx).usuario.getNome(),
+            "VENDA",
+            "DEVOLVER_ITENS",
+            vendaId,
+            "Devolução processada na venda id=" + vendaId + ". Motivo: " + motivo,
+            ApiSecurity.obterIpCliente(ctx)
+        );
         ctx.status(HttpStatus.CREATED).json(devolucao);
     }
 

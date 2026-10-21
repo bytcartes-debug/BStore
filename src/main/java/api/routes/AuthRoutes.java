@@ -9,6 +9,7 @@ import io.javalin.http.Context;
 import io.javalin.http.HttpStatus;
 import model.Sessao;
 import model.Usuario;
+import service.AuditoriaService;
 import service.BarracaService;
 import service.RateLimiterLogin;
 
@@ -21,11 +22,17 @@ public class AuthRoutes {
     private final UsuarioDAO usuarioDAO;
     private final SessaoDAO sessaoDAO;
     private final RateLimiterLogin rateLimiterLogin;
+    private final AuditoriaService auditoriaService;
 
     public AuthRoutes(UsuarioDAO usuarioDAO, SessaoDAO sessaoDAO, RateLimiterLogin rateLimiterLogin) {
+        this(usuarioDAO, sessaoDAO, rateLimiterLogin, new AuditoriaService());
+    }
+
+    public AuthRoutes(UsuarioDAO usuarioDAO, SessaoDAO sessaoDAO, RateLimiterLogin rateLimiterLogin, AuditoriaService auditoriaService) {
         this.usuarioDAO = usuarioDAO;
         this.sessaoDAO = sessaoDAO;
         this.rateLimiterLogin = rateLimiterLogin;
+        this.auditoriaService = auditoriaService;
     }
 
     public void register(Javalin app) {
@@ -73,6 +80,15 @@ public class AuthRoutes {
         }
         Sessao sessao = sessaoDAO.criar(usuario);
         ApiSecurity.definirCookieSessao(ctx, sessao.getId(), ApiSecurity.SESSION_MAX_AGE_SECONDS);
+        auditoriaService.registrarAsync(
+            usuario.getId(),
+            usuario.getNome(),
+            "AUTENTICACAO",
+            "LOGIN",
+            usuario.getId(),
+            "Login com sucesso via " + (ctx.userAgent() != null ? ctx.userAgent() : "Web"),
+            ip
+        );
         ctx.json(ApiHelpers.utilizadorJson(usuario));
     }
 
@@ -81,8 +97,18 @@ public class AuthRoutes {
     }
 
     private void logout(Context ctx) {
-        sessaoDAO.revogar(ApiSecurity.utilizador(ctx).sessaoId);
+        var auth = ApiSecurity.utilizador(ctx);
+        sessaoDAO.revogar(auth.sessaoId);
         ApiSecurity.definirCookieSessao(ctx, "", 0);
+        auditoriaService.registrarAsync(
+            auth.usuario.getId(),
+            auth.usuario.getNome(),
+            "AUTENTICACAO",
+            "LOGOUT",
+            auth.usuario.getId(),
+            "Sessão encerrada com sucesso",
+            ApiSecurity.obterIpCliente(ctx)
+        );
         ctx.status(HttpStatus.NO_CONTENT);
     }
 
@@ -187,6 +213,16 @@ public class AuthRoutes {
         }
         sessaoDAO.revogarDoUtilizador(id);
         usuarioDAO.eliminar(id);
+        var operador = ApiSecurity.utilizador(ctx);
+        auditoriaService.registrarAsync(
+            operador.usuario.getId(),
+            operador.usuario.getNome(),
+            "UTILIZADOR",
+            "ELIMINAR_UTILIZADOR",
+            id,
+            "Utilizador eliminado: " + alvo.getEmail() + " (" + alvo.getRole() + ")",
+            ApiSecurity.obterIpCliente(ctx)
+        );
         ctx.status(HttpStatus.NO_CONTENT);
     }
 }

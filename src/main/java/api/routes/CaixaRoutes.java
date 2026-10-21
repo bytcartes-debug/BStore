@@ -19,14 +19,20 @@ public class CaixaRoutes {
 
     private final BarracaService service;
     private final service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService;
+    private final service.AuditoriaService auditoriaService;
 
     public CaixaRoutes(BarracaService service) {
-        this(service, new service.notificacao.WhatsappNotificacaoService());
+        this(service, new service.notificacao.WhatsappNotificacaoService(), new service.AuditoriaService());
     }
 
     public CaixaRoutes(BarracaService service, service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService) {
+        this(service, whatsappNotificacaoService, new service.AuditoriaService());
+    }
+
+    public CaixaRoutes(BarracaService service, service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService, service.AuditoriaService auditoriaService) {
         this.service = service;
         this.whatsappNotificacaoService = whatsappNotificacaoService;
+        this.auditoriaService = auditoriaService;
     }
 
     public void register(Javalin app) {
@@ -62,6 +68,16 @@ public class CaixaRoutes {
         String nota = ApiHelpers.texto(body, "notaAbertura");
         SessaoCaixa sessao = service.abrirSessaoCaixa(inicial, nota, opId, uid);
         whatsappNotificacaoService.notificarAberturaCaixaAsync(sessao, operadorNome, uid);
+        auditoriaService.registrarAsync(
+            uid,
+            ApiSecurity.utilizador(ctx).usuario.getEmail(),
+            "CAIXA",
+            "ABERTURA_CAIXA",
+            sessao.getId(),
+            "Abertura de caixa com valor inicial de " + sessao.getValorInicial() + " MT",
+            ApiSecurity.obterIpCliente(ctx),
+            ctx.userAgent()
+        );
         Map<String, Object> res = new LinkedHashMap<>();
         res.put("id", sessao.getId());
         res.put("abertaEm", sessao.getAbertaEm().toString());
@@ -97,6 +113,18 @@ public class CaixaRoutes {
             } catch (Exception ignored) {}
         }
         whatsappNotificacaoService.notificarFechoCaixaAsync(sessao, totalVendas, vendasDinheiro, despesasDinheiro, operadorNome, uid);
+        auditoriaService.registrarAsync(
+            uid,
+            ApiSecurity.utilizador(ctx).usuario.getEmail(),
+            "CAIXA",
+            "FECHO_CAIXA",
+            sessao.getId(),
+            String.format("Fecho de caixa: Contado=%s MT, Esperado=%s MT, Diferença=%s MT. Nota: %s",
+                sessao.getValorContado(), sessao.getValorEsperado(), sessao.getDiferenca(),
+                sessao.getNotaFecho() != null ? sessao.getNotaFecho() : ""),
+            ApiSecurity.obterIpCliente(ctx),
+            ctx.userAgent()
+        );
 
         Map<String, Object> res = new LinkedHashMap<>();
         res.put("id", sessao.getId());
@@ -171,6 +199,22 @@ public class CaixaRoutes {
         String categoria = ApiHelpers.texto(body, "categoria");
         String descricao = ApiHelpers.textoObrigatorio(body, "descricao");
         Map<String, Object> res = service.registarDespesaCaixa(valor, categoria, descricao, opId, uid);
+        Long despesaId = null;
+        if (res.get("id") != null) {
+            try {
+                despesaId = Long.valueOf(res.get("id").toString());
+            } catch (Exception ignored) {}
+        }
+        auditoriaService.registrarAsync(
+            uid,
+            ApiSecurity.utilizador(ctx).usuario.getEmail(),
+            "CAIXA",
+            "DESPESA_SANGRIA",
+            despesaId,
+            String.format("Despesa/Sangria no caixa de %s MT [%s]: %s", valor, categoria != null ? categoria : "Geral", descricao),
+            ApiSecurity.obterIpCliente(ctx),
+            ctx.userAgent()
+        );
         ctx.status(HttpStatus.CREATED).json(res);
     }
 }
