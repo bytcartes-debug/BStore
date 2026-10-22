@@ -40,6 +40,11 @@ public class AuthRoutes {
         app.get("/api/auth/me", this::obterSessaoActual);
         app.post("/api/auth/logout", this::logout);
 
+        app.get("/api/auth/2fa/status", this::obterStatus2fa);
+        app.post("/api/auth/2fa/gerar", this::gerarConfiguracao2fa);
+        app.post("/api/auth/2fa/ativar", this::ativar2fa);
+        app.post("/api/auth/2fa/desativar", this::desativar2fa);
+
         app.get("/api/usuarios", this::listarUsuarios);
         app.post("/api/usuarios", this::criarUsuario);
         app.put("/api/usuarios/{id}", this::atualizarUsuario);
@@ -72,6 +77,28 @@ public class AuthRoutes {
         if (usuario.isExpirado()) {
             throw new ApiSecurity.PermissaoException("Conta expirada. Contacte o administrador.");
         }
+
+        // Verificação 2FA (TOTP)
+        if (usuario.isTotpAtivo()) {
+            String totpCodigo = body.containsKey("totpCodigo") && body.get("totpCodigo") != null
+                ? body.get("totpCodigo").toString().trim()
+                : null;
+            if (totpCodigo == null || totpCodigo.isBlank()) {
+                ctx.status(HttpStatus.ACCEPTED).json(Map.of(
+                    "requer2FA", true,
+                    "email", usuario.getEmail(),
+                    "nome", usuario.getNome()
+                ));
+                return;
+            }
+            boolean valido = util.TotpUtil.validarCodigo(usuario.getTotpSecret(), totpCodigo);
+            if (!valido) {
+                rateLimiterLogin.registarFalha(chaveIp);
+                rateLimiterLogin.registarFalha(chaveEmail);
+                throw new ApiSecurity.AutenticacaoException("Código 2FA (TOTP) de 6 dígitos inválido ou expirado.");
+            }
+        }
+
         rateLimiterLogin.limpar(chaveIp);
         rateLimiterLogin.limpar(chaveEmail);
         if (usuario.usaHashLegado()) {
@@ -80,13 +107,15 @@ public class AuthRoutes {
         }
         Sessao sessao = sessaoDAO.criar(usuario);
         ApiSecurity.definirCookieSessao(ctx, sessao.getId(), ApiSecurity.SESSION_MAX_AGE_SECONDS);
+        String detalhe = (usuario.isTotpAtivo() ? "Login com 2FA (TOTP) bem-sucedido via " : "Login com sucesso via ")
+                + (ctx.userAgent() != null ? ctx.userAgent() : "Web");
         auditoriaService.registrarAsync(
             usuario.getId(),
             usuario.getNome(),
             "AUTENTICACAO",
             "LOGIN",
             usuario.getId(),
-            "Login com sucesso via " + (ctx.userAgent() != null ? ctx.userAgent() : "Web"),
+            detalhe,
             ip
         );
         ctx.json(ApiHelpers.utilizadorJson(usuario));
@@ -224,5 +253,71 @@ public class AuthRoutes {
             ApiSecurity.obterIpCliente(ctx)
         );
         ctx.status(HttpStatus.NO_CONTENT);
+    }
+
+    private void obterStatus2fa(Context ctx) {
+        Usuario usuario = ApiSecurity.utilizador(ctx).usuario;
+        ctx.json(Map.of("ativo", usuario.isTotpAtivo()));
+    }
+
+    private void gerarConfiguracao2fa(Context ctx) {
+        Usuario usuario = ApiSecurity.utilizador(ctx).usuario;
+        String secret = util.TotpUtil.gerarSegredo();
+        String uri = util.TotpUtil.gerarUriOtpauth(usuario.getEmail(), secret, "BStore");
+        ctx.json(Map.of("secret", secret, "otpauthUri", uri));
+    }
+
+    private void ativar2fa(Context ctx) {
+        Usuario usuario = ApiSecurity.utilizador(ctx).usuario;
+        Map<String, Object> body = ApiHelpers.corpo(ctx);
+        String secret = ApiHelpers.textoObrigatorio(body, "secret");
+        String codigo = ApiHelpers.textoObrigatorio(body, "codigo");
+
+        boolean valido = util.TotpUtil.validarCodigo(secret, codigo);
+        if (!valido) {
+            throw new IllegalArgumentException("Código 2FA de confirmação incorreto ou expirado. Verifique a hora do seu telemóvel e tente novamente.");
+        }
+
+        usuario.setTotpSecret(secret.trim().toUpperCase());
+        usuario.setTotpAtivo(true);
+        usuarioDAO.actualizar(usuario);
+
+        auditoriaService.registrarAsync(
+            usuario.getId(),
+            usuario.getNome(),
+            "AUTENTICACAO",
+            "2FA_ATIVADO",
+            usuario.getId(),
+            "Autenticação de Dois Fatores (TOTP) ativada com sucesso",
+            ApiSecurity.obterIpCliente(ctx)
+        );
+
+        ctx.json(Map.of("mensagem", "Autenticação de Dois Fatores ativada com sucesso."));
+    }
+
+    private void desativar2fa(Context ctx) {
+        Usuario usuario = ApiSecurity.utilizador(ctx).usuario;
+        Map<String, Object> body = ApiHelpers.corpo(ctx);
+        String senha = ApiHelpers.textoObrigatorio(body, "senha");
+
+        if (!usuario.verificarSenha(senha)) {
+            throw new ApiSecurity.AutenticacaoException("Palavra-passe incorreta.");
+        }
+
+        usuario.setTotpSecret(null);
+        usuario.setTotpAtivo(false);
+        usuarioDAO.actualizar(usuario);
+
+        auditoriaService.registrarAsync(
+            usuario.getId(),
+            usuario.getNome(),
+            "AUTENTICACAO",
+            "2FA_DESATIVADO",
+            usuario.getId(),
+            "Autenticação de Dois Fatores (TOTP) desativada",
+            ApiSecurity.obterIpCliente(ctx)
+        );
+
+        ctx.json(Map.of("mensagem", "Autenticação de Dois Fatores desativada com sucesso."));
     }
 }

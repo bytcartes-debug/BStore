@@ -34,6 +34,12 @@ public class Usuario {
     @Column(name = "dias_acesso")
     private Integer diasAcesso;
 
+    @Column(name = "totp_secret", length = 64)
+    private String totpSecret;
+
+    @Column(name = "totp_ativo", nullable = false)
+    private boolean totpAtivo = false;
+
     public Usuario() {
     }
 
@@ -124,4 +130,10 @@ public class Usuario {
 
     public Integer getDiasAcesso() { return diasAcesso; }
     public void setDiasAcesso(Integer diasAcesso) { this.diasAcesso = diasAcesso; }
+
+    public String getTotpSecret() { return totpSecret; }
+    public void setTotpSecret(String totpSecret) { this.totpSecret = totpSecret; }
+
+    public boolean isTotpAtivo() { return totpAtivo; }
+    public void setTotpAtivo(boolean totpAtivo) { this.totpAtivo = totpAtivo; }
 }

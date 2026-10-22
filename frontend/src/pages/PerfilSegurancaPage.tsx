@@ -1,10 +1,31 @@
 import { useToast } from '../utils/toast';
 import { useEffect, useRef, useState } from 'react';
-import { User, Camera, Save, KeyRound, Eye, EyeOff, Store, Plus, Power, CreditCard, Download, CheckCircle, Smartphone, Bot, Sparkles, MessageSquare, Send } from 'lucide-react';
+import {
+  User,
+  Camera,
+  Save,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Store,
+  Plus,
+  Power,
+  CreditCard,
+  Download,
+  CheckCircle,
+  Smartphone,
+  Bot,
+  Sparkles,
+  MessageSquare,
+  Send,
+  ShieldCheck,
+  Copy,
+  Check,
+} from 'lucide-react';
 import type { UserSession } from '../App';
 import { apiRequest } from '../utils/api';
 import { useMutation } from '../utils/useResource';
-import { PageHeading, Field, Notice, Spinner } from '../components/UI';
+import { PageHeading, Field, Notice, Spinner, Modal } from '../components/UI';
 import { usePwaInstall } from '../utils/usePwaInstall';
 import { useIa } from '../utils/useIa';
 
@@ -21,6 +42,20 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
   const [controloCaixa, setControloCaixa] = useState(false);
   const [nomeLoja, setNomeLoja] = useState('');
   const [novoMetodoNome, setNovoMetodoNome] = useState('');
+
+  // 2FA TOTP (RFC 6238)
+  const [totpAtivo, setTotpAtivo] = useState(false);
+  const [carregandoTotp, setCarregandoTotp] = useState(false);
+  const [configurando2fa, setConfigurando2fa] = useState(false);
+  const [secret2fa, setSecret2fa] = useState('');
+  const [otpauthUri, setOtpauthUri] = useState('');
+  const [codigoConfirmacao2fa, setCodigoConfirmacao2fa] = useState('');
+  const [ativando2fa, setAtivando2fa] = useState(false);
+  const [desativando2fa, setDesativando2fa] = useState(false);
+  const [senhaDesativar2fa, setSenhaDesativar2fa] = useState('');
+  const [mostrarModalDesativar2fa, setMostrarModalDesativar2fa] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+  const [erro2fa, setErro2fa] = useState<string | null>(null);
 
   // Notificações WhatsApp (Z-API)
   const [whatsappActivo, setWhatsappActivo] = useState(true);
@@ -81,8 +116,86 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
     } catch {}
   };
 
+  const carregarStatus2fa = async () => {
+    try {
+      setCarregandoTotp(true);
+      const res = await apiRequest<{ ativo: boolean }>('/api/auth/2fa/status');
+      setTotpAtivo(Boolean(res?.ativo));
+    } catch {
+      setTotpAtivo(false);
+    } finally {
+      setCarregandoTotp(false);
+    }
+  };
+
+  const iniciarConfiguracao2fa = async () => {
+    setErro2fa(null);
+    setCodigoConfirmacao2fa('');
+    try {
+      const res = await apiRequest<{ secret: string; otpauthUri: string }>('/api/auth/2fa/gerar', {
+        method: 'POST',
+      });
+      setSecret2fa(res.secret);
+      setOtpauthUri(res.otpauthUri);
+      setConfigurando2fa(true);
+    } catch (e: any) {
+      toast('Erro ao gerar chave 2FA: ' + (e?.message || 'Falha de comunicação'));
+    }
+  };
+
+  const confirmarAtivacao2fa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErro2fa(null);
+    setAtivando2fa(true);
+    try {
+      await apiRequest('/api/auth/2fa/ativar', {
+        method: 'POST',
+        body: JSON.stringify({ secret: secret2fa, codigo: codigoConfirmacao2fa }),
+      });
+      toast('✅ Autenticação de Dois Fatores ativada com sucesso!');
+      setConfigurando2fa(false);
+      setSecret2fa('');
+      setOtpauthUri('');
+      setCodigoConfirmacao2fa('');
+      await carregarStatus2fa();
+    } catch (e: any) {
+      setErro2fa(e?.message || 'Código incorreto. Verifique a hora do seu telemóvel.');
+    } finally {
+      setAtivando2fa(false);
+    }
+  };
+
+  const desativar2fa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErro2fa(null);
+    setDesativando2fa(true);
+    try {
+      await apiRequest('/api/auth/2fa/desativar', {
+        method: 'POST',
+        body: JSON.stringify({ senha: senhaDesativar2fa }),
+      });
+      toast('Autenticação de Dois Fatores desativada.');
+      setMostrarModalDesativar2fa(false);
+      setSenhaDesativar2fa('');
+      await carregarStatus2fa();
+    } catch (e: any) {
+      setErro2fa(e?.message || 'Palavra-passe incorreta.');
+    } finally {
+      setDesativando2fa(false);
+    }
+  };
+
+  const copiarChave = () => {
+    if (!secret2fa) return;
+    navigator.clipboard.writeText(secret2fa);
+    setCopiado(true);
+    toast('Chave secreta copiada para a área de transferência.');
+    setTimeout(() => setCopiado(false), 3000);
+  };
+
   useEffect(() => {
     carregarDefinicoes();
+    carregarStatus2fa();
   }, []);
 
   const salvarNomeLoja = async (e: React.FormEvent) => {
@@ -382,6 +495,170 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
             </div>
           </fieldset>
         </form>
+      </section>
+
+      {/* SECÇÃO 2FA / TOTP (RFC 6238) */}
+      <section className="card panel">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div>
+            <h3 className="section-title">
+              <ShieldCheck size={18} aria-hidden="true" style={{ color: totpAtivo ? '#10b981' : undefined }} />
+              Autenticação de Dois Fatores (2FA / TOTP)
+            </h3>
+            <p className="profile-note">
+              Proteja o acesso administrativo com códigos temporários compatíveis com Google Authenticator, Authy e Microsoft Authenticator (RFC 6238).
+            </p>
+          </div>
+          <span className={`badge ${totpAtivo ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.8rem', padding: '0.35rem 0.65rem' }}>
+            {totpAtivo ? '2FA Ativo' : '2FA Desativado'}
+          </span>
+        </div>
+
+        {totpAtivo ? (
+          <div style={{ marginTop: '1rem', background: 'rgba(16, 185, 129, 0.08)', padding: '1rem', borderRadius: '0.75rem', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <strong style={{ display: 'block', color: '#10b981', marginBottom: '0.25rem' }}>
+                  A sua conta está protegida por verificação em duas etapas.
+                </strong>
+                <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary, #94a3b8)' }}>
+                  O código de 6 dígitos será exigido em cada início de sessão neste e noutros dispositivos.
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn-danger btn-sm"
+                onClick={() => {
+                  setErro2fa(null);
+                  setSenhaDesativar2fa('');
+                  setMostrarModalDesativar2fa(true);
+                }}
+              >
+                Desativar 2FA
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginTop: '1rem' }}>
+            {!configurando2fa ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', background: 'var(--bg-subtle, rgba(0,0,0,0.02))', padding: '1rem', borderRadius: '0.75rem', border: '1px solid var(--border-color, rgba(255,255,255,0.08))' }}>
+                <div>
+                  <strong style={{ display: 'block', marginBottom: '0.25rem' }}>
+                    Recomendado para administradores e gerentes de loja.
+                  </strong>
+                  <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary, #94a3b8)' }}>
+                    Impede invasões mesmo que terceiros descubram a sua palavra-passe.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={iniciarConfiguracao2fa}
+                  disabled={carregandoTotp}
+                >
+                  <ShieldCheck size={16} />
+                  <span>Configurar 2FA Agora</span>
+                </button>
+              </div>
+            ) : (
+              <div style={{ background: 'var(--bg-subtle, rgba(0,0,0,0.03))', padding: '1.25rem', borderRadius: '0.75rem', border: '1px solid var(--border-color, rgba(255,255,255,0.1))' }}>
+                <h4 style={{ marginBottom: '0.5rem', fontSize: '1rem' }}>1. Digitalize o código QR na sua aplicação de autenticação</h4>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '1rem' }}>
+                  Abra o <strong>Google Authenticator</strong> ou <strong>Authy</strong> no seu telemóvel e aponte a câmara para o código abaixo:
+                </p>
+
+                <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1.25rem' }}>
+                  <div style={{ background: '#ffffff', padding: '0.5rem', borderRadius: '0.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(otpauthUri)}`}
+                      alt="Código QR 2FA"
+                      width={160}
+                      height={160}
+                      style={{ display: 'block' }}
+                    />
+                  </div>
+                  <div style={{ flex: '1 1 260px' }}>
+                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '0.35rem' }}>
+                      Ou introduza a chave secreta manualmente no telemóvel:
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <code style={{ background: 'var(--bg-surface, rgba(0,0,0,0.05))', padding: '0.5rem 0.75rem', borderRadius: '4px', letterSpacing: '0.1em', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                        {secret2fa}
+                      </code>
+                      <button type="button" className="icon-btn" onClick={copiarChave} title="Copiar chave">
+                        {copiado ? <Check size={16} color="#10b981" /> : <Copy size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <h4 style={{ marginBottom: '0.5rem', fontSize: '1rem' }}>2. Confirme com o código gerado no telemóvel</h4>
+                {erro2fa && <Notice>{erro2fa}</Notice>}
+                <form onSubmit={confirmarAtivacao2fa} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                  <div style={{ maxWidth: '200px' }}>
+                    <label htmlFor="codigo-confirmacao-2fa" style={{ display: 'block', fontSize: '0.8rem', marginBottom: '0.35rem' }}>
+                      Código de 6 dígitos:
+                    </label>
+                    <input
+                      id="codigo-confirmacao-2fa"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={codigoConfirmacao2fa}
+                      onChange={(e) => setCodigoConfirmacao2fa(e.target.value.replace(/\D/g, ''))}
+                      style={{ textAlign: 'center', fontSize: '1.25rem', letterSpacing: '0.25em', fontFamily: 'monospace', fontWeight: 'bold' }}
+                      required
+                    />
+                  </div>
+                  <button type="submit" className="btn-primary" disabled={ativando2fa || codigoConfirmacao2fa.length < 6}>
+                    {ativando2fa ? <Spinner size="small" /> : <Check size={16} />}
+                    <span>{ativando2fa ? 'A validar…' : 'Validar e Ativar 2FA'}</span>
+                  </button>
+                  <button type="button" className="btn-secondary" onClick={() => setConfigurando2fa(false)} disabled={ativando2fa}>
+                    Cancelar
+                  </button>
+                </form>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Modal para Desativar 2FA com Confirmação de Senha */}
+        {mostrarModalDesativar2fa && (
+          <Modal title="Desativar Autenticação de Dois Fatores" onClose={() => setMostrarModalDesativar2fa(false)}>
+            <form onSubmit={desativar2fa} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary, #94a3b8)' }}>
+                Para confirmar a desativação do 2FA, por favor introduza a sua palavra-passe atual:
+              </p>
+              {erro2fa && <Notice>{erro2fa}</Notice>}
+              <Field id="senha-desativar-2fa" label="Palavra-passe atual">
+                <input
+                  id="senha-desativar-2fa"
+                  type="password"
+                  placeholder="Introduza a sua palavra-passe"
+                  value={senhaDesativar2fa}
+                  onChange={(e) => setSenhaDesativar2fa(e.target.value)}
+                  autoFocus
+                  required
+                />
+              </Field>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setMostrarModalDesativar2fa(false)}
+                  disabled={desativando2fa}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-danger" disabled={desativando2fa || !senhaDesativar2fa}>
+                  {desativando2fa ? <Spinner size="small" /> : 'Confirmar e Desativar 2FA'}
+                </button>
+              </div>
+            </form>
+          </Modal>
+        )}
       </section>
 
       <section className="card panel">

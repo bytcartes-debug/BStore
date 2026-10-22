@@ -92,6 +92,8 @@ export default function LoginPage({ setUser }: { setUser: (user: UserSession) =>
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [passo2FA, setPasso2FA] = useState(false);
+  const [totpCodigo, setTotpCodigo] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const lock = useRef(false);
@@ -103,15 +105,29 @@ export default function LoginPage({ setUser }: { setUser: (user: UserSession) =>
     setError(null);
     setLoading(true);
     try {
+      const payload: any = { email: email.trim().toLowerCase(), password };
+      if (passo2FA) {
+        payload.totpCodigo = totpCodigo.trim();
+      }
+
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         credentials: 'same-origin',
         signal: AbortSignal.timeout(20000),
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        body: JSON.stringify(payload),
       });
+
+      const data = await response.json().catch(() => ({}));
+
+      // Se o servidor exigir o segundo fator (2FA)
+      if (response.status === 202 && data.requer2FA) {
+        setPasso2FA(true);
+        setError(null);
+        return;
+      }
+
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
         setError(
           response.status >= 500
             ? 'O servidor não conseguiu iniciar a sessão. Tente novamente.'
@@ -119,7 +135,8 @@ export default function LoginPage({ setUser }: { setUser: (user: UserSession) =>
         );
         return;
       }
-      const user = await response.json();
+
+      const user = data;
       localStorage.setItem('profileName', user.nome.split(' ')[0]);
       localStorage.setItem('profileFullName', user.nome);
       localStorage.setItem('profileRole', user.role === 'superuser' ? 'Administrador' : 'Operador');
@@ -220,63 +237,141 @@ export default function LoginPage({ setUser }: { setUser: (user: UserSession) =>
             </div>
 
             <div className="login-header-group">
-              <h1 id="login-title">Aceder ao Sistema</h1>
-              <p className="login-subtitle">Introduza as suas credenciais para continuar.</p>
+              <h1 id="login-title">
+                {passo2FA ? 'Autenticação 2FA' : 'Aceder ao Sistema'}
+              </h1>
+              <p className="login-subtitle">
+                {passo2FA
+                  ? 'Introduza o código de 6 dígitos da sua aplicação autenticadora.'
+                  : 'Introduza as suas credenciais para continuar.'}
+              </p>
             </div>
 
             <form onSubmit={handleLogin} aria-busy={loading} className="login-form">
               {error && <Notice>{error}</Notice>}
 
               <fieldset disabled={loading}>
-                <Field id="login-email" label="Email">
-                  <input
-                    id="login-email"
-                    name="email"
-                    type="email"
-                    autoComplete="username"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    placeholder="ex: admin@bstore.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </Field>
+                {!passo2FA ? (
+                  <>
+                    <Field id="login-email" label="Email">
+                      <input
+                        id="login-email"
+                        name="email"
+                        type="email"
+                        autoComplete="username"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        placeholder="ex: admin@bstore.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                      />
+                    </Field>
 
-                <Field id="login-password" label="Senha">
-                  <div className="password-field">
-                    <input
-                      id="login-password"
-                      name="password"
-                      type={showPassword ? 'text' : 'password'}
-                      autoComplete="current-password"
-                      placeholder="Introduza a sua senha"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                    />
+                    <Field id="login-password" label="Senha">
+                      <div className="password-field">
+                        <input
+                          id="login-password"
+                          name="password"
+                          type={showPassword ? 'text' : 'password'}
+                          autoComplete="current-password"
+                          placeholder="Introduza a sua senha"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required
+                        />
+                        <button
+                          type="button"
+                          className="password-toggle"
+                          aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                          aria-pressed={showPassword}
+                          onClick={() => setShowPassword((value) => !value)}
+                        >
+                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                    </Field>
+
+                    <button type="submit" className="btn-primary login-submit" disabled={loading}>
+                      {loading ? (
+                        <Spinner size="small" />
+                      ) : (
+                        <span aria-hidden="true">
+                          <LogIn size={17} />
+                        </span>
+                      )}
+                      <span>{loading ? 'A entrar…' : 'Entrar na minha loja'}</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          padding: '0.75rem',
+                          borderRadius: '50%',
+                          background: 'rgba(52, 211, 153, 0.12)',
+                          color: '#059669',
+                          marginBottom: '0.75rem',
+                        }}
+                      >
+                        <ShieldCheck size={32} />
+                      </span>
+                      <p style={{ fontSize: '0.875rem', color: 'var(--text-muted, #64748b)' }}>
+                        Conta protegida por 2FA (RFC 6238 TOTP).
+                      </p>
+                    </div>
+
+                    <Field id="login-totp" label="Código de Verificação (6 dígitos)">
+                      <input
+                        id="login-totp"
+                        name="totpCodigo"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        maxLength={6}
+                        autoFocus
+                        placeholder="000000"
+                        value={totpCodigo}
+                        onChange={(e) => setTotpCodigo(e.target.value.replace(/\D/g, ''))}
+                        style={{
+                          textAlign: 'center',
+                          fontSize: '1.5rem',
+                          letterSpacing: '0.35em',
+                          fontFamily: 'monospace',
+                          fontWeight: 'bold',
+                        }}
+                        required
+                      />
+                    </Field>
+
+                    <button type="submit" className="btn-primary login-submit" disabled={loading || totpCodigo.length < 6}>
+                      {loading ? (
+                        <Spinner size="small" />
+                      ) : (
+                        <span aria-hidden="true">
+                          <ShieldCheck size={17} />
+                        </span>
+                      )}
+                      <span>{loading ? 'A verificar…' : 'Confirmar e Aceder'}</span>
+                    </button>
+
                     <button
                       type="button"
-                      className="password-toggle"
-                      aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                      aria-pressed={showPassword}
-                      onClick={() => setShowPassword((value) => !value)}
+                      className="btn-secondary"
+                      style={{ width: '100%', marginTop: '0.75rem', justifyContent: 'center' }}
+                      onClick={() => {
+                        setPasso2FA(false);
+                        setTotpCodigo('');
+                        setError(null);
+                      }}
+                      disabled={loading}
                     >
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      ← Voltar ao login normal
                     </button>
-                  </div>
-                </Field>
-
-                <button type="submit" className="btn-primary login-submit" disabled={loading}>
-                  {loading ? (
-                    <Spinner size="small" />
-                  ) : (
-                    <span aria-hidden="true">
-                      <LogIn size={17} />
-                    </span>
-                  )}
-                  <span>{loading ? 'A entrar…' : 'Entrar na minha loja'}</span>
-                </button>
+                  </>
+                )}
               </fieldset>
             </form>
 

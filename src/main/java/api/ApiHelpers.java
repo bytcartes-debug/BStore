@@ -175,6 +175,7 @@ public class ApiHelpers {
         resultado.put("dataExpiracao", usuario.getDataExpiracao() == null ? null : usuario.getDataExpiracao().format(DATA_FORMATADA));
         resultado.put("diasRestantes", usuario.diasRestantes());
         resultado.put("expirado", usuario.isExpirado());
+        resultado.put("totpAtivo", usuario.isTotpAtivo());
         return resultado;
     }
 }

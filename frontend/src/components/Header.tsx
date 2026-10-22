@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import type { PageId } from '../App';
 import { Download, LogOut, Menu, Moon, Sun } from 'lucide-react';
 import { Spinner } from './UI';
-import { StatusBadge } from './ui/StatusBadge';
+import { StatusBadge, type StatusVariant } from './ui/StatusBadge';
+import { SyncResilienceModal } from './SyncResilienceModal';
+import { listarVendasPendentes } from '../utils/offlineQueue';
 import './Header.css';
 
 const titles: Record<PageId, string> = {
@@ -45,6 +47,18 @@ export default function Header({
   onInstall,
 }: HeaderProps) {
   const [, refresh] = useState(0);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const [pendentesCount, setPendentesCount] = useState(0);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+
+  const atualizarPendentes = useCallback(async () => {
+    try {
+      const lista = await listarVendasPendentes();
+      setPendentesCount(lista.length);
+    } catch {
+      setPendentesCount(0);
+    }
+  }, []);
 
   useEffect(() => {
     const update = () => refresh((value) => value + 1);
@@ -52,24 +66,85 @@ export default function Header({
     return () => window.removeEventListener('bstore:profile', update);
   }, []);
 
+  useEffect(() => {
+    void atualizarPendentes();
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    const handlePendentes = () => void atualizarPendentes();
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('bstore:pendentes-atualizadas', handlePendentes);
+
+    // Verificação periódica de conectividade a cada 30 segundos
+    const interval = setInterval(() => {
+      void atualizarPendentes();
+      if (navigator.onLine) {
+        fetch('/api/health', { method: 'GET', credentials: 'same-origin' })
+          .then((res) => setIsOnline(res.ok))
+          .catch(() => setIsOnline(false));
+      } else {
+        setIsOnline(false);
+      }
+    }, 30000);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('bstore:pendentes-atualizadas', handlePendentes);
+      clearInterval(interval);
+    };
+  }, [atualizarPendentes]);
+
   const pic = localStorage.getItem('profilePic');
   const name = localStorage.getItem('profileName') || userEmail.split('@')[0];
 
+  let badgeLabel = 'Online';
+  let badgeVariant: StatusVariant = 'online';
+
+  if (!isOnline) {
+    badgeLabel = pendentesCount > 0 ? `Offline (${pendentesCount})` : 'Offline';
+    badgeVariant = 'danger';
+  } else if (pendentesCount > 0) {
+    badgeLabel = `Sincronizar (${pendentesCount})`;
+    badgeVariant = 'warning';
+  }
+
   return (
-    <header className="app-header">
-      <div className="header-left">
-        <button
-          className="icon-btn header-menu-btn"
-          onClick={onMenuClick}
-          aria-label="Abrir menu"
-          aria-expanded={menuOpen}
-          aria-controls={menuOpen ? 'navigation-menu' : undefined}
-        >
-          <Menu size={20} strokeWidth={2} aria-hidden="true" />
-        </button>
-        <h1 className="header-title">{titles[currentPage]}</h1>
-        <StatusBadge label="Online" variant="online" className="header-status-badge" />
-      </div>
+    <>
+      <header className="app-header">
+        <div className="header-left">
+          <button
+            className="icon-btn header-menu-btn"
+            onClick={onMenuClick}
+            aria-label="Abrir menu"
+            aria-expanded={menuOpen}
+            aria-controls={menuOpen ? 'navigation-menu' : undefined}
+          >
+            <Menu size={20} strokeWidth={2} aria-hidden="true" />
+          </button>
+          <h1 className="header-title">{titles[currentPage]}</h1>
+          <button
+            type="button"
+            onClick={() => setSyncModalOpen(true)}
+            title="Abrir Monitor de Resiliência Offline e Sincronização"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              display: 'inline-flex',
+            }}
+          >
+            <StatusBadge
+              label={badgeLabel}
+              variant={badgeVariant}
+              pulse={true}
+              className="header-status-badge"
+            />
+          </button>
+        </div>
       <div className="header-right">
         {canInstall && onInstall && (
           <button
@@ -122,5 +197,10 @@ export default function Header({
         </button>
       </div>
     </header>
-  );
+    <SyncResilienceModal
+      isOpen={syncModalOpen}
+      onClose={() => setSyncModalOpen(false)}
+    />
+  </>
+);
 }
