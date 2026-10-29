@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutGrid, List, Plus, ScanLine, Search, Sparkles, Star, Zap } from 'lucide-react';
+import { LayoutGrid, List, Plus, ScanLine, Search, Star, Zap } from 'lucide-react';
 import { Field, Spinner } from '../UI';
 import { decimalSeguro, formatMoney, formatQuantity } from '../../utils/decimal';
 import type { Categoria, Produto } from './types';
@@ -326,7 +326,7 @@ const ProductCatalogComponent: React.FC<ProductCatalogProps> = ({
               onSelectCategoria?.(null);
             }}
           >
-            <Sparkles size={14} /> Todas as categorias
+            <LayoutGrid size={14} /> Todas as categorias
           </button>
           <button
             type="button"

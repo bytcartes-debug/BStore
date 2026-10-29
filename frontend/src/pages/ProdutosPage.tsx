@@ -6,7 +6,7 @@ import { abrirScanner } from '../utils/scanner';
 import { buscarNaOpenFoodFacts } from '../utils/openFoodFacts';
 import { useBarcodeScannerInput } from '../utils/useBarcodeScannerInput';
 import { decimal, formatMoney, formatQuantity, parseDecimalInput } from '../utils/decimal';
-import { ArrowDownLeft, Camera, ClipboardList, Download, Plus, SlidersHorizontal, X, Sparkles, Receipt } from 'lucide-react';
+import { ArrowDownLeft, Bot, Camera, ClipboardList, Download, Plus, SlidersHorizontal, X, Receipt } from 'lucide-react';
 import { comprimirImagemParaIa } from '../utils/imagemIa';
 import {
   PageHeading,
@@ -644,7 +644,7 @@ export default function ProdutosPage() {
             title="Fotografar embalagem para identificar e pré-preencher com IA"
             style={{ color: 'var(--color-brand, #ea580c)', fontWeight: 600 }}
           >
-            {analisandoFotoIa ? <Spinner size="small" /> : <Sparkles size={16} strokeWidth={2} aria-hidden="true" />} Foto IA
+            {analisandoFotoIa ? <Spinner size="small" /> : <Bot size={16} strokeWidth={2} aria-hidden="true" />} Foto IA
           </button>
           <button
             className="btn-secondary"

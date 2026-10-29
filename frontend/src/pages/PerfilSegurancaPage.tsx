@@ -15,7 +15,6 @@ import {
   CheckCircle,
   Smartphone,
   Bot,
-  Sparkles,
   MessageSquare,
   Send,
   ShieldCheck,
@@ -57,13 +56,11 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
   const [copiado, setCopiado] = useState(false);
   const [erro2fa, setErro2fa] = useState<string | null>(null);
 
-  // Notificações WhatsApp (Z-API)
+  // Notificações WhatsApp (OpenWA)
   const [whatsappActivo, setWhatsappActivo] = useState(true);
   const [whatsappTelefone, setWhatsappTelefone] = useState('');
-  const [zapiInstanceId, setZapiInstanceId] = useState('');
-  const [zapiToken, setZapiToken] = useState('');
-  const [zapiClientToken, setZapiClientToken] = useState('');
-  const [zapiConfigurada, setZapiConfigurada] = useState(false);
+  const [whatsappConectado, setWhatsappConectado] = useState(false);
+  const [whatsappStatusMsg, setWhatsappStatusMsg] = useState('');
   const [testandoWhatsapp, setTestandoWhatsapp] = useState(false);
   const [salvandoWhatsapp, setSalvandoWhatsapp] = useState(false);
 
@@ -109,10 +106,8 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
       setNomeLoja(def?.nomeLoja || '');
       setWhatsappActivo(def?.whatsappNotificacoesActivas !== false);
       setWhatsappTelefone(def?.whatsappTelefoneDono || '');
-      setZapiInstanceId(def?.zapiInstanceId || '');
-      setZapiToken(def?.zapiToken || '');
-      setZapiClientToken(def?.zapiClientToken || '');
-      setZapiConfigurada(Boolean(def?.zapiConfigurada));
+      setWhatsappConectado(Boolean(def?.whatsappConectado));
+      setWhatsappStatusMsg(def?.whatsappMensagemStatus || '');
     } catch {}
   };
 
@@ -262,12 +257,10 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
         body: JSON.stringify({
           whatsappNotificacoesActivas: whatsappActivo,
           whatsappTelefoneDono: whatsappTelefone.trim(),
-          zapiInstanceId: zapiInstanceId.trim(),
-          zapiToken: zapiToken.trim(),
-          zapiClientToken: zapiClientToken.trim(),
         }),
       });
-      setZapiConfigurada(Boolean(res?.zapiConfigurada));
+      setWhatsappConectado(Boolean(res?.whatsappConectado));
+      setWhatsappStatusMsg(res?.whatsappMensagemStatus || '');
       toast('Configurações de WhatsApp guardadas com sucesso.');
     } catch (err: any) {
       toast(err?.message || 'Erro ao guardar configurações de WhatsApp.');
@@ -782,11 +775,11 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
         </form>
       </section>
 
-      {/* PAINEL DE NOTIFICAÇÕES WHATSAPP (Z-API) */}
+      {/* PAINEL DE NOTIFICAÇÕES WHATSAPP (OpenWA) */}
       <section className="panel" style={{ marginTop: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
           <h3 style={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <MessageSquare size={20} color="#25D366" /> Notificações WhatsApp (Z-API)
+            <MessageSquare size={20} color="#25D366" /> Notificações WhatsApp (OpenWA)
           </h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <span
@@ -795,12 +788,12 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
                 padding: '0.25rem 0.6rem',
                 borderRadius: '999px',
                 fontWeight: 600,
-                background: zapiConfigurada ? 'rgba(16, 185, 129, 0.15)' : 'rgba(234, 88, 12, 0.15)',
-                color: zapiConfigurada ? '#10b981' : '#ea580c',
-                border: `1px solid ${zapiConfigurada ? 'rgba(16, 185, 129, 0.3)' : 'rgba(234, 88, 12, 0.3)'}`,
+                background: whatsappConectado ? 'rgba(16, 185, 129, 0.15)' : 'rgba(234, 88, 12, 0.15)',
+                color: whatsappConectado ? '#10b981' : '#ea580c',
+                border: `1px solid ${whatsappConectado ? 'rgba(16, 185, 129, 0.3)' : 'rgba(234, 88, 12, 0.3)'}`,
               }}
             >
-              {zapiConfigurada ? 'Pronto para Envio' : 'Configuração Incompleta'}
+              {whatsappConectado ? 'WhatsApp Conectado' : 'Sessão Desligada'}
             </span>
             <button
               type="button"
@@ -821,9 +814,29 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
           </div>
         </div>
 
+        {!whatsappConectado && (
+          <div
+            style={{
+              padding: '0.75rem 1rem',
+              marginBottom: '1rem',
+              borderRadius: '8px',
+              background: 'rgba(234, 88, 12, 0.1)',
+              border: '1px solid rgba(234, 88, 12, 0.3)',
+              color: '#ea580c',
+              fontSize: '0.875rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}
+          >
+            ⚠️ {whatsappStatusMsg || 'Sessão do WhatsApp desligada. Volte a ler o QR no OpenWA.'}
+          </div>
+        )}
+
         <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary, #94a3b8)', marginBottom: '1.25rem', lineHeight: 1.5 }}>
           Envia relatórios automáticos e imediatos para o WhatsApp do dono da loja em tempo real para:
           <strong> novas vendas</strong>, <strong>produtos adicionados</strong>, <strong>baixo estoque</strong> e <strong>abertura/fecho de caixa</strong>.
+          As credenciais do servidor OpenWA são configuradas de forma segura nas variáveis de ambiente do sistema.
         </p>
 
         <form onSubmit={salvarConfigWhatsapp} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -841,53 +854,6 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
               style={{ minHeight: '44px' }}
             />
           </Field>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-            <Field
-              id="zapi-instance"
-              label="ID da Instância Z-API"
-              hint="Opcional se definido no .env do servidor"
-            >
-              <input
-                id="zapi-instance"
-                type="text"
-                placeholder="Ex: 3B728..."
-                value={zapiInstanceId}
-                onChange={(e) => setZapiInstanceId(e.target.value)}
-                style={{ minHeight: '44px' }}
-              />
-            </Field>
-
-            <Field
-              id="zapi-token"
-              label="Token da Instância Z-API"
-              hint="Opcional se definido no .env do servidor"
-            >
-              <input
-                id="zapi-token"
-                type="password"
-                placeholder="Token Z-API"
-                value={zapiToken}
-                onChange={(e) => setZapiToken(e.target.value)}
-                style={{ minHeight: '44px' }}
-              />
-            </Field>
-
-            <Field
-              id="zapi-client-token"
-              label="Client-Token (Segurança)"
-              hint="Opcional — caso tenha ativado nas definições da Z-API"
-            >
-              <input
-                id="zapi-client-token"
-                type="password"
-                placeholder="Client-Token (opcional)"
-                value={zapiClientToken}
-                onChange={(e) => setZapiClientToken(e.target.value)}
-                style={{ minHeight: '44px' }}
-              />
-            </Field>
-          </div>
 
           <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
             <button
@@ -917,7 +883,7 @@ export default function PerfilSegurancaPage({ user }: { user: UserSession | null
       <section className="panel" style={{ marginTop: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
           <h3 style={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Sparkles size={20} color="#ea580c" /> Inteligência Artificial (BStore IA)
+            <Bot size={20} color="#ea580c" /> Inteligência Artificial (BStore IA)
           </h3>
           <button
             type="button"

@@ -1,4 +1,4 @@
-BStore (Flex Stock) — Projecto
+﻿BStore (Flex Stock) — Projecto
 
 Sistema de Gestão de Stock e Vendas para Pequenos Negócios
 
@@ -448,3 +448,70 @@ No painel do Railway (Settings → Variables), configure as seguintes variáveis
   b) Localize o deployment anterior estável.
   c) Clique nos três pontos (...) e seleccione "Rollback to this deployment".
 - Caso a reversão envolva migrações de base de dados, execute os scripts de reversão correspondentes na consola SQL do Supabase.
+
+
+---
+
+## Notificações Automáticas via WhatsApp (OpenWA)
+
+O BStore integra-se com o servidor OpenWA (rmyndharis/OpenWA) para envio de relatórios automáticos em tempo real para o dono/gerente da loja:
+- Novas vendas registadas (com itens, forma de pagamento, troco e total)
+- Alertas imediatos de baixo estoque
+- Cadastro de novos produtos
+- Abertura e fecho de turno de caixa
+
+### 1. Executar o OpenWA em Docker
+Execute o contentor oficial do OpenWA:
+`ash
+docker run -d \
+  --name openwa-api \
+  --restart unless-stopped \
+  -p 2785:2785 \
+  -v openwa_data:/app/data \
+  rmyndharis/openwa:latest
+`
+
+### 2. Obter a chave de administração inicial
+No primeiro arranque, uma chave mestra de admin é gerada automaticamente no contentor:
+`ash
+docker exec openwa-api cat /app/data/.api-key
+`
+Copie esta chave para autenticar no painel web em http://localhost:2785.
+
+### 3. Criar a sessão e emparelhar via QR Code
+1. Aceda ao painel em http://localhost:2785 com a chave de admin.
+2. Crie uma nova sessão (ex: store).
+3. Inicie a sessão e faça a leitura do código QR com o WhatsApp do telemóvel emissor.
+4. Anote o id da sessão gerada (formato UUID).
+
+### 4. Criar uma chave de operador restrita (Recomendado)
+No painel web (ou via API em POST /api/auth/api-keys), crie uma chave com:
+- ole: operator
+- llowedSessions: apenas o UUID da sessão criada
+- llowedChats: [ "258XXXXXXXXX@c.us" ] (apenas o número do dono)
+Desta forma, mesmo em caso improvável de exposição da chave, ela só tem autorização para emitir mensagens para o seu número específico.
+
+### 5. Configurar o .env do BStore
+Configure as variáveis correspondentes no seu ficheiro .env:
+`env
+WHATSAPP_NOTIFICACOES_ACTIVAS=true
+WHATSAPP_DONO_TELEFONE=25884xxxxxxx
+OPENWA_BASE_URL=http://localhost:2785
+OPENWA_API_KEY=owa_k1_sua_chave_de_operador
+OPENWA_SESSION_ID=seu_uuid_de_sessao
+OPENWA_TIMEOUT_SECONDS=5
+WHATSAPP_MAX_POR_DIA=100
+`
+
+### 6. Produção e Acessibilidade (VPS vs Local)
+- Em produção (por exemplo no Railway), o BStore não tem acesso ao localhost da sua máquina pessoal.
+- O OpenWA deve ser alojado num VPS ou contentor com IP/domínio público sempre online e com suporte a HTTPS (https://seu-openwa.dominio.com).
+- Apenas conexões para localhost ou 127.0.0.1 permitem HTTP simples.
+
+### 7. Boas Práticas e Prevenção de Bloqueios
+- O OpenWA é um cliente não oficial do protocolo WhatsApp. Recomenda-se vivamente o uso de um cartão SIM/número dedicado para o bot, nunca o número pessoal ou corporativo principal.
+- O BStore possui mecanismos automáticos de proteção:
+  - Fila assíncrona não bloqueante (capacidade para 100 mensagens descartando as mais antigas para nunca travar vendas ou fecho de caixa).
+  - Controle de ritmo de no máximo 1 mensagem por segundo.
+  - Teto configurável diário (WHATSAPP_MAX_POR_DIA=100).
+  - Deduplicação automática de mensagens idênticas enviadas em menos de 60 segundos.

@@ -9,12 +9,12 @@ import {
   CheckCircle2,
   Copy,
   History,
+  MessageSquare,
   Plus,
   RefreshCw,
   Save,
   Search,
   Send,
-  Sparkles,
   Users,
 } from 'lucide-react';
 import {
@@ -52,6 +52,20 @@ interface PagamentoDividaItem {
 const loadDebtors = (signal: AbortSignal) => apiRequest<Devedor[]>('/api/devedores', { signal });
 const emptyForm = { nome: '', divida: '', descricao: '' };
 
+type TipoCobranca = 'cordial' | 'extrato' | 'fecho';
+
+const gerarTemplateCobranca = (tipo: TipoCobranca, nome: string, saldo: string) => {
+  const saldoFormatado = formatMoney(saldo);
+  switch (tipo) {
+    case 'cordial':
+      return `Olá ${nome}, tudo bem? Passamos para lembrar com estima que tem um saldo pendente de ${saldoFormatado} na nossa loja. Quando tiver disponibilidade para passar e regularizar, agradecemos muito! Um excelente dia.`;
+    case 'extrato':
+      return `Estimado(a) ${nome}, segue o extrato da sua conta: saldo pendente no valor de ${saldoFormatado} referente a compras a prazo. Para sua comodidade, pode regularizar no balcão ou via M-Pesa / e-Mola. Qualquer dúvida estamos inteiramente ao dispor!`;
+    case 'fecho':
+      return `Olá ${nome}, estamos no encerramento de período contabilístico e solicitamos a regularização do saldo pendente no valor de ${saldoFormatado}. Agradecemos o contacto para combinarmos o acerto. Atenciosamente.`;
+  }
+};
+
 export default function DevedoresPage() {
   const { data, loading, error, reload } = useResource(loadDebtors);
   const [search, setSearch] = useState('');
@@ -71,14 +85,12 @@ export default function DevedoresPage() {
   const [historicoCarregando, setHistoricoCarregando] = useState(false);
   const [historicoErro, setHistoricoErro] = useState<string | null>(null);
 
-  // Modal de cobrança com IA
+  // Modal de cobrança via WhatsApp
   const [cobrancaDevedor, setCobrancaDevedor] = useState<Devedor | null>(null);
-  const [cobrancaTom, setCobrancaTom] = useState<'cordial' | 'firme' | 'curto'>('cordial');
-  const [cobrancaVariantes, setCobrancaVariantes] = useState<string[]>([]);
+  const [cobrancaTipo, setCobrancaTipo] = useState<TipoCobranca>('cordial');
   const [cobrancaTexto, setCobrancaTexto] = useState('');
   const [cobrancaTelefone, setCobrancaTelefone] = useState('');
-  const [cobrancaCarregando, setCobrancaCarregando] = useState(false);
-  const [cobrancaIaUsada, setCobrancaIaUsada] = useState(false);
+  const [enviandoWhatsappDirecto, setEnviandoWhatsappDirecto] = useState(false);
 
   const save = useMutation();
   const payment = useMutation();
@@ -173,46 +185,59 @@ export default function DevedoresPage() {
     }
   };
 
-  const carregarSugestaoCobranca = async (item: Devedor, tom: 'cordial' | 'firme' | 'curto') => {
-    setCobrancaCarregando(true);
-    try {
-      const res = await apiRequest<{ variantes: string[]; mensagem: string; iaUsada: boolean }>('/api/ia/sugerir-cobranca', {
-        method: 'POST',
-        body: JSON.stringify({
-          clienteNome: item.nome,
-          saldoDevedor: item.saldo ?? item.divida,
-          tom,
-        }),
-      });
-      const vars = res.variantes && res.variantes.length > 0 ? res.variantes : [res.mensagem];
-      setCobrancaVariantes(vars);
-      setCobrancaTexto(vars[0] || '');
-      setCobrancaIaUsada(Boolean(res.iaUsada));
-    } catch (e: unknown) {
-      toast(e instanceof Error ? e.message : 'Falha ao sugerir mensagem de cobrança.');
-    } finally {
-      setCobrancaCarregando(false);
-    }
-  };
-
   const abrirCobranca = (item: Devedor) => {
     setCobrancaDevedor(item);
-    setCobrancaTom('cordial');
+    setCobrancaTipo('cordial');
     const telMatch = item.descricao ? item.descricao.match(/(?:\+?258\s?)?(8[2-7]\d{7})/) : null;
     setCobrancaTelefone(telMatch ? telMatch[1] : '');
-    void carregarSugestaoCobranca(item, 'cordial');
+    const saldo = item.saldo ?? item.divida;
+    setCobrancaTexto(gerarTemplateCobranca('cordial', item.nome, saldo));
   };
 
-  const mudarTomCobranca = (novoTom: 'cordial' | 'firme' | 'curto') => {
+  const mudarTipoCobranca = (novoTipo: TipoCobranca) => {
     if (!cobrancaDevedor) return;
-    setCobrancaTom(novoTom);
-    void carregarSugestaoCobranca(cobrancaDevedor, novoTom);
+    setCobrancaTipo(novoTipo);
+    const saldo = cobrancaDevedor.saldo ?? cobrancaDevedor.divida;
+    setCobrancaTexto(gerarTemplateCobranca(novoTipo, cobrancaDevedor.nome, saldo));
   };
 
   const copiarMensagemCobranca = () => {
     if (!cobrancaTexto.trim()) return;
     navigator.clipboard.writeText(cobrancaTexto.trim());
     toast('Mensagem copiada para a área de transferência.');
+  };
+
+  const enviarWhatsappDirecto = async () => {
+    if (!cobrancaDevedor || !cobrancaTexto.trim()) return;
+    let tel = cobrancaTelefone.replace(/\D/g, '');
+    if (!tel) {
+      toast('Por favor, indique o número de telefone do cliente.');
+      return;
+    }
+    if (tel.length === 9) tel = `258${tel}`;
+    setEnviandoWhatsappDirecto(true);
+    try {
+      const res = await apiRequest<{ sucesso: boolean; mensagem?: string; erro?: string }>(
+        `/api/devedores/${cobrancaDevedor.id}/notificar-whatsapp`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            telefone: tel,
+            mensagem: cobrancaTexto.trim(),
+          }),
+        }
+      );
+      if (res.sucesso) {
+        toast('✅ ' + (res.mensagem || 'Notificação enviada com sucesso para o WhatsApp do cliente!'));
+        setCobrancaDevedor(null);
+      } else {
+        toast('❌ ' + (res.erro || 'Falha ao enviar notificação WhatsApp.'));
+      }
+    } catch (err: unknown) {
+      toast('❌ ' + (err instanceof Error ? err.message : 'Falha ao comunicar com OpenWA.'));
+    } finally {
+      setEnviandoWhatsappDirecto(false);
+    }
   };
 
   const abrirWhatsappCobranca = () => {
@@ -405,9 +430,9 @@ export default function DevedoresPage() {
                                     className="btn-secondary"
                                     style={{ padding: '4px 8px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 4 }}
                                     onClick={() => abrirCobranca(item)}
-                                    title="Sugerir mensagem de cobrança personalizada"
+                                    title="Enviar lembrete ou extrato via WhatsApp"
                                   >
-                                    <Sparkles size={14} strokeWidth={2} style={{ color: 'var(--color-brand)' }} aria-hidden="true" /> Cobrança IA
+                                    <MessageSquare size={14} strokeWidth={2} style={{ color: '#16a34a' }} aria-hidden="true" /> Cobrança WhatsApp
                                   </button>
                                 </>
                               )}
@@ -689,9 +714,9 @@ export default function DevedoresPage() {
 
       {cobrancaDevedor && (
         <Modal
-          title={`Cobrança: ${cobrancaDevedor.nome}`}
+          title={`Cobrança via WhatsApp: ${cobrancaDevedor.nome}`}
           onClose={() => setCobrancaDevedor(null)}
-          busy={cobrancaCarregando}
+          busy={enviandoWhatsappDirecto}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div
@@ -699,14 +724,16 @@ export default function DevedoresPage() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '10px 14px',
+                padding: '12px 14px',
                 background: 'var(--bg-subtle)',
                 borderRadius: 8,
                 border: '1px solid var(--border-color)',
+                flexWrap: 'wrap',
+                gap: 8,
               }}
             >
               <div>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Saldo Devedor Pendente</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Saldo Devedor Pendente</div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-danger)' }}>
                   {formatMoney(cobrancaDevedor.saldo ?? cobrancaDevedor.divida)}
                 </div>
@@ -716,99 +743,67 @@ export default function DevedoresPage() {
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: 4,
+                  gap: 5,
                   fontSize: 12,
-                  background: cobrancaIaUsada ? 'var(--color-brand-light)' : 'var(--bg-card)',
-                  color: cobrancaIaUsada ? 'var(--color-brand)' : 'var(--text-secondary)',
-                  border: `1px solid ${cobrancaIaUsada ? 'var(--color-brand)' : 'var(--border-color)'}`,
+                  background: 'rgba(22, 163, 74, 0.1)',
+                  color: '#16a34a',
+                  border: '1px solid rgba(22, 163, 74, 0.3)',
+                  padding: '4px 8px',
                 }}
               >
-                <Sparkles size={13} aria-hidden="true" />
-                {cobrancaIaUsada ? 'Gerado por IA' : 'Modelo do Sistema'}
+                <MessageSquare size={13} aria-hidden="true" />
+                Disparo Directo WhatsApp
               </span>
             </div>
 
             <div>
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                Tom da Mensagem
+                Modelo de Mensagem
               </label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
                   type="button"
-                  className={cobrancaTom === 'cordial' ? 'btn-primary' : 'btn-secondary'}
-                  style={{ fontSize: 12, padding: '4px 10px' }}
-                  onClick={() => mudarTomCobranca('cordial')}
-                  disabled={cobrancaCarregando}
+                  className={cobrancaTipo === 'cordial' ? 'btn-primary' : 'btn-secondary'}
+                  style={{ fontSize: 12, padding: '5px 10px' }}
+                  onClick={() => mudarTipoCobranca('cordial')}
+                  disabled={enviandoWhatsappDirecto}
                 >
-                  Cordial / Amigável
+                  Lembrete Cordial
                 </button>
                 <button
                   type="button"
-                  className={cobrancaTom === 'firme' ? 'btn-primary' : 'btn-secondary'}
-                  style={{ fontSize: 12, padding: '4px 10px' }}
-                  onClick={() => mudarTomCobranca('firme')}
-                  disabled={cobrancaCarregando}
+                  className={cobrancaTipo === 'extrato' ? 'btn-primary' : 'btn-secondary'}
+                  style={{ fontSize: 12, padding: '5px 10px' }}
+                  onClick={() => mudarTipoCobranca('extrato')}
+                  disabled={enviandoWhatsappDirecto}
                 >
-                  Firme / Direto
+                  Extrato c/ M-Pesa & e-Mola
                 </button>
                 <button
                   type="button"
-                  className={cobrancaTom === 'curto' ? 'btn-primary' : 'btn-secondary'}
-                  style={{ fontSize: 12, padding: '4px 10px' }}
-                  onClick={() => mudarTomCobranca('curto')}
-                  disabled={cobrancaCarregando}
+                  className={cobrancaTipo === 'fecho' ? 'btn-primary' : 'btn-secondary'}
+                  style={{ fontSize: 12, padding: '5px 10px' }}
+                  onClick={() => mudarTipoCobranca('fecho')}
+                  disabled={enviandoWhatsappDirecto}
                 >
-                  Lembrete Curto
+                  Fecho de Contas
                 </button>
               </div>
             </div>
 
-            {cobrancaVariantes.length > 1 && (
-              <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                  Escolha a variante
-                </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {cobrancaVariantes.map((v, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setCobrancaTexto(v)}
-                      style={{
-                        textAlign: 'left',
-                        padding: '8px 12px',
-                        borderRadius: 6,
-                        border: cobrancaTexto === v ? '2px solid var(--color-brand)' : '1px solid var(--border-color)',
-                        background: cobrancaTexto === v ? 'var(--color-brand-light)' : 'transparent',
-                        color: 'var(--text-primary)',
-                        cursor: 'pointer',
-                        fontSize: 13,
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      <span style={{ fontWeight: 600, color: 'var(--color-brand)', marginRight: 6 }}>
-                        Opção {idx + 1}:
-                      </span>
-                      {v}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
             <div>
               <label htmlFor="msg-cobranca" style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
-                Mensagem a enviar (editável)
+                Texto da Mensagem (editável)
               </label>
               <textarea
                 id="msg-cobranca"
                 rows={4}
                 value={cobrancaTexto}
                 onChange={(e) => setCobrancaTexto(e.target.value)}
-                placeholder="A mensagem gerada aparecerá aqui..."
+                placeholder="A mensagem aparecerá aqui..."
                 style={{
                   width: '100%',
-                  padding: '8px 12px',
+                  padding: '10px 12px',
                   borderRadius: 6,
                   border: '1px solid var(--border-color, #cbd5e1)',
                   fontSize: 13,
@@ -816,21 +811,21 @@ export default function DevedoresPage() {
                   resize: 'vertical',
                 }}
               />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: 11, color: 'var(--text-muted, #94a3b8)' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: 11, color: 'var(--text-muted, #94a3b8)', marginTop: 2 }}>
                 {cobrancaTexto.length} caracteres
               </div>
             </div>
 
             <div>
               <label htmlFor="tel-cobranca" style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
-                Número do WhatsApp (opcional)
+                Número do WhatsApp do Cliente *
               </label>
               <input
                 id="tel-cobranca"
                 type="tel"
                 value={cobrancaTelefone}
                 onChange={(e) => setCobrancaTelefone(e.target.value)}
-                placeholder="Ex: 841234567 ou +258..."
+                placeholder="Ex: 841234567, 821234567 ou +25884..."
                 style={{
                   width: '100%',
                   padding: '8px 12px',
@@ -839,33 +834,47 @@ export default function DevedoresPage() {
                   fontSize: 13,
                 }}
               />
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginTop: 3 }}>
+                Aceita números de Moçambique com 9 dígitos ou com indicativo 258.
+              </span>
             </div>
 
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 8 }}>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 12 }}>
               <button
                 type="button"
                 className="btn-secondary"
                 onClick={copiarMensagemCobranca}
-                disabled={!cobrancaTexto.trim()}
+                disabled={!cobrancaTexto.trim() || enviandoWhatsappDirecto}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
-                <Copy size={15} aria-hidden="true" /> Copiar Mensagem
+                <Copy size={15} aria-hidden="true" /> Copiar Texto
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={abrirWhatsappCobranca}
+                disabled={!cobrancaTexto.trim() || enviandoWhatsappDirecto}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                title="Abrir no WhatsApp Web ou App externa"
+              >
+                Abrir WhatsApp Web
               </button>
               <button
                 type="button"
                 className="btn-primary"
-                onClick={abrirWhatsappCobranca}
-                disabled={!cobrancaTexto.trim()}
+                onClick={enviarWhatsappDirecto}
+                disabled={!cobrancaTexto.trim() || !cobrancaTelefone.trim() || enviandoWhatsappDirecto}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 6,
-                  background: '#25D366',
-                  borderColor: '#25D366',
+                  background: '#16a34a',
+                  borderColor: '#16a34a',
                   color: '#fff',
                 }}
               >
-                <Send size={15} aria-hidden="true" /> Abrir no WhatsApp
+                {enviandoWhatsappDirecto ? <Spinner size="small" /> : <Send size={15} aria-hidden="true" />}
+                Enviar via WhatsApp (OpenWA)
               </button>
             </div>
           </div>

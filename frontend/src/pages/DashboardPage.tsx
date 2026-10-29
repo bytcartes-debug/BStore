@@ -21,7 +21,6 @@ import {
   Trophy,
   Users,
   Bot,
-  Sparkles,
   Copy,
   Send,
   MessageSquare,
@@ -329,8 +328,8 @@ export default function DashboardPage({ navigate }: { navigate: (page: PageId) =
             disabled={gerandoResumo}
             style={{ color: 'var(--color-brand, #ea580c)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
-            {gerandoResumo ? <Spinner size="small" /> : <Sparkles size={16} />}
-            Resumo do Dia (IA)
+            {gerandoResumo ? <Spinner size="small" /> : <FileText size={16} />}
+            Resumo do Dia
           </button>
           <button className="btn-primary" onClick={() => navigate('vendas')}>
             <ShoppingCart size={16} strokeWidth={2.2} aria-hidden="true" /> Nova Venda

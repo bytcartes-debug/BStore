@@ -27,9 +27,31 @@ public class DefinicaoLojaDAO extends GenericDAO<DefinicaoLoja> {
     }
 
     public DefinicaoLoja atualizar(Long uid, boolean controloCaixa, String nomeLoja) {
-        return atualizar(uid, controloCaixa, nomeLoja, null, null, null, null, null);
+        return atualizar(uid, controloCaixa, nomeLoja, null, null);
     }
 
+    public DefinicaoLoja atualizar(Long uid, Boolean controloCaixa, String nomeLoja,
+                                   Boolean whatsappActivo, String whatsappTelefone) {
+        return JPAUtil.emTransacao(uid, em -> {
+            DefinicaoLoja def = obterOuCriar(em, uid);
+            if (controloCaixa != null) {
+                def.setControloCaixa(controloCaixa);
+            }
+            if (nomeLoja != null) {
+                def.setNomeLoja(nomeLoja.trim());
+            }
+            if (whatsappActivo != null) {
+                def.setWhatsappNotificacoesActivas(whatsappActivo);
+            }
+            if (whatsappTelefone != null) {
+                def.setWhatsappTelefoneDono(whatsappTelefone.trim());
+            }
+            def.setAtualizadoEm(util.Fuso.agora());
+            return em.merge(def);
+        });
+    }
+
+    @Deprecated
     public DefinicaoLoja atualizar(Long uid, Boolean controloCaixa, String nomeLoja,
                                    Boolean whatsappActivo, String whatsappTelefone,
                                    String zapiInstanceId, String zapiToken, String zapiClientToken) {

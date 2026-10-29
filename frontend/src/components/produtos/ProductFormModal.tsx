@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowDownLeft, Camera, ChevronDown, ChevronUp, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { ArrowDownLeft, Bot, Camera, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
 import { Modal, Field, Notice, Spinner } from '../UI';
 import { formatQuantity } from '../../utils/decimal';
 import { apiRequest } from '../../utils/api';
@@ -149,7 +149,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 {iaNormalizando ? (
                   <Spinner size="small" />
                 ) : (
-                  <Sparkles size={14} style={{ color: 'var(--color-brand)' }} />
+                  <Bot size={14} style={{ color: 'var(--color-brand)' }} />
                 )}
                 Completar IA
               </button>

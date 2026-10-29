@@ -21,10 +21,16 @@ public class DevedorRoutes {
 
     private final BarracaService service;
     private final DevedorDAO devedorDAO;
+    private final service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService;
 
     public DevedorRoutes(BarracaService service, DevedorDAO devedorDAO) {
+        this(service, devedorDAO, new service.notificacao.WhatsappNotificacaoService());
+    }
+
+    public DevedorRoutes(BarracaService service, DevedorDAO devedorDAO, service.notificacao.WhatsappNotificacaoService whatsappNotificacaoService) {
         this.service = service;
         this.devedorDAO = devedorDAO;
+        this.whatsappNotificacaoService = whatsappNotificacaoService;
     }
 
     public void register(Javalin app) {
@@ -33,6 +39,7 @@ public class DevedorRoutes {
         app.delete("/api/devedores/{id}", this::deletarDevedor);
         app.post("/api/devedores/{id}/pagamentos", this::registarPagamentoDivida);
         app.get("/api/devedores/{id}/pagamentos", this::listarPagamentosDivida);
+        app.post("/api/devedores/{id}/notificar-whatsapp", this::enviarCobrancaWhatsapp);
     }
 
     private void listarDevedores(Context ctx) {
@@ -107,6 +114,25 @@ public class DevedorRoutes {
             ctx.status(HttpStatus.NO_CONTENT);
         } catch (IllegalStateException e) {
             throw new BarracaService.ConflitoException(e.getMessage());
+        }
+    }
+
+    private void enviarCobrancaWhatsapp(Context ctx) {
+        Long uid = ApiSecurity.utilizadorId(ctx);
+        Long id = ApiHelpers.idPath(ctx);
+        Devedor d = devedorDAO.buscarPorId(id, uid);
+        if (d == null) {
+            throw new BarracaService.RecursoNaoEncontradoException("Dívida não encontrada.");
+        }
+        Map<String, Object> body = ApiHelpers.corpo(ctx);
+        String telefone = ApiHelpers.textoObrigatorio(body, "telefone");
+        String mensagem = ApiHelpers.textoObrigatorio(body, "mensagem");
+
+        var res = whatsappNotificacaoService.enviarCobrancaCliente(telefone, mensagem, uid);
+        if (res.isSucesso()) {
+            ctx.json(Map.of("sucesso", true, "mensagem", "Notificação de cobrança enviada com sucesso para o WhatsApp do cliente!"));
+        } else {
+            ctx.status(HttpStatus.BAD_GATEWAY).json(Map.of("sucesso", false, "erro", res.getMensagem()));
         }
     }
 }

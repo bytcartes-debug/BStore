@@ -45,6 +45,7 @@ public class CaixaRoutes {
         app.get("/api/caixa/despesas/exportar", this::exportarDespesasCaixaCsv);
         app.get("/api/caixa/despesas", this::listarDespesasCaixa);
         app.post("/api/caixa/despesas", this::registarDespesaCaixa);
+        app.post("/api/caixa/resumo-diario/whatsapp", this::enviarResumoDiarioWhatsapp);
     }
 
     private void fechoCaixa(Context ctx) {
@@ -52,6 +53,19 @@ public class CaixaRoutes {
         LocalDate data = ApiHelpers.dataQuery(ctx, "data");
         if (data == null) data = util.Fuso.hoje();
         ctx.json(service.fechoCaixa(data, uid));
+    }
+
+    private void enviarResumoDiarioWhatsapp(Context ctx) {
+        Long uid = ApiSecurity.utilizadorId(ctx);
+        LocalDate data = ApiHelpers.dataQuery(ctx, "data");
+        if (data == null) data = util.Fuso.hoje();
+        Map<String, Object> dadosFecho = service.fechoCaixa(data, uid);
+        var res = whatsappNotificacaoService.notificarResumoDiario(data, dadosFecho, uid);
+        if (res.isSucesso()) {
+            ctx.json(Map.of("sucesso", true, "mensagem", "Resumo executivo do dia enviado com sucesso para o WhatsApp do proprietário!"));
+        } else {
+            ctx.status(HttpStatus.BAD_GATEWAY).json(Map.of("sucesso", false, "erro", res.getMensagem()));
+        }
     }
 
     private void obterSessaoCaixaAtual(Context ctx) {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { RefreshCw, CreditCard, Printer, CheckCircle2, History, Download } from 'lucide-react';
+import { RefreshCw, CreditCard, Printer, CheckCircle2, History, Download, Send, Lock, Eye, EyeOff } from 'lucide-react';
 import { apiRequest, descarregarFicheiro } from '../utils/api';
 import { formatarDataHora } from '../utils/dataHora';
 import { decimalSeguro, formatMoney, parseDecimalInput } from '../utils/decimal';
@@ -60,11 +60,13 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
   const [notaFecho, setNotaFecho] = useState('');
   const [fechando, setFechando] = useState(false);
   const [fechoSucesso, setFechoSucesso] = useState<any | null>(null);
+  const [modoCego, setModoCego] = useState(true);
   const confettiRef = useRef<ConfettiHandle>(null);
 
   // Relatório diário
   const [dados, setDados] = useState<FechoCaixaData | null>(null);
   const [carregandoDiario, setCarregandoDiario] = useState(false);
+  const [enviandoResumoWhatsapp, setEnviandoResumoWhatsapp] = useState(false);
 
   // Histórico
   const [historico, setHistorico] = useState<SessaoHistorico[]>([]);
@@ -80,8 +82,8 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
     try {
       const res = await apiRequest<SessaoCaixaAtual>('/api/caixa/atual');
       setSessao(res);
-      if (res && res.aberta && res.valorEsperado) {
-        setValorContado(res.valorEsperado);
+      if (res && res.aberta) {
+        setValorContado(''); // Fecho de caixa cego: o operador digita o que realmente contou
       } else {
         setAbaAtiva('diario');
       }
@@ -177,6 +179,25 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
       setErro(err instanceof Error ? err.message : 'Falha ao fechar o caixa.');
     } finally {
       setFechando(false);
+    }
+  };
+
+  const enviarResumoWhatsapp = async () => {
+    setEnviandoResumoWhatsapp(true);
+    try {
+      const res = await apiRequest<{ sucesso: boolean; mensagem: string; erro?: string }>(
+        `/api/caixa/resumo-diario/whatsapp?data=${dataSelecionada}`,
+        { method: 'POST' }
+      );
+      if (res.sucesso) {
+        toast('✅ ' + (res.mensagem || 'Resumo do dia enviado para o WhatsApp do proprietário!'));
+      } else {
+        toast('❌ ' + (res.erro || 'Falha ao enviar resumo.'));
+      }
+    } catch (err: unknown) {
+      toast('❌ ' + (err instanceof Error ? err.message : 'Erro ao comunicar com WhatsApp.'));
+    } finally {
+      setEnviandoResumoWhatsapp(false);
     }
   };
 
@@ -282,25 +303,53 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
       {abaAtiva === 'sessao' && sessao && (
         <div>
           {fechoSucesso ? (
-            <div style={{ textAlign: 'center', padding: '20px 0' }}>
-              <CheckCircle2 size={48} color="#16a34a" style={{ margin: '0 auto 12px' }} />
-              <h3>Caixa fechado com sucesso!</h3>
-              <p style={{ color: 'var(--text-secondary)' }}>
-                Esperado: {formatMoney(fechoSucesso.valorEsperado)} | Contado:{' '}
-                {formatMoney(fechoSucesso.valorContado)}
+            <div style={{ textAlign: 'center', padding: '24px 16px' }}>
+              <CheckCircle2 size={52} color="#16a34a" style={{ margin: '0 auto 12px' }} />
+              <h3 style={{ fontSize: 20, marginBottom: 8 }}>Caixa fechado com sucesso!</h3>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 12 }}>
+                Turno concluído. O relatório de auditoria e conferência foi enviado directamente para o WhatsApp do proprietário.
               </p>
-              {fechoSucesso.diferenca !== '0.00' && (
-                <p
-                  style={{
-                    fontWeight: 600,
-                    color: Number(fechoSucesso.diferenca) < 0 ? '#dc2626' : '#2563eb',
-                  }}
-                >
-                  Diferença: {Number(fechoSucesso.diferenca) > 0 ? '+' : ''}
-                  {formatMoney(fechoSucesso.diferenca)}
-                </p>
-              )}
-              <div style={{ marginTop: 20 }}>
+              
+              <div
+                style={{
+                  background: 'var(--bg-subtle, #f9fafb)',
+                  border: '1px solid var(--border-color, #e5e7eb)',
+                  borderRadius: 8,
+                  padding: '12px 16px',
+                  maxWidth: 360,
+                  margin: '0 auto 20px',
+                  textAlign: 'left',
+                  fontSize: 13,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Total contado:</span>
+                  <strong style={{ fontFamily: 'monospace', fontSize: 14 }}>{formatMoney(fechoSucesso.valorContado)}</strong>
+                </div>
+                {!modoCego && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Esperado em gaveta:</span>
+                      <strong style={{ fontFamily: 'monospace' }}>{formatMoney(fechoSucesso.valorEsperado)}</strong>
+                    </div>
+                    {fechoSucesso.diferenca !== '0.00' && (
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          color: Number(fechoSucesso.diferenca) < 0 ? '#dc2626' : '#2563eb',
+                          fontWeight: 600,
+                        }}
+                      >
+                        <span>Diferença:</span>
+                        <span>{Number(fechoSucesso.diferenca) > 0 ? '+' : ''}{formatMoney(fechoSucesso.diferenca)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div>
                 <button type="button" className="btn-primary" onClick={onClose}>
                   Concluir
                 </button>
@@ -308,58 +357,127 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
             </div>
           ) : (
             <form onSubmit={handleFecharSessao}>
+              {/* Barra de Modo Cego / Auditoria */}
               <div
                 style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-                  gap: 10,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  background: modoCego ? 'rgba(37, 99, 235, 0.08)' : 'rgba(234, 88, 12, 0.08)',
+                  border: `1px solid ${modoCego ? 'rgba(37, 99, 235, 0.2)' : 'rgba(234, 88, 12, 0.2)'}`,
+                  borderRadius: 8,
+                  padding: '10px 14px',
                   marginBottom: 16,
+                  gap: 12,
                 }}
               >
-                <div className="card" style={{ padding: 10, textAlign: 'center' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Fundo Inicial</span>
-                  <strong style={{ display: 'block', fontSize: 16 }}>
-                    {formatMoney(sessao.valorInicial || '0')}
-                  </strong>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Lock size={16} color={modoCego ? '#2563eb' : '#ea580c'} />
+                  <div>
+                    <strong style={{ fontSize: 13, display: 'block' }}>
+                      {modoCego ? 'Conferência Cega de Caixa' : 'Modo Auditoria (Gerente)'}
+                    </strong>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      {modoCego
+                        ? 'Contagem física independente. O operador não vê os totais teóricos do sistema.'
+                        : 'Totais teóricos e desvios visíveis em tempo real.'}
+                    </span>
+                  </div>
                 </div>
-                <div className="card" style={{ padding: 10, textAlign: 'center' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Vendas Dinheiro</span>
-                  <strong style={{ display: 'block', fontSize: 16, color: '#16a34a' }}>
-                    +{formatMoney(sessao.vendasDinheiro || '0')}
-                  </strong>
-                </div>
-                <div className="card" style={{ padding: 10, textAlign: 'center' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Devoluções</span>
-                  <strong style={{ display: 'block', fontSize: 16, color: '#dc2626' }}>
-                    -{formatMoney(sessao.devolucoesDinheiro || '0')}
-                  </strong>
-                </div>
-                <div className="card" style={{ padding: 10, textAlign: 'center' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    Despesas / Saídas
-                  </span>
-                  <strong style={{ display: 'block', fontSize: 16, color: '#ea580c' }}>
-                    -{formatMoney(sessao.despesasDinheiro || '0')}
-                  </strong>
-                </div>
-                <div
-                  className="card"
-                  style={{ padding: 10, textAlign: 'center', background: 'var(--bg-subtle)' }}
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ fontSize: 11, padding: '5px 9px', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}
+                  onClick={() => setModoCego(!modoCego)}
                 >
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Valor Esperado</span>
-                  <strong style={{ display: 'block', fontSize: 18, color: 'var(--color-brand)' }}>
-                    {formatMoney(valorEsperadoDec)}
-                  </strong>
-                </div>
+                  {modoCego ? <Eye size={13} /> : <EyeOff size={13} />}
+                  {modoCego ? 'Ver Valores' : 'Activar Modo Cego'}
+                </button>
               </div>
 
-              <Field id="fecho-contado" label="Dinheiro contado na gaveta (MT) *">
+              {modoCego ? (
+                /* Cards Modo Cego */
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                    gap: 10,
+                    marginBottom: 16,
+                  }}
+                >
+                  <div className="card" style={{ padding: 12, textAlign: 'center' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Fundo Inicial</span>
+                    <strong style={{ display: 'block', fontSize: 17, marginTop: 4 }}>
+                      {formatMoney(sessao.valorInicial || '0')}
+                    </strong>
+                  </div>
+                  <div className="card" style={{ padding: 12, textAlign: 'center' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Vendas Registadas</span>
+                    <strong style={{ display: 'block', fontSize: 17, color: '#16a34a', marginTop: 4 }}>
+                      {sessao.totalVendas || 0}
+                    </strong>
+                  </div>
+                  <div className="card" style={{ padding: 12, textAlign: 'center', background: 'var(--bg-subtle)' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Destino da Auditoria</span>
+                    <strong style={{ display: 'block', fontSize: 13, color: '#25D366', marginTop: 6 }}>
+                      WhatsApp do Dono
+                    </strong>
+                  </div>
+                </div>
+              ) : (
+                /* Cards Modo Auditoria / Gerente */
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                    gap: 10,
+                    marginBottom: 16,
+                  }}
+                >
+                  <div className="card" style={{ padding: 10, textAlign: 'center' }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Fundo Inicial</span>
+                    <strong style={{ display: 'block', fontSize: 15 }}>
+                      {formatMoney(sessao.valorInicial || '0')}
+                    </strong>
+                  </div>
+                  <div className="card" style={{ padding: 10, textAlign: 'center' }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Vendas Dinheiro</span>
+                    <strong style={{ display: 'block', fontSize: 15, color: '#16a34a' }}>
+                      +{formatMoney(sessao.vendasDinheiro || '0')}
+                    </strong>
+                  </div>
+                  <div className="card" style={{ padding: 10, textAlign: 'center' }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Devoluções</span>
+                    <strong style={{ display: 'block', fontSize: 15, color: '#dc2626' }}>
+                      -{formatMoney(sessao.devolucoesDinheiro || '0')}
+                    </strong>
+                  </div>
+                  <div className="card" style={{ padding: 10, textAlign: 'center' }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Despesas</span>
+                    <strong style={{ display: 'block', fontSize: 15, color: '#ea580c' }}>
+                      -{formatMoney(sessao.despesasDinheiro || '0')}
+                    </strong>
+                  </div>
+                  <div
+                    className="card"
+                    style={{ padding: 10, textAlign: 'center', background: 'var(--bg-subtle)' }}
+                  >
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Valor Esperado</span>
+                    <strong style={{ display: 'block', fontSize: 16, color: 'var(--color-brand)' }}>
+                      {formatMoney(valorEsperadoDec)}
+                    </strong>
+                  </div>
+                </div>
+              )}
+
+              <Field id="fecho-contado" label="Dinheiro físico contado na gaveta (MT) *">
                 <input
                   id="fecho-contado"
                   type="number"
                   step="0.01"
                   min="0"
                   inputMode="decimal"
+                  placeholder="0.00"
                   required
                   value={valorContado}
                   onChange={(e) => setValorContado(e.target.value)}
@@ -404,39 +522,42 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 8, marginTop: 8, marginBottom: 16 }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  style={{ fontSize: 12, padding: '4px 8px' }}
-                  onClick={() => setValorContado(valorEsperadoDec.toFixed(2))}
-                >
-                  Usar valor esperado ({formatMoney(valorEsperadoDec)})
-                </button>
-              </div>
+              {!modoCego && (
+                <>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8, marginBottom: 16 }}>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      style={{ fontSize: 12, padding: '4px 8px' }}
+                      onClick={() => setValorContado(valorEsperadoDec.toFixed(2))}
+                    >
+                      Usar valor esperado ({formatMoney(valorEsperadoDec)})
+                    </button>
+                  </div>
 
-              {/* Indicador de diferença */}
-              <div style={{ marginBottom: 16 }}>
-                {diferencaDec.isZero() ? (
-                  <Notice kind="success">
-                    A contagem confere exatamente com o valor esperado.
-                  </Notice>
-                ) : diferencaDec.gt(0) ? (
-                  <Notice kind="info">
-                    Sobra de dinheiro na gaveta: +{formatMoney(diferencaDec)}
-                  </Notice>
-                ) : (
-                  <Notice kind="error">
-                    Falta de dinheiro na gaveta: {formatMoney(diferencaDec)}
-                  </Notice>
-                )}
-              </div>
+                  <div style={{ marginBottom: 16 }}>
+                    {diferencaDec.isZero() ? (
+                      <Notice kind="success">
+                        A contagem confere exactamente com o valor esperado.
+                      </Notice>
+                    ) : diferencaDec.gt(0) ? (
+                      <Notice kind="info">
+                        Sobra de dinheiro na gaveta: +{formatMoney(diferencaDec)}
+                      </Notice>
+                    ) : (
+                      <Notice kind="error">
+                        Falta de dinheiro na gaveta: {formatMoney(diferencaDec)}
+                      </Notice>
+                    )}
+                  </div>
+                </>
+              )}
 
               <Field id="fecho-nota" label="Observações de fecho (opcional)">
                 <input
                   id="fecho-nota"
                   type="text"
-                  placeholder="Ex: Turno da manhã, falta explicada por..."
+                  placeholder="Ex: Turno da manhã, justificação de quebra de caixa..."
                   value={notaFecho}
                   onChange={(e) => setNotaFecho(e.target.value)}
                 />
@@ -626,9 +747,19 @@ export function FechoCaixaModal({ onClose, onSessaoFechada }: FechoCaixaModalPro
                 </div>
               </div>
 
-              <div className="modal-actions" style={{ marginTop: 20 }}>
+              <div className="modal-actions" style={{ marginTop: 20, display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                 <button type="button" className="btn-secondary" onClick={onClose}>
                   Fechar
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  style={{ background: '#16a34a', borderColor: '#16a34a', color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}
+                  onClick={enviarResumoWhatsapp}
+                  disabled={enviandoResumoWhatsapp || !dados}
+                >
+                  {enviandoResumoWhatsapp ? <Spinner size="small" /> : <Send size={16} />}
+                  Enviar Resumo ao Dono (WhatsApp)
                 </button>
                 <button type="button" className="btn-primary" onClick={imprimirFecho}>
                   <Printer size={16} /> Imprimir Fecho

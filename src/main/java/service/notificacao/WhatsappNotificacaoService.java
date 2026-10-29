@@ -1,6 +1,5 @@
 package service.notificacao;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import dao.DefinicaoLojaDAO;
 import dao.UsuarioDAO;
 import model.DefinicaoLoja;
@@ -13,21 +12,14 @@ import model.Venda;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import util.CsvUtil;
-import util.EnvUtil;
 import util.Fuso;
 
 import java.math.BigDecimal;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -38,23 +30,26 @@ public class WhatsappNotificacaoService {
 
     private final DefinicaoLojaDAO definicaoLojaDAO;
     private final UsuarioDAO usuarioDAO;
-    private final HttpClient httpClient;
-    private final ObjectMapper objectMapper;
+    private final NotificacaoWhatsAppClient whatsAppClient;
     private final ExecutorService executor;
 
+    // Controle de taxa do botão de teste: máximo 1 por minuto por usuário
+    private final Map<Long, Long> ultimoTestePorUsuario = new ConcurrentHashMap<>();
+
     public WhatsappNotificacaoService() {
-        this(new DefinicaoLojaDAO(), new UsuarioDAO());
+        this(new DefinicaoLojaDAO(), new UsuarioDAO(), new OpenWaClient());
     }
 
     public WhatsappNotificacaoService(DefinicaoLojaDAO definicaoLojaDAO, UsuarioDAO usuarioDAO) {
+        this(definicaoLojaDAO, usuarioDAO, new OpenWaClient());
+    }
+
+    public WhatsappNotificacaoService(DefinicaoLojaDAO definicaoLojaDAO, UsuarioDAO usuarioDAO, NotificacaoWhatsAppClient whatsAppClient) {
         this.definicaoLojaDAO = definicaoLojaDAO;
         this.usuarioDAO = usuarioDAO;
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(12))
-                .build();
-        this.objectMapper = new ObjectMapper();
+        this.whatsAppClient = whatsAppClient;
         this.executor = Executors.newFixedThreadPool(3, r -> {
-            Thread t = new Thread(r, "zapi-whatsapp-notifier");
+            Thread t = new Thread(r, "whatsapp-notifier-worker");
             t.setDaemon(true);
             return t;
         });
@@ -68,7 +63,7 @@ public class WhatsappNotificacaoService {
         if (venda == null || usuarioId == null) return;
         executor.submit(() -> {
             try {
-                ConfiguracaoZapi cfg = carregarConfiguracao(usuarioId);
+                ConfiguracaoWhatsApp cfg = carregarConfiguracao(usuarioId);
                 if (!cfg.activa || !cfg.isConfigurada()) return;
 
                 StringBuilder sb = new StringBuilder();
@@ -123,9 +118,9 @@ public class WhatsappNotificacaoService {
                 }
                 sb.append("───────────────────────────");
 
-                enviarMensagem(cfg, sb.toString());
+                whatsAppClient.enviarTexto(cfg.telefone, sb.toString());
             } catch (Exception e) {
-                log.error("[Z-API] Erro ao enviar notificação de venda #{}: {}", venda.getId(), e.getMessage());
+                log.error("[OpenWA] Erro ao enviar notificação de venda #{}: {}", venda.getId(), e.getMessage());
             }
         });
     }
@@ -137,7 +132,7 @@ public class WhatsappNotificacaoService {
         if (produtos == null || produtos.isEmpty() || usuarioId == null) return;
         executor.submit(() -> {
             try {
-                ConfiguracaoZapi cfg = carregarConfiguracao(usuarioId);
+                ConfiguracaoWhatsApp cfg = carregarConfiguracao(usuarioId);
                 if (!cfg.activa || !cfg.isConfigurada()) return;
 
                 StringBuilder sb = new StringBuilder();
@@ -156,9 +151,9 @@ public class WhatsappNotificacaoService {
 
                 sb.append("🚨 *Atenção:* Recomenda-se reposição imediata junto ao fornecedor.");
 
-                enviarMensagem(cfg, sb.toString());
+                whatsAppClient.enviarTexto(cfg.telefone, sb.toString());
             } catch (Exception e) {
-                log.error("[Z-API] Erro ao enviar notificação de baixo estoque: {}", e.getMessage());
+                log.error("[OpenWA] Erro ao enviar notificação de baixo estoque: {}", e.getMessage());
             }
         });
     }
@@ -170,7 +165,7 @@ public class WhatsappNotificacaoService {
         if (produto == null || usuarioId == null) return;
         executor.submit(() -> {
             try {
-                ConfiguracaoZapi cfg = carregarConfiguracao(usuarioId);
+                ConfiguracaoWhatsApp cfg = carregarConfiguracao(usuarioId);
                 if (!cfg.activa || !cfg.isConfigurada()) return;
 
                 String categoriaNome = (produto.getCategoria() != null) ? produto.getCategoria().getNome() : "Sem categoria";
@@ -193,9 +188,9 @@ public class WhatsappNotificacaoService {
                 sb.append("🔖 *Código de Barras:* ").append(codBarras).append("\n\n");
                 sb.append("✅ Produto cadastrado e pronto para venda.");
 
-                enviarMensagem(cfg, sb.toString());
+                whatsAppClient.enviarTexto(cfg.telefone, sb.toString());
             } catch (Exception e) {
-                log.error("[Z-API] Erro ao enviar notificação de novo produto #{}: {}", produto.getId(), e.getMessage());
+                log.error("[OpenWA] Erro ao enviar notificação de novo produto #{}: {}", produto.getId(), e.getMessage());
             }
         });
     }
@@ -207,7 +202,7 @@ public class WhatsappNotificacaoService {
         if (sessao == null || usuarioId == null) return;
         executor.submit(() -> {
             try {
-                ConfiguracaoZapi cfg = carregarConfiguracao(usuarioId);
+                ConfiguracaoWhatsApp cfg = carregarConfiguracao(usuarioId);
                 if (!cfg.activa || !cfg.isConfigurada()) return;
 
                 StringBuilder sb = new StringBuilder();
@@ -225,9 +220,9 @@ public class WhatsappNotificacaoService {
                 sb.append("───────────────────────────\n");
                 sb.append("✅ Sessão iniciada e pronta para registrar transações.");
 
-                enviarMensagem(cfg, sb.toString());
+                whatsAppClient.enviarTexto(cfg.telefone, sb.toString());
             } catch (Exception e) {
-                log.error("[Z-API] Erro ao enviar notificação de abertura de caixa: {}", e.getMessage());
+                log.error("[OpenWA] Erro ao enviar notificação de abertura de caixa: {}", e.getMessage());
             }
         });
     }
@@ -240,7 +235,7 @@ public class WhatsappNotificacaoService {
         if (sessao == null || usuarioId == null) return;
         executor.submit(() -> {
             try {
-                ConfiguracaoZapi cfg = carregarConfiguracao(usuarioId);
+                ConfiguracaoWhatsApp cfg = carregarConfiguracao(usuarioId);
                 if (!cfg.activa || !cfg.isConfigurada()) return;
 
                 BigDecimal dif = sessao.getDiferenca() != null ? sessao.getDiferenca() : BigDecimal.ZERO;
@@ -283,123 +278,156 @@ public class WhatsappNotificacaoService {
                 sb.append("───────────────────────────\n");
                 sb.append("🔒 Turno de caixa encerrado com sucesso.");
 
-                enviarMensagem(cfg, sb.toString());
+                whatsAppClient.enviarTexto(cfg.telefone, sb.toString());
             } catch (Exception e) {
-                log.error("[Z-API] Erro ao enviar notificação de fecho de caixa: {}", e.getMessage());
+                log.error("[OpenWA] Erro ao enviar notificação de fecho de caixa: {}", e.getMessage());
             }
         });
     }
 
     // =========================================================================
-    // TESTE DE CONEXÃO
+    // TESTE DE CONEXÃO (com rate limit de 1 por minuto por usuário)
     // =========================================================================
-    public boolean testarConexao(Long usuarioId) throws Exception {
-        ConfiguracaoZapi cfg = carregarConfiguracao(usuarioId);
+    public NotificacaoWhatsAppClient.ResultadoEnvio testarConexao(Long usuarioId) {
+        if (usuarioId != null) {
+            long agora = System.currentTimeMillis();
+            Long ultimo = ultimoTestePorUsuario.get(usuarioId);
+            if (ultimo != null && (agora - ultimo) < 60_000L) {
+                long segundosRestantes = 60 - ((agora - ultimo) / 1000);
+                return new NotificacaoWhatsAppClient.ResultadoEnvio(
+                        false,
+                        "Aguarde " + segundosRestantes + " segundos antes de testar novamente.",
+                        NotificacaoWhatsAppClient.StatusSessao.CONECTADO
+                );
+            }
+            ultimoTestePorUsuario.put(usuarioId, agora);
+        }
+
+        ConfiguracaoWhatsApp cfg = carregarConfiguracao(usuarioId);
         if (!cfg.isConfigurada()) {
-            throw new IllegalArgumentException("Z-API não configurada. Preencha a Instância, Token e Telefone do Dono.");
+            return new NotificacaoWhatsAppClient.ResultadoEnvio(
+                    false,
+                    "Telefone do dono não configurado nas definições da loja.",
+                    NotificacaoWhatsAppClient.StatusSessao.NAO_CONFIGURADO
+            );
         }
 
-        String msg = "✅ *BStore — Teste de Notificações WhatsApp*\n\n"
-                   + "Olá! A integração do *BStore (Flex Stock)* com a sua conta *Z-API* está conectada com sucesso!\n\n"
-                   + "Você passará a receber automaticamente:\n"
-                   + "🛒 Relatório de cada venda registada\n"
-                   + "✨ Alerta de novos produtos cadastrados\n"
-                   + "⚠️ Alertas imediatos de baixo estoque\n"
-                   + "🟢 Abertura e 🔴 Fecho de caixa em tempo real\n\n"
-                   + "📅 Data do teste: " + formatarDataHora(Fuso.agora());
-
-        return enviarMensagem(cfg, msg);
+        String msg = "Teste do BStore";
+        return whatsAppClient.enviarTextoDetalhado(cfg.telefone, msg);
     }
 
     // =========================================================================
-    // ENVIO VIA HTTP Z-API
+    // 6. RESUMO EXECUTIVO DIÁRIO (WHATSAPP DO DONO)
     // =========================================================================
-    private boolean enviarMensagem(ConfiguracaoZapi cfg, String texto) {
-        try {
-            String telefoneLimpo = cfg.telefone.replaceAll("[^0-9]", "");
-            if (telefoneLimpo.isBlank()) {
-                log.warn("[Z-API] Número de telefone inválido após limpeza: {}", cfg.telefone);
-                return false;
-            }
-
-            String endpoint = String.format("https://api.z-api.io/instances/%s/token/%s/send-text",
-                    cfg.instanceId.trim(), cfg.token.trim());
-
-            Map<String, String> payload = new HashMap<>();
-            payload.put("phone", telefoneLimpo);
-            payload.put("message", texto);
-
-            String jsonCorpo = objectMapper.writeValueAsString(payload);
-
-            HttpRequest.Builder reqBuilder = HttpRequest.newBuilder()
-                    .uri(URI.create(endpoint))
-                    .timeout(Duration.ofSeconds(15))
-                    .header("Content-Type", "application/json; charset=utf-8")
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonCorpo, StandardCharsets.UTF_8));
-
-            if (cfg.clientToken != null && !cfg.clientToken.isBlank()) {
-                reqBuilder.header("Client-Token", cfg.clientToken.trim());
-            }
-
-            HttpResponse<String> resposta = httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
-
-            if (resposta.statusCode() >= 200 && resposta.statusCode() < 300) {
-                log.info("[Z-API] Notificação enviada com sucesso para {} (Status {})", telefoneLimpo, resposta.statusCode());
-                return true;
-            } else {
-                log.warn("[Z-API] Falha no envio para {}: HTTP {} - {}", telefoneLimpo, resposta.statusCode(), resposta.body());
-                return false;
-            }
-        } catch (Exception e) {
-            log.error("[Z-API] Erro ao comunicar com endpoint Z-API: {}", e.getMessage());
-            return false;
+    public NotificacaoWhatsAppClient.ResultadoEnvio notificarResumoDiario(java.time.LocalDate data, Map<String, Object> dadosFecho, Long usuarioId) {
+        ConfiguracaoWhatsApp cfg = carregarConfiguracao(usuarioId);
+        if (!cfg.isConfigurada()) {
+            return new NotificacaoWhatsAppClient.ResultadoEnvio(
+                    false,
+                    "Telefone do proprietário não configurado nas definições.",
+                    NotificacaoWhatsAppClient.StatusSessao.NAO_CONFIGURADO
+            );
         }
+
+        java.time.LocalDate dia = data != null ? data : util.Fuso.hoje();
+        String totalVendido = dadosFecho != null && dadosFecho.get("totalVendido") != null ? dadosFecho.get("totalVendido").toString() : "0,00";
+        String lucroEstimado = dadosFecho != null && dadosFecho.get("lucroEstimado") != null ? dadosFecho.get("lucroEstimado").toString() : "0,00";
+        String totalDespesas = dadosFecho != null && dadosFecho.get("totalDespesas") != null ? dadosFecho.get("totalDespesas").toString() : "0,00";
+        String totalFiado = dadosFecho != null && dadosFecho.get("totalFiado") != null ? dadosFecho.get("totalFiado").toString() : "0,00";
+        Object numVendasObj = dadosFecho != null ? dadosFecho.get("numeroVendas") : "0";
+        String numVendas = numVendasObj != null ? numVendasObj.toString() : "0";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("📊 *RESUMO EXECUTIVO DO DIA*\n");
+        sb.append("🏪 *Loja:* ").append(cfg.nomeLoja).append("\n");
+        sb.append("📅 *Data:* ").append(dia.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))).append("\n");
+        sb.append("🕒 *Gerado às:* ").append(formatarDataHora(Fuso.agora())).append("\n");
+        sb.append("───────────────────────────\n");
+        sb.append("💰 *Faturamento Total:* *").append(totalVendido).append(" MZN*\n");
+        sb.append("📈 *Lucro Bruto Estimado:* *").append(lucroEstimado).append(" MZN*\n");
+        sb.append("🔢 *Vendas Concluídas:* ").append(numVendas).append("\n");
+        if (!"0,00".equals(totalDespesas) && !"0.00".equals(totalDespesas) && !"0".equals(totalDespesas)) {
+            sb.append("💸 *Despesas / Saídas:* -").append(totalDespesas).append(" MZN\n");
+        }
+        if (!"0,00".equals(totalFiado) && !"0.00".equals(totalFiado) && !"0".equals(totalFiado)) {
+            sb.append("📝 *Fiado Registado:* ").append(totalFiado).append(" MZN\n");
+        }
+
+        if (dadosFecho != null && dadosFecho.get("totaisPorMetodo") instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, String> metodos = (Map<String, String>) dadosFecho.get("totaisPorMetodo");
+            if (!metodos.isEmpty()) {
+                sb.append("───────────────────────────\n");
+                sb.append("💳 *Entradas por Meio de Pagamento:*\n");
+                metodos.forEach((k, v) -> {
+                    if (!"0,00".equals(v) && !"0.00".equals(v) && !"0".equals(v)) {
+                        sb.append(" • ").append(k).append(": ").append(v).append(" MZN\n");
+                    }
+                });
+            }
+        }
+
+        sb.append("───────────────────────────\n");
+        sb.append("✅ Relatório consolidado Flex Stock / BStore");
+
+        return whatsAppClient.enviarTextoDetalhado(cfg.telefone, sb.toString());
     }
 
     // =========================================================================
-    // RESOLUÇÃO DE CONFIGURAÇÃO (Prioridade: BD -> .env)
+    // 7. COBRANÇA DE FIADO / LEMBRETE DE DÍVIDA (PARA CLIENTE)
     // =========================================================================
-    public ConfiguracaoZapi carregarConfiguracao(Long usuarioId) {
+    public NotificacaoWhatsAppClient.ResultadoEnvio enviarCobrancaCliente(String telefoneCliente, String mensagem, Long usuarioId) {
+        if (telefoneCliente == null || telefoneCliente.isBlank()) {
+            return new NotificacaoWhatsAppClient.ResultadoEnvio(
+                    false,
+                    "Número de telefone do cliente ausente ou inválido.",
+                    NotificacaoWhatsAppClient.StatusSessao.NAO_CONFIGURADO
+            );
+        }
+        if (mensagem == null || mensagem.isBlank()) {
+            return new NotificacaoWhatsAppClient.ResultadoEnvio(
+                    false,
+                    "Texto da cobrança não pode estar vazio.",
+                    NotificacaoWhatsAppClient.StatusSessao.NAO_CONFIGURADO
+            );
+        }
+        return whatsAppClient.enviarTextoDetalhado(telefoneCliente, mensagem);
+    }
+
+    public NotificacaoWhatsAppClient.StatusSessao verificarStatusSessao() {
+        return whatsAppClient.verificarStatusSessao();
+    }
+
+    public ConfiguracaoWhatsApp carregarConfiguracao(Long usuarioId) {
         DefinicaoLoja def = null;
-        try {
-            def = definicaoLojaDAO.obter(usuarioId);
-        } catch (Exception ignored) {}
+        if (usuarioId != null) {
+            try {
+                def = definicaoLojaDAO.obter(usuarioId);
+            } catch (Exception ignored) {}
+        }
 
         String nomeLoja = "BStore";
         if (def != null && def.getNomeLoja() != null && !def.getNomeLoja().isBlank()) {
             nomeLoja = def.getNomeLoja().trim();
-        } else {
-            Usuario u = usuarioDAO.buscarPorId(usuarioId);
-            if (u != null && u.getNome() != null && !u.getNome().isBlank()) {
-                nomeLoja = u.getNome().trim();
-            }
+        } else if (usuarioId != null) {
+            try {
+                Usuario u = usuarioDAO.buscarPorId(usuarioId);
+                if (u != null && u.getNome() != null && !u.getNome().isBlank()) {
+                    nomeLoja = u.getNome().trim();
+                }
+            } catch (Exception ignored) {}
         }
 
-        boolean activa = true;
+        boolean activa = whatsAppClient.isAtivo();
         if (def != null && def.getWhatsappNotificacoesActivas() != null) {
             activa = def.getWhatsappNotificacoesActivas();
-        } else {
-            String envAtiva = EnvUtil.get("ZAPI_NOTIFICACOES_ACTIVAS", "true");
-            activa = Boolean.parseBoolean(envAtiva);
         }
-
-        String instanceId = (def != null && def.getZapiInstanceId() != null && !def.getZapiInstanceId().isBlank())
-                ? def.getZapiInstanceId().trim()
-                : EnvUtil.get("ZAPI_INSTANCE_ID");
-
-        String token = (def != null && def.getZapiToken() != null && !def.getZapiToken().isBlank())
-                ? def.getZapiToken().trim()
-                : EnvUtil.get("ZAPI_TOKEN");
-
-        String clientToken = (def != null && def.getZapiClientToken() != null && !def.getZapiClientToken().isBlank())
-                ? def.getZapiClientToken().trim()
-                : EnvUtil.get("ZAPI_CLIENT_TOKEN");
 
         String telefone = (def != null && def.getWhatsappTelefoneDono() != null && !def.getWhatsappTelefoneDono().isBlank())
                 ? def.getWhatsappTelefoneDono().trim()
-                : EnvUtil.get("ZAPI_DONO_TELEFONE", EnvUtil.get("WHATSAPP_DONO_TELEFONE"));
+                : whatsAppClient.getTelefoneDono();
 
-        return new ConfiguracaoZapi(activa, nomeLoja, instanceId, token, clientToken, telefone);
+        return new ConfiguracaoWhatsApp(activa, nomeLoja, telefone);
     }
 
     private String formatarDataHora(LocalDateTime ldt) {
@@ -407,28 +435,19 @@ public class WhatsappNotificacaoService {
         return ldt.format(FORMATO_DATA_HORA);
     }
 
-    public static class ConfiguracaoZapi {
+    public static class ConfiguracaoWhatsApp {
         public final boolean activa;
         public final String nomeLoja;
-        public final String instanceId;
-        public final String token;
-        public final String clientToken;
         public final String telefone;
 
-        public ConfiguracaoZapi(boolean activa, String nomeLoja, String instanceId, String token,
-                                String clientToken, String telefone) {
+        public ConfiguracaoWhatsApp(boolean activa, String nomeLoja, String telefone) {
             this.activa = activa;
             this.nomeLoja = nomeLoja;
-            this.instanceId = instanceId;
-            this.token = token;
-            this.clientToken = clientToken;
             this.telefone = telefone;
         }
 
         public boolean isConfigurada() {
-            return instanceId != null && !instanceId.isBlank()
-                    && token != null && !token.isBlank()
-                    && telefone != null && !telefone.isBlank();
+            return telefone != null && !telefone.isBlank() && telefone.replaceAll("[^0-9]", "").length() >= 8;
         }
     }
 }
